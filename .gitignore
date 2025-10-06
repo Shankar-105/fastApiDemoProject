@@ -1,0 +1,37 @@
+# ignores compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Compiled extensions
+*.so
+
+# ignoring local virtual Environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+env_old/
+venv.bak/
+
+# FastAPI / Backend Specific
+*.db
+
+# Environment variable files
+.env
+.env.*
+*.env
+
+
+# Logs and runtime files
+*.log
+logs/
+*.pid
+*.seed
+*.bak
+
+# Local dev data
+tmp/
+data/
+__pypackages__/

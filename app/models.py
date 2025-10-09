@@ -2,7 +2,8 @@ from app.db import Base
 from sqlalchemy import Column,Integer,String,Boolean
 from sqlalchemy.sql.expression import null,text
 from sqlalchemy.sql.sqltypes import TIMESTAMP
-# Schema for the db 
+# structure or model of the db posts
+# like what does a post need to have
 class Post(Base):
     __tablename__='posts'
     id=Column(Integer,primary_key=True,nullable=False)

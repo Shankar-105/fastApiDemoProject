@@ -1,7 +1,7 @@
 # main.py
 from fastapi import FastAPI,Response,status,HTTPException,Depends
 from fastapi import Body
-from pydantic import BaseModel
+from app.schemas import PostEssentials
 import random
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -47,16 +47,6 @@ while i:
         print("Connection to the Database Failed with an error : ",error,"trying again to connect")
         time.sleep(3)
 '''
-
-# Front end shouldn't send any uneccessary data 
-# we need to define a schema that frontend need to follow when sending data from user
-# structure or schema of the post using pydantic's BaseModel class
-
-class Post(BaseModel):
-    title:str
-    content:str
-    enableComments:bool=True
-
 
 # basically when we don't connect to database we need
 # some ds to store our posts and this list below does that
@@ -114,7 +104,7 @@ def getPost(postId:int,db:Session=Depends(getDb)):
 
 # creates a new post using sqlAlchemy
 @app.post("/posts/createPost",status_code=status.HTTP_201_CREATED)  
-def createPosts(post:Post=Body(...),db:Session=Depends(getDb)):
+def createPosts(post:PostEssentials=Body(...),db:Session=Depends(getDb)):
     newPost=models.Post(**post.dict())
     db.add(newPost)
     db.commit()
@@ -147,15 +137,23 @@ def deletePost(postId:int,db:Session=Depends(getDb)):
 
 # update a specific post with id -> {id}
 @app.put("/posts/editPost/{postId}")
-def editPost(postId:int,post:Post,db:Session=Depends(getDb)):
+def editPost(postId:int,post:PostEssentials,db:Session=Depends(getDb)):
     postToUpdate=db.query(models.Post).filter(models.Post.id==postId).first()
     if not postToUpdate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found")
-    
-    update_data = post.dict(exclude_unset=True)  # Gets only provided fields
+    # from our argument of post we exclude the None values
+    # and just pick up the set values and store into a dict update_data
+
+    update_data = post.dict(exclude_unset=True)
+    # now we traverse thorugh the update_data and put that data
+    # in our postToUpdate
     for key, value in update_data.items():
         setattr(postToUpdate,key,value)
+    # commit those updated changes
     db.commit()
+    # refresh to qucikly view them below while returing 
+    # if not refreshed below returned postToUpdate will be
+    # sent as {} to the front End
     db.refresh(postToUpdate)
     return {"status":f"updated post with id {postId}","updatedPostData":postToUpdate}
      
@@ -166,5 +164,4 @@ def editPost(postId:int,post:Post,db:Session=Depends(getDb)):
      allPosts[idx]=post.dict()
      allPosts[idx]['id']=id
      '''
-     
      

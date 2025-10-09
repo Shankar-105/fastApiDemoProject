@@ -124,12 +124,13 @@ def createPosts(post:Post=Body(...),db:Session=Depends(getDb)):
 
 # delets a specific post with the mentioned id -> {id}
 @app.delete("/posts/deletePost/{postId}")
-def deletePost(postId:int):
-    myCursor.execute("delete from posts where id=%s returning * ",(str(postId)))
-    deletedPost=myCursor.fetchone()
-    conn.commit()
+def deletePost(postId:int,db:Session=Depends(getDb)):
+    
+    deletedPost=db.query(models.Post).filter(models.Post.id==postId).first()
     if not deletedPost:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found") 
+    db.delete(deletedPost)
+    db.commit()
     return {"status":f"deleted post with id {postId}","deletedPostData":deletedPost}
 
     # same code but without database

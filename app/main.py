@@ -1,7 +1,7 @@
 # main.py
 from fastapi import FastAPI,Response,status,HTTPException,Depends
 from fastapi import Body
-from app.schemas import PostEssentials
+import app.schemas as sch
 import random
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -103,13 +103,13 @@ def getPost(postId:int,db:Session=Depends(getDb)):
 
 
 # creates a new post using sqlAlchemy
-@app.post("/posts/createPost",status_code=status.HTTP_201_CREATED)  
-def createPosts(post:PostEssentials=Body(...),db:Session=Depends(getDb)):
+@app.post("/posts/createPost",status_code=status.HTTP_201_CREATED,response_model=sch.PostResponse)  
+def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb)):
     newPost=models.Post(**post.dict())
     db.add(newPost)
     db.commit()
     db.refresh(newPost)
-    return {"status":"Post SuccessFully Created","postData":newPost}
+    return newPost
 
 
 # delets a specific post with the mentioned id -> {id}
@@ -137,7 +137,7 @@ def deletePost(postId:int,db:Session=Depends(getDb)):
 
 # update a specific post with id -> {id}
 @app.put("/posts/editPost/{postId}")
-def editPost(postId:int,post:PostEssentials,db:Session=Depends(getDb)):
+def editPost(postId:int,post:sch.PostEssentials,db:Session=Depends(getDb)):
     postToUpdate=db.query(models.Post).filter(models.Post.id==postId).first()
     if not postToUpdate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found")

@@ -1,14 +1,22 @@
 # main.py
-from fastapi import FastAPI,Response,status,HTTPException
+from fastapi import FastAPI,Response,status,HTTPException,Depends
 from fastapi import Body
 from pydantic import BaseModel
 import random
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
+from . import models
+from .db import engine,getDb
+from sqlalchemy.orm import Session
+models.Base.metadata.create_all(bind=engine)
 
 # fastapi instance
 app = FastAPI()
+
+@app.get("/sqlAlchemyTesting")
+def test(db:Session=Depends(getDb)):
+    return {"status":"success"}
 
 # sometimes the connection to the db may fail
 # despite of passing the correct args to the params
@@ -28,7 +36,6 @@ while i:
         i=i-1
         print("Connection to the Database Failed with an error : ",error,"trying again to connect")
         time.sleep(3)
-
 
 
 # Front end shouldn't send any uneccessary data 

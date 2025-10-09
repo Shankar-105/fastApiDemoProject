@@ -96,10 +96,8 @@ def getAllPosts(db:Session=Depends(getDb)):
 
 # gets a specific post with id -> {postId}
 @app.get("/posts/getPost/{postId}")
-def getPost(postId:int):
-    myCursor.execute("select * from posts where id=%s",(str(postId)))
-    reqPost=myCursor.fetchone()
-
+def getPost(postId:int,db:Session=Depends(getDb)):
+    reqPost=db.query(models.Post).filter(models.Post.id==postId).first()
     # same code when database isn't used
     '''
     reqPost=findPost(id)

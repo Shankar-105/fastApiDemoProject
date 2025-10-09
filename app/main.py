@@ -9,11 +9,15 @@ import time
 from . import models
 from .db import engine,getDb
 from sqlalchemy.orm import Session
+
+
 models.Base.metadata.create_all(bind=engine)
 
 # fastapi instance
 app = FastAPI()
 
+# testing the whether the dv is connected or not
+# testing successfull everything working fine!
 @app.get("/sqlAlchemyTesting")
 def test(db:Session=Depends(getDb)):
     return {"status":"success"}

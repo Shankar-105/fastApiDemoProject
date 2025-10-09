@@ -114,19 +114,13 @@ def getPost(postId:int):
     return {"status":"post found","data":reqPost}
 
 
-# creates a new post
+# creates a new post using sqlAlchemy
 @app.post("/posts/createPost",status_code=status.HTTP_201_CREATED)  
-def createPosts(post:Post=Body(...)):
-    myCursor.execute("insert into posts (title,content,\"enableComments\") values (%s,%s,%s) returning * ",(post.title,post.content,post.enableComments))
-    newPost=myCursor.fetchone()
-    conn.commit()
-
-    # same code without using database
-    '''
-    newPost=post.dict()
-    newPost['id']=random.randrange(0,100000)
-    allPosts.append(newPost)
-    '''
+def createPosts(post:Post=Body(...),db:Session=Depends(getDb)):
+    newPost=models.Post(**post.dict())
+    db.add(newPost)
+    db.commit()
+    db.refresh(newPost)
     return {"status":"Post SuccessFully Created","postData":newPost}
 
 

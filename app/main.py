@@ -16,15 +16,16 @@ models.Base.metadata.create_all(bind=engine)
 # fastapi instance
 app = FastAPI()
 
-# testing the whether the dv is connected or not
+# testing whether the db is connected or not
 # testing successfull everything working fine!
+'''
 @app.get("/sqlAlchemyTesting")
 def test(db:Session=Depends(getDb)):
     posts=db.query(models.Post).all()
     if not posts:
         return {"data":"no posts available"}
     return {"allPosts":posts}
-
+'''
 # sometimes the connection to the db may fail
 # despite of passing the correct args to the params
 # so we usaually try again to connect to the db
@@ -32,7 +33,9 @@ def test(db:Session=Depends(getDb)):
 # when the connection fails the program shouldn't crash
 # and trying to connect again and again using the while loop
 # until we make sure the connection is successfull
-i=10
+# the connection is set via sqlAlchemy so need to
+# setup connnection again to psycopg
+'''i=10
 while i:
     try:
         conn=psycopg2.connect(host="localhost",database="fastApi",user="postgres",password="iota143",cursor_factory=RealDictCursor)
@@ -43,7 +46,7 @@ while i:
         i=i-1
         print("Connection to the Database Failed with an error : ",error,"trying again to connect")
         time.sleep(3)
-
+'''
 
 # Front end shouldn't send any uneccessary data 
 # we need to define a schema that frontend need to follow when sending data from user
@@ -83,21 +86,13 @@ class Post(BaseModel):
     return idx '''
 
 
-# retrives all posts
+# retrives all posts using sqlAlchemy
 @app.get("/posts/getAllPosts")  
-def getAllPosts():
-    myCursor.execute("select * from posts")
-    allPosts = myCursor.fetchall()
+def getAllPosts(db:Session=Depends(getDb)):
+    allPosts=db.query(models.Post).all()
     if not allPosts:
-        return {"data":"no posts"}
+        return {"data":"no posts available"}
     return {"allPosts":allPosts}
-  # same code without using database 
-    ''' 
-    if not allPosts:
-        return {"data":"no posts"}
-    return {"allPosts":allPosts}
-    '''
-
 
 # gets a specific post with id -> {postId}
 @app.get("/posts/getPost/{postId}")

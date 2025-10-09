@@ -6,10 +6,18 @@ import random
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
-# fastapi instance
 
-i=10
+# fastapi instance
 app = FastAPI()
+
+# sometimes the connection to the db may fail
+# despite of passing the correct args to the params
+# so we usaually try again to connect to the db
+# here i have put the connection code inside a try block so that
+# when the connection fails the program shouldn't crash
+# and trying to connect again and again using the while loop
+# until we make sure the connection is successfull
+i=10
 while i:
     try:
         conn=psycopg2.connect(host="localhost",database="fastApi",user="postgres",password="iota143",cursor_factory=RealDictCursor)
@@ -25,7 +33,7 @@ while i:
 
 # Front end shouldn't send any uneccessary data 
 # we need to define a schema that frontend need to follow when sending data from user
-# structure or schema of the post
+# structure or schema of the post using pydantic's BaseModel class
 
 class Post(BaseModel):
     title:str
@@ -33,11 +41,15 @@ class Post(BaseModel):
     enableComments:bool=True
 
 
-# list to store all posts without databases!
+# basically when we don't connect to database we need
+# some ds to store our posts and this list below does that
+# but this is just for testing purposes becuz
+# all the posts data will be lost after server stops 
+
 # allPosts=[]
 
 
-# find a post with id -> {id}
+# find a post with id -> {id} while working on with list 'allPosts'
 ''' def findPost(id:int):
     reqPost=None
     for i in allPosts:
@@ -73,16 +85,18 @@ def getAllPosts():
     '''
 
 
-# gets a specific post with id -> {id}
+# gets a specific post with id -> {postId}
 @app.get("/posts/getPost/{postId}")
 def getPost(postId:int):
     myCursor.execute("select * from posts where id=%s",(str(postId)))
     reqPost=myCursor.fetchone()
+
+    # same code when database isn't used
     '''
     reqPost=findPost(id)
     if reqPost==None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="post not found")
-        # updating status using Response class
+        # in the below code we're updating status code using Response class
         # response.status_code=status.HTTP_404_NOT_FOUND
         # return {"status":"post not found"} 
     '''

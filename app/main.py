@@ -6,8 +6,8 @@ import random
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
-from . import models
-from .db import engine,getDb
+from app import models
+from app.db import engine,getDb
 from sqlalchemy.orm import Session
 
 
@@ -20,7 +20,10 @@ app = FastAPI()
 # testing successfull everything working fine!
 @app.get("/sqlAlchemyTesting")
 def test(db:Session=Depends(getDb)):
-    return {"status":"success"}
+    posts=db.query(models.Post).all()
+    if not posts:
+        return {"data":"no posts available"}
+    return {"allPosts":posts}
 
 # sometimes the connection to the db may fail
 # despite of passing the correct args to the params

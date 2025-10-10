@@ -24,3 +24,7 @@ class PostResponse(BaseModel):
     model_config = ConfigDict(
         from_attributes=True
     )
+
+class UserEssentials(BaseModel):
+    username:str
+    password:str

@@ -162,4 +162,11 @@ def editPost(postId:int,post:sch.PostEssentials,db:Session=Depends(getDb)):
      allPosts[idx]=post.dict()
      allPosts[idx]['id']=id
      '''
-     
+@app.post("/user/signup",status_code=status.HTTP_201_CREATED)
+def createUser(newUser:sch.UserEssentials=Body(...),db:Session=Depends(getDb)):
+    newUser=models.User(**newUser.dict())
+    db.add(newUser)
+    db.commit()
+    db.refresh(newUser)
+    return newUser
+    

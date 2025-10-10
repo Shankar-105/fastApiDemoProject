@@ -1,8 +1,8 @@
 # main.py
 from fastapi import FastAPI,Response,status,HTTPException,Depends
 from fastapi import Body
+from typing import Optional,List
 import app.schemas as sch
-import random
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
@@ -77,12 +77,10 @@ while i:
 
 
 # retrives all posts using sqlAlchemy
-@app.get("/posts/getAllPosts")  
+@app.get("/posts/getAllPosts",response_model=List[sch.PostResponse])  
 def getAllPosts(db:Session=Depends(getDb)):
     allPosts=db.query(models.Post).all()
-    if not allPosts:
-        return {"data":"no posts available"}
-    return {"allPosts":allPosts}
+    return allPosts
 
 # gets a specific post with id -> {postId}
 @app.get("/posts/getPost/{postId}")
@@ -103,13 +101,13 @@ def getPost(postId:int,db:Session=Depends(getDb)):
 
 
 # creates a new post using sqlAlchemy
-@app.post("/posts/createPost",status_code=status.HTTP_201_CREATED,response_model=sch.PostResponse)  
+@app.post("/posts/createPost",status_code=status.HTTP_201_CREATED)
 def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb)):
     newPost=models.Post(**post.dict())
     db.add(newPost)
     db.commit()
     db.refresh(newPost)
-    return newPost
+    return {"status":"new post created","newPost Data":newPost}
 
 
 # delets a specific post with the mentioned id -> {id}

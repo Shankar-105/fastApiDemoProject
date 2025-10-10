@@ -16,6 +16,7 @@ class PostEssentials(BaseModel):
 class CreatePost(PostEssentials):
     pass
 
+# pydantic model while returning post data to user
 class PostResponse(BaseModel):
     id:int
     title:str

@@ -42,6 +42,7 @@ class UserEssentials(BaseModel):
 # showing all his data so we just show him what's to be shown after 
 # the creation of an account
 class UserResponse(BaseModel):
+    id:int
     username:str
     createdAt:datetime
     model_config = ConfigDict( 

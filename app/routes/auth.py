@@ -21,8 +21,13 @@ def loginUser(userCred:OAuth2PasswordRequestForm=Depends(),db:Session=Depends(db
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"incorrect password")
   # if both username and password verfication is successfull call
   # the createAccessToken from oauth2 file which generates an jwt token
-  accessToken=oauth2.createAccessToken({"userId":isUserPresent.id,"userName":isUserPresent.username})
+  tokenData={"userId":isUserPresent.id,"userName":isUserPresent.username}
+  access_token=oauth2.createAccessToken(tokenData)
   # return the access token
-  return {"access_token":accessToken,"token_type":"bearer"}
+  return sch.TokenModel(id=isUserPresent.id,
+                        username=isUserPresent.username,
+                        accessToken=access_token,
+                        tokenType="bearer" 
+                        )
 
  

@@ -49,5 +49,12 @@ class UserResponse(BaseModel):
         from_attributes=True
     )
 
-class UserLoginCred(UserEssentials):
-    pass
+# class UserLoginCred(UserEssentials):
+#     pass
+
+class TokenModel(BaseModel):
+    id:int
+    username:str
+    accessToken:str
+    tokenType:str
+

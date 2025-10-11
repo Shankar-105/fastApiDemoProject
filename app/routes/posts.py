@@ -1,20 +1,19 @@
-from fastapi import status,HTTPException,Depends,Body
+from fastapi import status,HTTPException,Depends,Body,APIRouter
 from typing import List
 import app.schemas as sch
 from app import models
 from app.db import getDb
 from sqlalchemy.orm import Session
-from app.main import app
 
-
+router=APIRouter()
 # retrives all posts using sqlAlchemy
-@app.get("/posts/getAllPosts",response_model=List[sch.PostResponse])  
+@router.get("/posts/getAllPosts",response_model=List[sch.PostResponse])  
 def getAllPosts(db:Session=Depends(getDb)):
     allPosts=db.query(models.Post).all()
     return allPosts
 
 # gets a specific post with id -> {postId}
-@app.get("/posts/getPost/{postId}")
+@router.get("/posts/getPost/{postId}")
 def getPost(postId:int,db:Session=Depends(getDb)):
     reqPost=db.query(models.Post).filter(models.Post.id==postId).first()
     # same code when database isn't used
@@ -32,7 +31,7 @@ def getPost(postId:int,db:Session=Depends(getDb)):
 
 
 # creates a new post using sqlAlchemy
-@app.post("/posts/createPost",status_code=status.HTTP_201_CREATED)
+@router.post("/posts/createPost",status_code=status.HTTP_201_CREATED)
 def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb)):
     newPost=models.Post(**post.dict())
     db.add(newPost)
@@ -42,7 +41,7 @@ def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb)):
 
 
 # delets a specific post with the mentioned id -> {id}
-@app.delete("/posts/deletePost/{postId}")
+@router.delete("/posts/deletePost/{postId}")
 def deletePost(postId:int,db:Session=Depends(getDb)):
     
     postToDelete=db.query(models.Post).filter(models.Post.id==postId).first()
@@ -65,7 +64,7 @@ def deletePost(postId:int,db:Session=Depends(getDb)):
 
 
 # update a specific post with id -> {id}
-@app.put("/posts/editPost/{postId}")
+@router.put("/posts/editPost/{postId}")
 def editPost(postId:int,post:sch.PostEssentials,db:Session=Depends(getDb)):
     postToUpdate=db.query(models.Post).filter(models.Post.id==postId).first()
     if not postToUpdate:

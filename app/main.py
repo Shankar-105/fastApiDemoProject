@@ -5,7 +5,8 @@ import app.schemas as sch
 from app import models
 from app.db import engine,getDb
 from sqlalchemy.orm import Session
-
+from app.routes.posts import router as posts_router
+from app.routes.users import router as users_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -76,3 +77,5 @@ while i:
             idx=i
             break
     return idx '''    
+app.include_router(posts_router)
+app.include_router(users_router)

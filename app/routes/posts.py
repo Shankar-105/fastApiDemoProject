@@ -5,7 +5,10 @@ from app import models
 from app.db import getDb
 from sqlalchemy.orm import Session
 
-router=APIRouter()
+router=APIRouter(
+    tags=['Posts']
+)
+
 # retrives all posts using sqlAlchemy
 @router.get("/posts/getAllPosts",response_model=List[sch.PostResponse])  
 def getAllPosts(db:Session=Depends(getDb)):

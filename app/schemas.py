@@ -1,4 +1,4 @@
-from pydantic import BaseModel,ConfigDict
+from pydantic import BaseModel,ConfigDict,Field
 from datetime import datetime
 
 
@@ -35,7 +35,7 @@ class PostResponse(BaseModel):
 # correct data isn't sent via our api's
 class UserEssentials(BaseModel):
     username:str
-    password:str
+    password: str = Field(..., max_length=72)
 
 
 # when the new account for a user is created there's no meaning in

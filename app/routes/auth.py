@@ -1,5 +1,5 @@
 from fastapi import status,HTTPException,Depends,Body,APIRouter
-from app import db,models
+from app import db,models,oauth2
 from sqlalchemy.orm import Session
 import app.utils as utils
 import app.schemas as sch
@@ -14,6 +14,8 @@ def loginUser(userCred:sch.UserLoginCred=Body(...),db:Session=Depends(db.getDb))
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"user {userCred.username} not Found")
   if not utils.verifyPassword(userCred.password,isUserPresent.password):
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"incorrect password")
-  return {"status":"token generated"}
+  
+  accessToken=oauth2.createAccessToken({"userId":isUserPresent.id,"userName":isUserPresent.username})
+  return {"access_token":accessToken,"token_type":"bearer"}
 
  

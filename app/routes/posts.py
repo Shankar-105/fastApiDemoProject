@@ -5,6 +5,7 @@ from app import models,oauth2
 from app.db import getDb
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+
 router=APIRouter(
     tags=['Posts']
 )

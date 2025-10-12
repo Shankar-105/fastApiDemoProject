@@ -1,10 +1,7 @@
 # main.py
-from fastapi import FastAPI,Response,status,HTTPException,Depends,Body
-from typing import Optional,List
-import app.schemas as sch
+from fastapi import FastAPI
 from app import models
-from app.db import engine,getDb
-from sqlalchemy.orm import Session
+from app.db import engine
 from app.routes.posts import router as posts_router
 from app.routes.users import router as users_router
 from app.routes.auth import router as auth_router

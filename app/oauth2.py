@@ -3,7 +3,7 @@ from datetime import datetime,timedelta
 import app.schemas as sch
 from fastapi import status,HTTPException,Depends
 from fastapi.security import OAuth2PasswordBearer
-
+from app.config import settings as cg
 # a scheme for Extracting the sent JWT token 
 # from the Authorization Header
 oauth2_scheme=OAuth2PasswordBearer(tokenUrl='login')
@@ -14,9 +14,9 @@ oauth2_scheme=OAuth2PasswordBearer(tokenUrl='login')
 # and to this we add a newField called the expiry time
 # for that amount of time the jwt token will be valid
 # 3. a secret key
-ALGORITHM="HS256"
-SECRET_KEY="iota097105"
-EXPIRE_TIME=3
+ALGORITHM=cg.algorithm
+SECRET_KEY=cg.secret_key
+EXPIRE_TIME=cg.access_token_expire_time
 
 def createAccessToken(data:dict):
     # create a copy of the data becuase

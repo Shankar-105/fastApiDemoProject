@@ -2,10 +2,7 @@
 from fastapi import FastAPI
 from app import models
 from app.db import engine
-from app.routes.posts import router as posts_router
-from app.routes.users import router as users_router
-from app.routes.auth import router as auth_router
-
+from app.routes import posts,users,auth,like
 models.Base.metadata.create_all(bind=engine)
 
 # fastapi instance
@@ -75,6 +72,7 @@ while i:
             idx=i
             break
     return idx '''    
-app.include_router(posts_router)
-app.include_router(users_router)
-app.include_router(auth_router)
+app.include_router(posts.router)
+app.include_router(users.router)
+app.include_router(auth.router)
+app.include_router(like.router)

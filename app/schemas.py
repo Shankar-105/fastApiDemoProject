@@ -59,3 +59,6 @@ class TokenModel(BaseModel):
     accessToken:str
     tokenType:str
 
+class LikeModel(BaseModel):
+    postId:int
+    choice:bool

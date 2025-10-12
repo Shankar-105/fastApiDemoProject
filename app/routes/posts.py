@@ -4,21 +4,21 @@ import app.schemas as sch
 from app import models,oauth2
 from app.db import getDb
 from sqlalchemy.orm import Session
-
+from sqlalchemy import and_
 router=APIRouter(
     tags=['Posts']
 )
 
 # retrives all posts using sqlAlchemy
 @router.get("/posts/getAllPosts",response_model=List[sch.PostResponse])  
-def getAllPosts(db:Session=Depends(getDb)):
-    allPosts=db.query(models.Post).all()
+def getAllPosts(db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
+    allPosts=db.query(models.Post).filter(models.Post.userId==currentUser.id).all()
     return allPosts
 
 # gets a specific post with id -> {postId}
 @router.get("/posts/getPost/{postId}",response_model=sch.PostResponse)
-def getPost(postId:int,db:Session=Depends(getDb)):
-    reqPost=db.query(models.Post).filter(models.Post.id==postId).first()
+def getPost(postId:int,db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
+    reqPost=db.query(models.Post).filter(and_(models.Post.id==postId,models.Post.userId==currentUser.id)).first()
     # same code when database isn't used
     '''
     reqPost=findPost(id)
@@ -44,15 +44,14 @@ def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb),curr
 
 
 # delets a specific post with the mentioned id -> {id}
-@router.delete("/posts/deletePost/{postId}")
-def deletePost(postId:int,db:Session=Depends(getDb)):
-    
-    postToDelete=db.query(models.Post).filter(models.Post.id==postId).first()
+@router.delete("/posts/deletePost/{postId}",response_model=sch.PostResponse)
+def deletePost(postId:int,db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
+    postToDelete=db.query(models.Post).filter(and_(models.Post.id==postId,models.Post.userId==currentUser.id)).first()
     if not postToDelete:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found") 
     db.delete(postToDelete)
     db.commit()
-    return {"status":f"deleted post with id {postId}","deletedPostData":postToDelete}
+    return postToDelete
 
     # same code but without database
     '''postToDelete=findPost(id)

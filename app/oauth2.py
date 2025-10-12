@@ -4,7 +4,10 @@ import app.schemas as sch
 from fastapi import status,HTTPException,Depends
 from fastapi.security import OAuth2PasswordBearer
 
+# a scheme for Extracting the sent JWT token 
+# from the Authorization Header
 oauth2_scheme=OAuth2PasswordBearer(tokenUrl='login')
+
 # basically for the generation of an JWT token it requries
 # 1. an ALGORITHM
 # 2. some user data like suppose here user id,username
@@ -12,7 +15,7 @@ oauth2_scheme=OAuth2PasswordBearer(tokenUrl='login')
 # for that amount of time the jwt token will be valid
 # 3. a secret key
 ALGORITHM="HS256"
-SECRET_KEY="iota"
+SECRET_KEY="iota097105"
 EXPIRE_TIME=3
 
 def createAccessToken(data:dict):
@@ -32,16 +35,26 @@ def createAccessToken(data:dict):
 
 def verifyAccesstoken(token: str, credentials_exception):
     try:
-        payload=jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        id: int=payload.get("userId")
-        username: str=payload.get("userName")
+        # decode's the token which returns a dict of the sent user info 
+        # while creating a token (userId,userName) 
+        decodedToken=jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # extract those userId and userName from the returned dict
+        id: int=decodedToken.get("userId")
+        username: str=decodedToken.get("userName")
+        # if they aren't found meaning a malformed jwt token is sent
+        # so we raise an exception
         if id is None or username is None:
             raise credentials_exception
+        # if not then we create a TokenModel and return it to the protected routes
         return sch.TokenModel(id=id,username=username,accessToken=token,tokenType="bearer")
+    # if the token itself is invalid we raise a JWTError
     except JWTError:
         raise credentials_exception
 
 # Get current user (for protected routes)
+# in the parentheses the Depends(oauth2_scheme) returns the
+# JWT Token which is stored in the token variable below
+# and sent to the verifyAccesstoken() mtd
 def getCurrentUser(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

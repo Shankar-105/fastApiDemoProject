@@ -22,6 +22,7 @@ class PostResponse(BaseModel):
     id:int
     title:str
     createdAt:datetime
+    userId:int
     model_config = ConfigDict(
         from_attributes=True
     )

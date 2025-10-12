@@ -1,5 +1,5 @@
 from app.db import Base
-from sqlalchemy import Column,Integer,String,Boolean
+from sqlalchemy import Column,Integer,String,Boolean,ForeignKey
 from sqlalchemy.sql.expression import null,text
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 
@@ -13,6 +13,7 @@ class Post(Base):
     content=Column(String,nullable=False)
     enableComments=Column(Boolean,server_default="TRUE",nullable=False)
     createdAt=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
+    userId=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
 
 class User(Base):
     __tablename__='users'

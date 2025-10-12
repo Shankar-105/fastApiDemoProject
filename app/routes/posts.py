@@ -16,7 +16,7 @@ def getAllPosts(db:Session=Depends(getDb)):
     return allPosts
 
 # gets a specific post with id -> {postId}
-@router.get("/posts/getPost/{postId}")
+@router.get("/posts/getPost/{postId}",response_model=sch.PostResponse)
 def getPost(postId:int,db:Session=Depends(getDb)):
     reqPost=db.query(models.Post).filter(models.Post.id==postId).first()
     # same code when database isn't used
@@ -30,17 +30,17 @@ def getPost(postId:int,db:Session=Depends(getDb)):
     '''
     if reqPost==None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with id {postId} not found")
-    return {"status":"post found","data":reqPost}
+    return reqPost
 
 
 # creates a new post using sqlAlchemy
-@router.post("/posts/createPost",status_code=status.HTTP_201_CREATED)
+@router.post("/posts/createPost",status_code=status.HTTP_201_CREATED,response_model=sch.PostResponse)
 def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
-    newPost=models.Post(**post.dict())
+    newPost=models.Post(**post.dict(),userId=currentUser.id)
     db.add(newPost)
     db.commit()
     db.refresh(newPost)
-    return {"status":"new post created","newPost Data":newPost}
+    return newPost
 
 
 # delets a specific post with the mentioned id -> {id}

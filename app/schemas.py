@@ -1,6 +1,6 @@
 from pydantic import BaseModel,ConfigDict,Field
 from datetime import datetime
-
+from app.models import Post
 
 # while the user is creating a post user shouldn't send any unncessary
 # data other than the below mentioned fields when user does this
@@ -59,6 +59,8 @@ class TokenModel(BaseModel):
     accessToken:str
     tokenType:str
 
-class LikeModel(BaseModel):
+class VoteModel(BaseModel):
     postId:int
     choice:bool
+class VoteResponseModel(BaseModel):
+    message:str

@@ -9,28 +9,52 @@ router=APIRouter(
     tags=['likes']
 )
 
-@router.post("/like",status_code=status.HTTP_201_CREATED)
-def like(post:sch.LikeModel=Body(...),db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
+@router.post("/vote",status_code=status.HTTP_201_CREATED)
+def vote(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
     queriedPost=db.query(models.Post).filter(models.Post.id==post.postId).first()
     if not queriedPost:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {post.postId} not Found")
-    # doesPostExist=db.query(models.Likes).filter(and_(models.Likes.postId==post.postId,models.Likes.postId==currentUser.id)).first()
-    newVote=models.Likes(
-        postId=post.postId,
-        userId=currentUser.id,
-        action=post.choice
-    )
+    currentVote=db.query(models.Likes).filter(and_(models.Likes.postId==post.postId,models.Likes.userId==currentUser.id)).first()
     try:
-        # Add it to the session and commit
-        db.add(newVote)
-        if post.choice:
-            queriedPost.likes += 1
+        if currentVote:
+            # User already voted, handle toggle or removal
+            if currentVote.action == post.choice:
+                # Same choice again means remove the vote
+                db.delete(currentVote)
+                if post.choice:
+                    queriedPost.likes -= 1
+                else:
+                    queriedPost.disLikes -= 1
+                db.commit()
+                db.refresh(queriedPost)
+                return {"message": "Vote removed successfully"}
+            else:
+                # Switching vote (e.g., like to dislike or vice versa)
+                currentVote.action = post.choice
+                if post.choice:
+                    queriedPost.likes += 1
+                    queriedPost.disLikes -= 1
+                else:
+                    queriedPost.likes -= 1
+                    queriedPost.disLikes += 1
+                db.commit()
+                db.refresh(queriedPost)
+                return {"message": "Vote switched successfully"}
         else:
-            queriedPost.disLikes += 1
-        db.commit()
+            # New vote
+            newVote = models.Likes(
+                postId=post.postId,
+                userId=currentUser.id,
+                action=post.choice
+            )
+            db.add(newVote)
+            if post.choice:
+                queriedPost.likes += 1
+            else:
+                queriedPost.disLikes += 1
+            db.commit()
+            db.refresh(queriedPost)
+            return {"message": "New vote added successfully"}
     except IntegrityError:
-        # This catches the duplicate key error if the check above fails
-        db.rollback()  # Rollback the transaction
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You already voted on this post")
-    db.refresh(queriedPost)
-    return {"status":"vote successfully added"}
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Database error, please try again")

@@ -15,7 +15,7 @@ class Post(Base):
     created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     likes=Column(Integer,server_default="0",nullable=False)
-    disLikes=Column(Integer,server_default="0",nullable=False)
+    dis_likes=Column(Integer,server_default="0",nullable=False)
 class User(Base):
       __tablename__='users'
       id=Column(Integer,primary_key=True,nullable=False)

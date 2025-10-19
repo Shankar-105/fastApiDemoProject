@@ -11,7 +11,7 @@ from app.models import Post
 class PostEssentials(BaseModel):
     title:str
     content:str
-    enableComments:bool=True
+    enable_comments:bool=True
 
 
 # while the user retrives the posts or when a new post is created
@@ -21,8 +21,8 @@ class PostEssentials(BaseModel):
 class PostResponse(BaseModel):
     id:int
     title:str
-    createdAt:datetime
-    userId:int
+    created_at:datetime
+    user_id:int
     model_config = ConfigDict(
         from_attributes=True
     )
@@ -45,7 +45,7 @@ class UserEssentials(BaseModel):
 class UserResponse(BaseModel):
     id:int
     username:str
-    createdAt:datetime
+    created_at:datetime
     model_config = ConfigDict( 
         from_attributes=True
     )
@@ -60,7 +60,7 @@ class TokenModel(BaseModel):
     tokenType:str
 
 class VoteModel(BaseModel):
-    postId:int
+    post_id:int
     choice:bool
 class VoteResponseModel(BaseModel):
     message:str

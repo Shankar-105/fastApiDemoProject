@@ -15,13 +15,13 @@ router=APIRouter(
 def vote(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
     # search for the post he wants to vote on against the db 
     # to firstly check whether that particular post is present or not in the db
-    queriedPost=db.query(models.Post).filter(models.Post.id==post.postId).first()
+    queriedPost=db.query(models.Post).filter(models.Post.id==post.post_id).first()
     # if not present just raise an 404 error
     if not queriedPost:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {post.postId} not Found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {post.post_id} not Found")
     # if present in db then search in the votes table for knowing if he has
     # already voted on the post or not
-    currentVote=db.query(models.Votes).filter(and_(models.Votes.post_id==post.postId,models.Votes.user_id==currentUser.id)).first()
+    currentVote=db.query(models.Votes).filter(and_(models.Votes.post_id==post.post_id,models.Votes.user_id==currentUser.id)).first()
     try:
         # if currentVote is not None then record of voting exists
         # by that particular user in the votes table
@@ -54,7 +54,7 @@ def vote(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUser:sch.
         else:
             # New vote
             newVote = models.Votes(
-                post_id=post.postId,
+                post_id=post.post_id,
                 user_id=currentUser.id,
                 action=post.choice
             )

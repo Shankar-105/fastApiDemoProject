@@ -5,6 +5,7 @@ from app.db import getDb
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
+
 router=APIRouter(
     tags=['likes']
 )
@@ -20,7 +21,7 @@ def vote(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUser:sch.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {post.postId} not Found")
     # if present in db then search in the votes table for knowing if he has
     # already voted on the post or not
-    currentVote=db.query(models.Likes).filter(and_(models.Likes.postId==post.postId,models.Likes.userId==currentUser.id)).first()
+    currentVote=db.query(models.Likes).filter(and_(models.Likes.post_id==post.postId,models.Likes.userId==currentUser.id)).first()
     try:
         # if currentVote is not None then record of voting exists
         # by that particular user in the votes table

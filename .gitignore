@@ -35,3 +35,6 @@ logs/
 tmp/
 data/
 __pypackages__/
+
+# ignore the alembic.ini
+alembic.ini

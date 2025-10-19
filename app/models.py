@@ -16,16 +16,9 @@ class Post(Base):
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     likes=Column(Integer,server_default="0",nullable=False)
     disLikes=Column(Integer,server_default="0",nullable=False)
-
 class User(Base):
-    __tablename__='users'
-    id=Column(Integer,primary_key=True,nullable=False)
-    username=Column(String,nullable=False,unique=True)
-    password=Column(String,nullable=False)
-    created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
-
-class Likes(Base):
-    __tablename__='likes'
-    post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)
-    user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
-    action=Column(Boolean,nullable=False)
+      __tablename__='users'
+      id=Column(Integer,primary_key=True,nullable=False)
+      username=Column(String,nullable=False,unique=True)
+      password=Column(String,nullable=False)
+      created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))

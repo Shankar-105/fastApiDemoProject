@@ -8,6 +8,9 @@ models.Base.metadata.create_all(bind=engine)
 
 # fastapi instance
 app = FastAPI()
+# when the domain or the port changes
+# browser blocks the api-url(cross origin requests COR's)
+# so we need to do specify to allow all origins for now in dev scenario
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

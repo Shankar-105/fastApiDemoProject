@@ -3,11 +3,18 @@ from fastapi import FastAPI
 from app import models
 from app.db import engine
 from app.routes import posts,users,auth,like
+from fastapi.middleware.cors import CORSMiddleware
 models.Base.metadata.create_all(bind=engine)
 
 # fastapi instance
 app = FastAPI()
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # testing whether the db is connected or not
 # testing successfull everything working fine!
 '''

@@ -21,7 +21,7 @@ def vote(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUser:sch.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {post.postId} not Found")
     # if present in db then search in the votes table for knowing if he has
     # already voted on the post or not
-    currentVote=db.query(models.Likes).filter(and_(models.Likes.post_id==post.postId,models.Likes.userId==currentUser.id)).first()
+    currentVote=db.query(models.Votes).filter(and_(models.Votes.post_id==post.postId,models.Votes.user_id==currentUser.id)).first()
     try:
         # if currentVote is not None then record of voting exists
         # by that particular user in the votes table
@@ -53,9 +53,9 @@ def vote(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUser:sch.
                 return {"message": "Vote switched successfully"}
         else:
             # New vote
-            newVote = models.Likes(
-                postId=post.postId,
-                userId=currentUser.id,
+            newVote = models.Votes(
+                post_id=post.postId,
+                user_id=currentUser.id,
                 action=post.choice
             )
             db.add(newVote)

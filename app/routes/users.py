@@ -1,10 +1,11 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter
+from fastapi import status,HTTPException,Depends,Body,APIRouter,Form
 from typing import List
 import app.schemas as sch
 from app import models,db,oauth2
 from sqlalchemy.orm import Session
 import app.utils as utils
 import os,shutil
+from fastapi import UploadFile,File
 router=APIRouter(
     tags=['Users']
 )
@@ -25,14 +26,23 @@ def getAllUsers(db:Session=Depends(db.getDb)):
     return allUsers
 
 @router.patch("/user/updateInfo",status_code=status.HTTP_201_CREATED)
-def updateUserInfo(updateInfo:sch.UserUpdateInfo=Body(...),db:Session=Depends(db.getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
+def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_picture:UploadFile=File(None),db:Session=Depends(db.getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
     updates={}
-    if updateInfo.username:
-        if db.query(models.User).filter(models.User.username == updateInfo.username,models.User.id !=currentUser.id).first():
+    if username:
+        if db.query(models.User).filter(models.User.username == username,models.User.id !=currentUser.id).first():
             raise HTTPException(status_code=400, detail="Username already taken")
-        updates["username"] = updateInfo.username
-    if updateInfo.bio:
-        updates['bio']=updateInfo.bio
+        updates["username"] = username
+    if bio:
+        updates['bio']=bio
+    if profile_picture:
+        os.makedirs("profilepics", exist_ok=True)
+        allowedFileTypes=['image/jpeg','image/png','image/gif']
+        if profile_picture.content_type not in allowedFileTypes:
+            raise HTTPException(status_code=400,detail="only jpeg,png,gif files allowed")
+        file_path=f"profilepics/{currentUser.username}_{profile_picture.filename}"
+        with open(file_path, "wb") as buffer:
+           shutil.copyfileobj(profile_picture.file, buffer)
+        updates['profile_picture']=file_path
     if updates:
         db.query(models.User).filter(models.User.id==currentUser.id).update(updates)
         db.commit()

@@ -38,3 +38,6 @@ __pypackages__/
 
 # ignore the alembic.ini
 alembic.ini
+
+# ignore the profile pictures
+profilepics/

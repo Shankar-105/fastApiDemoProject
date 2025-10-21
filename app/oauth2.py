@@ -1,7 +1,8 @@
 from jose import JWTError,jwt
 from datetime import datetime,timedelta
-import app.schemas as sch
+from app import schemas as sch,models,db
 from fastapi import status,HTTPException,Depends
+from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer
 from app.config import settings as cg
 # a scheme for Extracting the sent JWT token 
@@ -33,7 +34,7 @@ def createAccessToken(data:dict):
     # return the token
     return jwtToken
 
-def verifyAccesstoken(token: str, credentials_exception):
+def verifyAccesstoken(token: str,credentials_exception,dbs:Session):
     try:
         # decode's the token which returns a dict of the sent user info 
         # while creating a token (userId,userName) 
@@ -46,7 +47,8 @@ def verifyAccesstoken(token: str, credentials_exception):
         if id is None or username is None:
             raise credentials_exception
         # if not then we create a TokenModel and return it to the protected routes
-        return sch.TokenModel(id=id,username=username,accessToken=token,tokenType="bearer")
+        user=dbs.query(models.User).filter(models.User.id == id).first()
+        return user
     # if the token itself is invalid we raise a JWTError
     except JWTError:
         raise credentials_exception
@@ -55,10 +57,10 @@ def verifyAccesstoken(token: str, credentials_exception):
 # in the parentheses the Depends(oauth2_scheme) returns the
 # JWT Token which is stored in the token variable below
 # and sent to the verifyAccesstoken() mtd
-def getCurrentUser(token: str = Depends(oauth2_scheme)):
+def getCurrentUser(token: str = Depends(oauth2_scheme),dbs:Session=Depends(db.getDb)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    return verifyAccesstoken(token,credentials_exception)
+    return verifyAccesstoken(token,credentials_exception,dbs)

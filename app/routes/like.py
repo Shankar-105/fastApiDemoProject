@@ -12,7 +12,7 @@ router=APIRouter(
 
 @router.post("/vote",status_code=status.HTTP_201_CREATED)
 # get the post user that user wants to vote on with which user he is
-def vote(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
+def vote(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # search for the post he wants to vote on against the db 
     # to firstly check whether that particular post is present or not in the db
     queriedPost=db.query(models.Post).filter(models.Post.id==post.post_id).first()

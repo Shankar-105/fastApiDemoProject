@@ -1,7 +1,8 @@
 from pydantic import BaseModel,ConfigDict,Field
 from datetime import datetime
 from app.models import Post
-
+from typing import Optional
+from fastapi import UploadFile,File
 # while the user is creating a post user shouldn't send any unncessary
 # data other than the below mentioned fields when user does this
 # we need to warn user that correct data isn't sent for creating a post
@@ -37,7 +38,7 @@ class PostResponse(BaseModel):
 class UserEssentials(BaseModel):
     username:str
     password: str = Field(..., max_length=72)
-
+    email:str
 
 # when the new account for a user is created there's no meaning in
 # showing all his data so we just show him what's to be shown after 
@@ -64,3 +65,8 @@ class VoteModel(BaseModel):
     choice:bool
 class VoteResponseModel(BaseModel):
     message:str
+
+class UserUpdateInfo(BaseModel):
+  username:Optional[str]=None
+  bio:Optional[str]=None
+  profile_picture:UploadFile=File(None)

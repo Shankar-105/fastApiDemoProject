@@ -12,13 +12,13 @@ router=APIRouter(
 
 # retrives all posts using sqlAlchemy
 @router.get("/posts/getAllPosts",response_model=List[sch.PostResponse])  
-def getAllPosts(db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
+def getAllPosts(db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     allPosts=db.query(models.Post).filter(models.Post.user_id==currentUser.id).all()
     return allPosts
 
 # gets a specific post with id -> {postId}
 @router.get("/posts/getPost/{postId}",response_model=sch.PostResponse)
-def getPost(postId:int,db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
+def getPost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     reqPost=db.query(models.Post).filter(and_(models.Post.id==postId,models.Post.user_id==currentUser.id)).first()
     # same code when database isn't used
     '''
@@ -36,7 +36,7 @@ def getPost(postId:int,db:Session=Depends(getDb),currentUser:sch.TokenModel=Depe
 
 # creates a new post using sqlAlchemy
 @router.post("/posts/createPost",status_code=status.HTTP_201_CREATED,response_model=sch.PostResponse)
-def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
+def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     newPost=models.Post(**post.dict(),user_id=currentUser.id)
     db.add(newPost)
     db.commit()
@@ -46,7 +46,7 @@ def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb),curr
 
 # delets a specific post with the mentioned id -> {id}
 @router.delete("/posts/deletePost/{postId}",response_model=sch.PostResponse)
-def deletePost(postId:int,db:Session=Depends(getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
+def deletePost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     postToDelete=db.query(models.Post).filter(and_(models.Post.id==postId,models.Post.user_id==currentUser.id)).first()
     if not postToDelete:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found") 

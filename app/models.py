@@ -20,7 +20,7 @@ class User(Base):
       __tablename__='users'
       id=Column(Integer,primary_key=True,nullable=False)
       username=Column(String,nullable=False,unique=True)
-      hashed_password=Column(String,nullable=False)
+      password=Column(String,nullable=False)
       email=Column(String,nullable=False)
       bio=Column(String,nullable=True)
       profile_picture=Column(String,nullable=True)

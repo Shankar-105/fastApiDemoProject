@@ -39,3 +39,10 @@ def unfollow(user_id:int,db:Session=Depends(getDb),currentUser:models.User=Depen
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to follow user")
     return {"message":f"UnFollowed user {userToUnFollow.username}"}
+
+@router.get("/users/{user_id}/followers")
+def get_followers(user_id:int,db:Session=Depends(getDb)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404,detail="User not found")
+    return {f"{user.username}'s followers":[{"id": follower.id, "username": follower.username} for follower in user.followers]}

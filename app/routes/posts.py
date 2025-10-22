@@ -13,7 +13,10 @@ router=APIRouter(
 # retrives all posts using sqlAlchemy
 @router.get("/posts/getAllPosts",response_model=List[sch.PostResponse])  
 def getAllPosts(db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    allPosts=db.query(models.Post).filter(models.Post.user_id==currentUser.id).all()
+   # allPosts=db.query(models.Post).filter(models.Post.user_id==currentUser.id).all()
+   # simple way of querying 
+   # Thanks to the relationship() method 
+    allPosts=currentUser.posts
     return allPosts
 
 # gets a specific post with id -> {postId}

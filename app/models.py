@@ -25,6 +25,12 @@ class User(Base):
       bio=Column(String,nullable=True)
       profile_picture=Column(String,nullable=True)
       created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
+      # added relationship between the posts table and the users table so that
+      # when you actually need all the posts of a user there's no need from now on 
+      # to go check the posts table and query it for Posts.user_id==currentUser.id
+      # inorder to get all posts of a certain user but rather by declaring this relationship
+      # you just do the currentUser.posts and sqlAlchemy internally does the joins
+      # and retrievs you all of the users posts!
       posts=relationship('Post',backref='user')
 
 class Votes(Base):

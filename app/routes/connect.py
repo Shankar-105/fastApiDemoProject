@@ -46,3 +46,10 @@ def get_followers(user_id:int,db:Session=Depends(getDb)):
     if not user:
         raise HTTPException(status_code=404,detail="User not found")
     return {f"{user.username}'s followers":[{"id": follower.id, "username": follower.username} for follower in user.followers]}
+
+@router.get("/users/{user_id}/following")
+def get_following(user_id:int,db:Session=Depends(getDb)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404,detail="User not found")
+    return {f"{user.username} is following":[{"id": follower.id, "username": follower.username} for follower in user.following]}

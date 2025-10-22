@@ -37,7 +37,7 @@ class PostResponse(BaseModel):
 class UserEssentials(BaseModel):
     username:str
     password: str = Field(..., max_length=72)
-    email:str
+    nickname:str
 
 # when the new account for a user is created there's no meaning in
 # showing all his data so we just show him what's to be shown after 

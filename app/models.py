@@ -37,6 +37,14 @@ class User(Base):
       # you just do the currentUser.posts and sqlAlchemy internally does the joins
       # and retrievs you all of the users posts!
       posts=relationship('Post',backref='user')
+      # a many to many relationship
+      followers = relationship(
+        'User',
+        secondary=connections,  # The middle table
+        primaryjoin=(connections.c.followed_id == id),  # "I am the follwed guyy"
+        secondaryjoin=(connections.c.follower_id == id),  # "They are my followers"
+        backref='following'  # reverse property
+    )
 class Votes(Base):
     __tablename__='votes'
     post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)

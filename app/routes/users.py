@@ -25,7 +25,7 @@ def getAllUsers(db:Session=Depends(db.getDb)):
     allUsers=db.query(models.User).all()
     return allUsers
 
-@router.patch("/user/updateInfo",status_code=status.HTTP_201_CREATED)
+@router.patch("/user/updateInfo",status_code=status.HTTP_200_OK)
 def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_picture:UploadFile=File(None),db:Session=Depends(db.getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
     updates={}
     if username:

@@ -2,7 +2,7 @@ from app.db import Base
 from sqlalchemy import Column,Integer,String,Boolean,ForeignKey
 from sqlalchemy.sql.expression import null,text
 from sqlalchemy.sql.sqltypes import TIMESTAMP
-
+from sqlalchemy.orm import relationship
 # structure or model of the db posts
 # like what does a post need to have
 
@@ -25,6 +25,7 @@ class User(Base):
       bio=Column(String,nullable=True)
       profile_picture=Column(String,nullable=True)
       created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
+      posts=relationship('Post',backref='user')
 
 class Votes(Base):
     __tablename__='votes'

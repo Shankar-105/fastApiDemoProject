@@ -74,7 +74,6 @@ def editPost(postId:int,post:sch.PostEssentials,db:Session=Depends(getDb)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found")
     # from our argument of post we exclude the None values
     # and just pick up the set values and store into a dict update_data
-
     update_data = post.dict(exclude_unset=True)
     # now we traverse thorugh the update_data and put that data
     # in our postToUpdate

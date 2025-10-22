@@ -1,11 +1,16 @@
 from app.db import Base
-from sqlalchemy import Column,Integer,String,Boolean,ForeignKey
+from sqlalchemy import Column,Integer,String,Boolean,ForeignKey,Table
 from sqlalchemy.sql.expression import null,text
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 from sqlalchemy.orm import relationship
 # structure or model of the db posts
 # like what does a post need to have
 
+connections = Table(
+    'connections', Base.metadata,
+    Column('followed_id', Integer, ForeignKey('users.id'), primary_key=True),
+    Column('follower_id', Integer, ForeignKey('users.id'), primary_key=True)
+)
 class Post(Base):
     __tablename__='posts'
     id=Column(Integer,primary_key=True,nullable=False)
@@ -32,14 +37,8 @@ class User(Base):
       # you just do the currentUser.posts and sqlAlchemy internally does the joins
       # and retrievs you all of the users posts!
       posts=relationship('Post',backref='user')
-
 class Votes(Base):
     __tablename__='votes'
     post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     action=Column(Boolean,nullable=False)
-
-class Follow(Base):
-     __tablename__='connect'
-     followed_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
-     follower_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)

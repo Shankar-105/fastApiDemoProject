@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from app import models
 from app.db import engine
-from app.routes import posts,users,auth,like
+from app.routes import posts,users,auth,like,connect
 from fastapi.middleware.cors import CORSMiddleware
 models.Base.metadata.create_all(bind=engine)
 
@@ -86,3 +86,4 @@ app.include_router(posts.router)
 app.include_router(users.router)
 app.include_router(auth.router)
 app.include_router(like.router)
+app.include_router(connect.router)

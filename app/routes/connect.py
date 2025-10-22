@@ -7,3 +7,8 @@ from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
 
 router=APIRouter(tags='connections')
+
+@router.post("/connect/{user_id}",status_code=status.HTTP_201_CREATED)
+def follow(user_id:int,db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    return None
+    

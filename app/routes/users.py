@@ -118,3 +118,24 @@ def get_liked_posts(user_id: int,db:Session = Depends(db.getDb),currentUser:mode
             for posts in liked_posts
         ]
     }
+@router.get("/users/{user_id}/dislikedPosts")
+def get_liked_posts(user_id: int,db:Session = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    if currentUser.id!=user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to view this user's liked posts")
+    # Query disliked posts
+    liked_posts = (
+        db.query(models.Post)
+        .join(models.Votes, models.Votes.post_id==models.Post.id)
+        .filter(and_(models.Votes.user_id==user_id, models.Votes.action==False))
+        .all()
+    )
+    return {
+        f"{currentUser.username} your disliked posts includes":
+        [
+            {
+                "post id":posts.id,
+                "post owner":posts.user.username
+            }
+            for posts in liked_posts
+        ]
+    }

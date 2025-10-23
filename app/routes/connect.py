@@ -19,6 +19,8 @@ def follow(user_id:int,db:Session=Depends(getDb),currentUser:models.User=Depends
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Your already following this user")
     try:
         currentUser.following.append(userToFollow)
+        currentUser.following_cnt=len(currentUser.following)
+        userToFollow.followers_cnt=len(userToFollow.followers)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -34,6 +36,8 @@ def unfollow(user_id:int,db:Session=Depends(getDb),currentUser:models.User=Depen
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Not following this user")
     try:
         currentUser.following.remove(userToUnFollow)
+        currentUser.following_cnt=len(currentUser.following)
+        userToUnFollow.followers_cnt=len(userToUnFollow.followers)
         db.commit()
     except IntegrityError:
         db.rollback()

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 import app.utils as utils
 import os,shutil
 from fastapi import UploadFile,File
-
+from sqlalchemy import and_
 router=APIRouter(
     tags=['Users']
 )
@@ -96,3 +96,25 @@ def test(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User = Depe
            "number of dislked posts":disliked_count
        }
 }
+
+@router.get("/users/{user_id}/likedPosts")
+def get_liked_posts(user_id: int,db:Session = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    if currentUser.id!=user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to view this user's liked posts")
+    # Query liked posts
+    liked_posts = (
+        db.query(models.Post)
+        .join(models.Votes, models.Votes.post_id==models.Post.id)
+        .filter(and_(models.Votes.user_id==user_id, models.Votes.action==True))
+        .all()
+    )
+    return {
+        f"{currentUser.username} your liked posts includes":
+        [
+            {
+                "post id":posts.id,
+                "post owner":posts.user.username
+            }
+            for posts in liked_posts
+        ]
+    }

@@ -6,17 +6,25 @@ from sqlalchemy.sql.expression import null,text
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from sqlalchemy.sql import func
 # structure or model of the db tables
 connections = Table(
     'connections', Base.metadata,
-    Column('followed_id', Integer, ForeignKey('users.id'), primary_key=True),
-    Column('follower_id', Integer, ForeignKey('users.id'), primary_key=True)
+    Column('followed_id', Integer,ForeignKey('users.id'),primary_key=True),
+    Column('follower_id', Integer,ForeignKey('users.id'),primary_key=True)
 )
 class Votes(Base):
     __tablename__='votes'
     post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     action=Column(Boolean,nullable=False)
+class Comments(Base):
+    __tablename__='comments'
+    id = Column(Integer,primary_key=True)
+    post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)
+    user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
+    comment_content=Column(String,nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 class Post(Base):
     __tablename__='posts'
     id=Column(Integer,primary_key=True,nullable=False)
@@ -28,10 +36,11 @@ class Post(Base):
     likes=Column(Integer,server_default="0",nullable=False)
     dis_likes=Column(Integer,server_default="0",nullable=False)
     views=Column(Integer,default=0)
+    comments_cnt=Column(Integer,default=0)
 class PostView(Base):
     __tablename__ = "post_views"
     post_id = Column(Integer, ForeignKey("posts.id"),primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"),nullable=True,primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"),primary_key=True)
     viewed_at = Column(DateTime,default=datetime.utcnow)
 class User(Base):
       __tablename__='users'

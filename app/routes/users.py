@@ -7,6 +7,7 @@ import app.utils as utils
 import os,shutil
 from fastapi import UploadFile,File
 from sqlalchemy import and_
+
 router=APIRouter(
     tags=['Users']
 )
@@ -83,7 +84,7 @@ def getVotedPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:models.Us
         ]
     }
 
-@router.get("/users/voteStats/{user_id}",status_code=status.HTTP_200_OK)
+@router.get("/users/{user_id}/voteStats",status_code=status.HTTP_200_OK)
 def test(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
     if currentUser.id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Not authorized to view this user's stats")
@@ -125,7 +126,7 @@ def get_liked_posts(user_id: int,db:Session = Depends(db.getDb),currentUser:mode
     # Query disliked posts
     liked_posts = (
         db.query(models.Post)
-        .join(models.Votes, models.Votes.post_id==models.Post.id)
+        .join(models.Votes,models.Votes.post_id==models.Post.id)
         .filter(and_(models.Votes.user_id==user_id, models.Votes.action==False))
         .all()
     )

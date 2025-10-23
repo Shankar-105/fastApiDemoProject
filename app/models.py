@@ -30,6 +30,8 @@ class User(Base):
       bio=Column(String,nullable=True)
       profile_picture=Column(String,nullable=True)
       created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
+      followers=Column(Integer,server_default="0",nullable=False)
+      following=Column(Integer,server_default="0",nullable=False)
       # added relationship between the posts table and the users table so that
       # when you actually need all the posts of a user there's no need from now on 
       # to go check the posts table and query it for Posts.user_id==currentUser.id

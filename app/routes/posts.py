@@ -52,8 +52,7 @@ def getPost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depends
 # creates a new post using sqlAlchemy
 @router.post("/posts/createPost",status_code=status.HTTP_201_CREATED,response_model=sch.PostResponse)
 def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    newPost=models.Post(**post.dict(),user_id=currentUser.id)
-    newPost.views+=1
+    newPost=models.Post(**post.dict(),user_id=currentUser.id,views=1)
     db.add(newPost)
     db.commit()
     db.refresh(newPost)

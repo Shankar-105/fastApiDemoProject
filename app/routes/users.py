@@ -64,3 +64,20 @@ def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_picture:Up
         db.commit()
         db.refresh(currentUser)
     return updates
+
+@router.get("/users/{user_id}/votedOnPosts",status_code=status.HTTP_200_OK)
+def getVotedPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User =Depends(oauth2.getCurrentUser)):
+    if currentUser.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Not authorized to view this user's stats")
+    voted_posts=currentUser.voted_posts
+    return {
+                f"{currentUser.username} you have voted on posts":
+               [
+            {
+                "post title":f"{posts.title}",
+                "post id":f"{posts.id}",
+                "post owner":f"{posts.user.username}"
+            } 
+                for posts in voted_posts
+        ]
+    }

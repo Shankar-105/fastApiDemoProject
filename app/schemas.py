@@ -27,7 +27,6 @@ class PostResponse(BaseModel):
         from_attributes=True
     )
 
-
 # user shouldn't send any unncessary data so we need
 # to validate it through a model like below
 # if user sends any other data while signUp other than

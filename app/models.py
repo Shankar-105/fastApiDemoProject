@@ -10,6 +10,11 @@ connections = Table(
     Column('followed_id', Integer, ForeignKey('users.id'), primary_key=True),
     Column('follower_id', Integer, ForeignKey('users.id'), primary_key=True)
 )
+class Votes(Base):
+    __tablename__='votes'
+    post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)
+    user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
+    action=Column(Boolean,nullable=False)
 class Post(Base):
     __tablename__='posts'
     id=Column(Integer,primary_key=True,nullable=False)
@@ -52,8 +57,10 @@ class User(Base):
         secondaryjoin=(connections.c.follower_id == id),  # "They are my followers"
         backref='following'  # reverse property
     )
-class Votes(Base):
-    __tablename__='votes'
-    post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)
-    user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
-    action=Column(Boolean,nullable=False)
+      voted_posts = relationship(
+        'Post',
+        secondary='votes',  # The middle table
+        primaryjoin=(Votes.user_id == id),  # User.id links to Votes.user_id
+        secondaryjoin=(Votes.post_id == Post.id),  # Votes.post_id links to Post.id
+        backref='voters'  # allows posts to access users who voted on them
+    )

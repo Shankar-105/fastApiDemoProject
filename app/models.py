@@ -1,11 +1,10 @@
 from app.db import Base
-from sqlalchemy import Column,Integer,String,Boolean,ForeignKey,Table
+from sqlalchemy import Column,Integer,String,Boolean,ForeignKey,Table,DateTime
 from sqlalchemy.sql.expression import null,text
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 from sqlalchemy.orm import relationship
-# structure or model of the db posts
-# like what does a post need to have
-
+from datetime import datetime
+# structure or model of the db tables
 connections = Table(
     'connections', Base.metadata,
     Column('followed_id', Integer, ForeignKey('users.id'), primary_key=True),
@@ -21,6 +20,12 @@ class Post(Base):
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     likes=Column(Integer,server_default="0",nullable=False)
     dis_likes=Column(Integer,server_default="0",nullable=False)
+    views=Column(Integer,default=0)
+class PostView(Base):
+    __tablename__ = "post_views"
+    post_id = Column(Integer, ForeignKey("posts.id"),primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"),nullable=True,primary_key=True)
+    viewed_at = Column(DateTime,default=datetime.utcnow)
 class User(Base):
       __tablename__='users'
       id=Column(Integer,primary_key=True,nullable=False)

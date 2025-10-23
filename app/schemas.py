@@ -67,3 +67,7 @@ class VoteResponseModel(BaseModel):
 class UserUpdateInfo(BaseModel):
   username:Optional[str]=None
   bio:Optional[str]=None
+
+class Comment(BaseModel):
+    post_id:int
+    content:str

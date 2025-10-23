@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 import app.utils as utils
 import os,shutil
 from fastapi import UploadFile,File
+
 router=APIRouter(
     tags=['Users']
 )
@@ -72,8 +73,8 @@ def getVotedPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:models.Us
     voted_posts=currentUser.voted_posts
     return {
                 f"{currentUser.username} you have voted on posts":
-               [
-            {
+            [
+                {
                 "post title":f"{posts.title}",
                 "post id":f"{posts.id}",
                 "post owner":f"{posts.user.username}"
@@ -81,3 +82,17 @@ def getVotedPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:models.Us
                 for posts in voted_posts
         ]
     }
+
+@router.get("/users/voteStats/{user_id}",status_code=status.HTTP_200_OK)
+def test(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
+    if currentUser.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Not authorized to view this user's stats")
+    liked_count = db.query(models.Votes).filter_by(user_id=user_id,action=True).count()
+    disliked_count = db.query(models.Votes).filter_by(user_id=user_id,action=False).count()
+    return {
+        f"{currentUser.username} here's your vote stats":
+       { 
+           "number of liked posts":liked_count,
+           "number of dislked posts":disliked_count
+       }
+}

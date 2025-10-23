@@ -1,4 +1,6 @@
-from app.db import Base
+from app.db import Base ,getDb
+from fastapi import Depends
+from sqlalchemy.orm import Session
 from sqlalchemy import Column,Integer,String,Boolean,ForeignKey,Table,DateTime
 from sqlalchemy.sql.expression import null,text
 from sqlalchemy.sql.sqltypes import TIMESTAMP

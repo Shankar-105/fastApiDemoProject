@@ -34,6 +34,18 @@ def getPost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depends
     '''
     if reqPost==None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with id {postId} not found")
+    # is the post viewed before
+    isViewed = db.query(models.PostView).filter(
+        and_(models.PostView.post_id == postId, models.PostView.user_id == currentUser.id)
+    ).first()
+    # If no prior view, record the view and increment the count
+    if not isViewed:
+        # If no prior view, record the view and increment the count
+        new_view = models.PostView(post_id=postId, user_id=currentUser.id)
+        db.add(new_view)
+        reqPost.views += 1
+        db.commit()
+        db.refresh(reqPost)  # Refresh to get updated post data
     return reqPost
 
 
@@ -41,6 +53,7 @@ def getPost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depends
 @router.post("/posts/createPost",status_code=status.HTTP_201_CREATED,response_model=sch.PostResponse)
 def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     newPost=models.Post(**post.dict(),user_id=currentUser.id)
+    newPost.views+=1
     db.add(newPost)
     db.commit()
     db.refresh(newPost)

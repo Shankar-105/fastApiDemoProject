@@ -16,6 +16,8 @@ def create_comment(comment:sch.Comment=Body(...),db:Session=Depends(db.getDb),cu
     new_comment =models.Comments(post_id=comment.post_id,user_id=currentUser.id,comment_content=comment.content)
     db.add(new_comment)
     # Update comments_cnt in the Post table
+    if post.comments_cnt is None:
+        post.comments_cnt =0
     post.comments_cnt += 1
     db.commit()
     db.refresh(new_comment)

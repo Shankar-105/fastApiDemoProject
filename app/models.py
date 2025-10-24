@@ -18,13 +18,15 @@ class Votes(Base):
     post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     action=Column(Boolean,nullable=False)
+    
 class Comments(Base):
     __tablename__='comments'
     id = Column(Integer,primary_key=True)
-    post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)
-    user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
+    post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),nullable=False)
+    user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     comment_content=Column(String,nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class Post(Base):
     __tablename__='posts'
     id=Column(Integer,primary_key=True,nullable=False)

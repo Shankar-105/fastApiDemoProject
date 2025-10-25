@@ -1,27 +1,27 @@
-from fastapi import HTTPException,status,Body,APIRouter,Depends,Request
+from fastapi import HTTPException,status,Body,APIRouter,Depends,Request,Query
 from app import models,db,schemas as sch,oauth2
 from sqlalchemy.orm import Session
-from typing import List,Union
+from typing import Annotated
 router=APIRouter(tags=['search'])
 
 @router.get("/search",status_code=status.HTTP_202_ACCEPTED)
-def search(request:Request,q:str=None,limit:int=10,offset:int=0,orderBy:str="created_at",db:Session=Depends(db.getDb),currenUser:models.User=Depends(oauth2.getCurrentUser)):
+def search(request:Request,searchParams:Annotated[sch.SearchFeature,Query()],db:Session=Depends(db.getDb),currenUser:models.User=Depends(oauth2.getCurrentUser)):
     print(request.query_params)
-    # print(searchParams.dict())
-    if q and q.startswith("#"):
-        hashtag = q.lstrip("#")
+    print(searchParams.dict())
+    if searchParams.q and searchParams.q.startswith("#"):
+        hashtag = searchParams.q.lstrip("#")
         queryResult=db.query(models.Post).filter(models.Post.hashtags.ilike(f"%{hashtag}%"))
-        if orderBy == "likes":
+        if searchParams.orderBy == "likes":
             queryResult=queryResult.order_by(models.Post.likes.desc())
         queryResult=queryResult.order_by(models.Post.created_at.asc())
-        resPosts=queryResult.offset(offset).limit(limit).all()
+        resPosts=queryResult.offset(searchParams.offset).limit(searchParams.limit).all()
         return resPosts
-    elif q:
+    elif searchParams.q:
         resUsers=(
             db.query(models.User)
-            .filter(models.User.username.ilike(f"%{q}%"))
-            .offset(offset)
-            .limit(limit)
+            .filter(models.User.username.ilike(f"%{searchParams.q}%"))
+            .offset(searchParams.offset)
+            .limit(searchParams.limit)
             .all()
         )
         return resUsers

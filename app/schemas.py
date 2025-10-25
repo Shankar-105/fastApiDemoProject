@@ -71,3 +71,11 @@ class UserUpdateInfo(BaseModel):
 class Comment(BaseModel):
     post_id:int
     content:str
+
+class PostAnalytics(BaseModel):
+    post_id:int
+    views:int
+    likes:int
+    dislikes:int
+    comments:int
+    createdOn:datetime

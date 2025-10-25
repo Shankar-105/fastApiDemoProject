@@ -12,7 +12,7 @@ class PostEssentials(BaseModel):
     title:str
     content:str
     enable_comments:bool=True
-
+    hastags:Optional[str]=None
 
 # while the user retrives the posts or when a new post is created
 # there's no need of showing the user all the data about the post

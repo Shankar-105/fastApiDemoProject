@@ -39,6 +39,7 @@ class Post(Base):
     dis_likes=Column(Integer,server_default="0",nullable=False)
     views=Column(Integer,default=0)
     comments_cnt=Column(Integer,default=0)
+    hashtags=Column(String,nullable=True)
 class PostView(Base):
     __tablename__ = "post_views"
     post_id = Column(Integer, ForeignKey("posts.id"),primary_key=True)

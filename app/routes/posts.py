@@ -23,15 +23,6 @@ def getAllPosts(db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2
 @router.get("/posts/getPost/{postId}",response_model=sch.PostResponse)
 def getPost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     reqPost=db.query(models.Post).filter(and_(models.Post.id==postId,models.Post.user_id==currentUser.id)).first()
-    # same code when database isn't used
-    '''
-    reqPost=findPost(id)
-    if reqPost==None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="post not found")
-        # in the below code we're updating status code using Response class
-        # response.status_code=status.HTTP_404_NOT_FOUND
-        # return {"status":"post not found"} 
-    '''
     if reqPost==None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with id {postId} not found")
     # is the post viewed before
@@ -69,18 +60,6 @@ def deletePost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depe
     db.commit()
     return postToDelete
 
-    # same code but without database
-    '''postToDelete=findPost(id)
-    if not postToDelete:
-        # more prefered than just plainly returning as here
-        # we are even changing the status code to 404
-        # as the post is not found which is so practical
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {id} not Found")
-        #return {"status":f"post with Id {id} not Found"}
-    allPosts.remove(postToDelete)
-    '''
-
-
 # update a specific post with id -> {id}
 @router.put("/posts/editPost/{postId}")
 def editPost(postId:int,post:sch.PostEssentials,db:Session=Depends(getDb)):
@@ -101,11 +80,3 @@ def editPost(postId:int,post:sch.PostEssentials,db:Session=Depends(getDb)):
     # sent as {} to the front End
     db.refresh(postToUpdate)
     return {"status":f"updated post with id {postId}","updatedPostData":postToUpdate}
-     
-    # same code without using databases psycopg setup!
-    ''' idx=findPostIndex(id)
-     if idx==-1:
-         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {id} not Found")
-     allPosts[idx]=post.dict()
-     allPosts[idx]['id']=id
-     '''

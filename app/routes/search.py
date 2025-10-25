@@ -5,23 +5,23 @@ from typing import List,Union
 router=APIRouter(tags=['search'])
 
 @router.get("/search",status_code=status.HTTP_202_ACCEPTED)
-def search(request:Request,searchParams:sch.SearchFeature,db:Session=Depends(db.getDb),currenUser:models.User=Depends(oauth2.getCurrentUser)):
+def search(request:Request,q:str=None,limit:int=10,offset:int=0,orderBy:str="created_at",db:Session=Depends(db.getDb),currenUser:models.User=Depends(oauth2.getCurrentUser)):
     print(request.query_params)
-    print(searchParams.dict())
-    if searchParams.q and searchParams.q.startswith("#"):
-        hashtag = searchParams.q.lstrip("#")
+    # print(searchParams.dict())
+    if q and q.startswith("#"):
+        hashtag = q.lstrip("#")
         queryResult=db.query(models.Post).filter(models.Post.hashtags.ilike(f"%{hashtag}%"))
-        if searchParams.orderBy == "likes":
+        if orderBy == "likes":
             queryResult=queryResult.order_by(models.Post.likes.desc())
         queryResult=queryResult.order_by(models.Post.created_at.asc())
-        resPosts=queryResult.offset(searchParams.offset).limit(searchParams.limit).all()
+        resPosts=queryResult.offset(offset).limit(limit).all()
         return resPosts
-    elif searchParams.q:
+    elif q:
         resUsers=(
             db.query(models.User)
-            .filter(models.User.username.ilike(f"%{search.query}%"))
-            .offset(searchParams.offset)
-            .limit(searchParams.limit)
+            .filter(models.User.username.ilike(f"%{q}%"))
+            .offset(offset)
+            .limit(limit)
             .all()
         )
         return resUsers

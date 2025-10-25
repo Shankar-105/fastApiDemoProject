@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from app import models
 from app.db import engine
-from app.routes import posts,users,auth,like,connect,comment
+from app.routes import posts,users,auth,like,connect,comment,search
 from fastapi.middleware.cors import CORSMiddleware
 models.Base.metadata.create_all(bind=engine)
 
@@ -24,3 +24,4 @@ app.include_router(auth.router)
 app.include_router(like.router)
 app.include_router(connect.router)
 app.include_router(comment.router)
+app.include_router(search.router)

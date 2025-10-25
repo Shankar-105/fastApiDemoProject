@@ -2,6 +2,7 @@ from pydantic import BaseModel,ConfigDict,Field
 from datetime import datetime
 from app.models import Post
 from typing import Optional
+from fastapi import Query
 # while the user is creating a post user shouldn't send any unncessary
 # data other than the below mentioned fields when user does this
 # we need to warn user that correct data isn't sent for creating a post
@@ -79,3 +80,9 @@ class PostAnalytics(BaseModel):
     dislikes:int
     comments:int
     createdOn:datetime
+
+class SearchFeature(BaseModel):
+    q:str=Query(None, description="Search query")
+    limit:int=10
+    offset:int=0
+    orderBy:Optional[str]="created_at"

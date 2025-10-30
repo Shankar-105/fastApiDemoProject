@@ -1,7 +1,7 @@
 from fastapi import Body,HTTPException,status,APIRouter,Depends
 from sqlalchemy.orm import Session
 from app import oauth2,models,db,schemas as sch
- 
+from sqlalchemy import and_
 router=APIRouter(tags=['comment'])
 
 @router.post("/comment",status_code=status.HTTP_201_CREATED)
@@ -22,3 +22,11 @@ def create_comment(comment:sch.Comment=Body(...),db:Session=Depends(db.getDb),cu
     db.commit()
     db.refresh(new_comment)
     return {f"{currentUser.username} commented on":f"post {post.id}","comment content":comment.content}
+
+@router.delete("/delete_comment/{comment_id}",status_code=status.HTTP_200_OK)
+def delete_comment(comment_id:int,db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    commetnTodelete=db.query(models.Comments).filter(and_(models.Comments.id==comment_id,models.Comments.user_id==currentUser.id))
+    db.delete(commetnTodelete)
+    db.commit()
+    db.refresh()
+    return {"message":f"comment {comment_id} of user {currentUser.username} deleted"}

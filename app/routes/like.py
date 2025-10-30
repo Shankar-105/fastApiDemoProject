@@ -44,10 +44,10 @@ def vote(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUser:mode
                 currentVote.action = post.choice
                 if post.choice:
                     queriedPost.likes += 1
-                    queriedPost.disLikes -= 1
+                    queriedPost.dis_likes -= 1
                 else:
                     queriedPost.likes -= 1
-                    queriedPost.disLikes += 1
+                    queriedPost.dis_likes += 1
                 db.commit()
                 db.refresh(queriedPost)
                 return {"message": "Vote switched successfully"}
@@ -64,7 +64,7 @@ def vote(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUser:mode
                 queriedPost.likes += 1
             # or else dilikes count
             else:
-                queriedPost.disLikes += 1
+                queriedPost.dis_likes += 1
             db.commit()
             db.refresh(queriedPost)
             return {"message": "New vote added successfully"}

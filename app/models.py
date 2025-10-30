@@ -84,3 +84,4 @@ class User(Base):
         secondaryjoin=(Votes.post_id == Post.id),  # Votes.post_id links to Post.id
         backref='voters'  # allows posts to access users who voted on them
     )
+      total_comments=relationship('Comments',backref='user')

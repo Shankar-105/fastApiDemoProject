@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 import app.utils as utils
 import os,shutil
 from fastapi import UploadFile,File
-from sqlalchemy import and_
+from sqlalchemy import and_,distinct
 
 router=APIRouter(
     tags=['Users']
@@ -85,7 +85,7 @@ def getVotedPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:models.Us
     }
 
 @router.get("/users/{user_id}/voteStats",status_code=status.HTTP_200_OK)
-def test(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
+def voteStatus(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
     if currentUser.id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Not authorized to view this user's stats")
     liked_count = db.query(models.Votes).filter_by(user_id=user_id,action=True).count()
@@ -140,3 +140,42 @@ def get_liked_posts(user_id: int,db:Session = Depends(db.getDb),currentUser:mode
             for posts in liked_posts
         ]
     }
+
+@router.get("/users/{user_id}/commented-on",status_code=status.HTTP_200_OK)
+def getCommentedPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User =Depends(oauth2.getCurrentUser)):
+    if currentUser.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Not authorized to view this user's stats")
+    # get the current users all commented posts id's ignore duplicates
+    uniquePostIds=db.query(distinct(models.Comments.post_id)).filter(models.Comments.user_id==currentUser.id).all()
+    # the 'uniquePostIds' is a list of tuples where each tuple is
+    # of the form (post_id1,) (post_id2,) so we exract the first elem
+    # from each of the tuples in the list
+    post_ids = [row[0] for row in uniquePostIds]
+    # query for the post_ids in the Posts table
+    commented_posts=(
+        db.query(models.Post)
+        .filter(models.Post.id.in_(post_ids))
+        .all()
+    )
+    return {
+                f"{currentUser.username} you have commented on posts":
+            [
+                {
+                "post title":f"{posts.title}",
+                "post id":f"{posts.id}",
+                "post owner":f"{posts.user.username}"
+            } 
+                for posts in commented_posts
+        ]
+    }
+
+@router.get("/users/{user_id}/comment-stats",status_code=status.HTTP_200_OK)
+def test(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
+    if currentUser.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Not authorized to view this user's stats")
+    comment_count = currentUser.total_comments
+    uniquePostIds=db.query(distinct(models.Comments.post_id)).filter(models.Comments.user_id==currentUser.id).count()
+    return {
+        f"{currentUser.username} here's your comment stats":
+         f"you have a total of {len(comment_count)} comment's on {uniquePostIds} post's"
+       }

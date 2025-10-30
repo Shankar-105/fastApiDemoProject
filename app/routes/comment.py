@@ -5,7 +5,7 @@ from sqlalchemy import and_
 router=APIRouter(tags=['comment'])
 
 @router.post("/comment",status_code=status.HTTP_201_CREATED)
-def create_comment(comment:sch.Comment=Body(...),db:Session=Depends(db.getDb),currentUser: models.User = Depends(oauth2.getCurrentUser)):
+def createComment(comment:sch.Comment=Body(...),db:Session=Depends(db.getDb),currentUser: models.User = Depends(oauth2.getCurrentUser)):
     # Check if the post exists
     post = db.query(models.Post).filter(models.Post.id == comment.post_id).first()
     if not post:
@@ -24,7 +24,7 @@ def create_comment(comment:sch.Comment=Body(...),db:Session=Depends(db.getDb),cu
     return {f"{currentUser.username} commented on":f"post {post.id}","comment content":comment.content}
 
 @router.delete("/comments/delete_comment/{comment_id}",status_code=status.HTTP_200_OK)
-def delete_comment(comment_id:int,db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+def deleteComment(comment_id:int,db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     commentTodelete=db.query(models.Comments).filter(and_(models.Comments.id==comment_id,models.Comments.user_id==currentUser.id)).first()
     if not commentTodelete:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"comment with Id {comment_id} not Found") 

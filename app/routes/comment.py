@@ -25,8 +25,16 @@ def create_comment(comment:sch.Comment=Body(...),db:Session=Depends(db.getDb),cu
 
 @router.delete("/delete_comment/{comment_id}",status_code=status.HTTP_200_OK)
 def delete_comment(comment_id:int,db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    commetnTodelete=db.query(models.Comments).filter(and_(models.Comments.id==comment_id,models.Comments.user_id==currentUser.id))
+    commetnTodelete=db.query(models.Comments).filter(and_(models.Comments.id==comment_id,models.Comments.user_id==currentUser.id)).first()
     db.delete(commetnTodelete)
     db.commit()
     db.refresh()
     return {"message":f"comment {comment_id} of user {currentUser.username} deleted"}
+
+@router.patch("/edit_comment/{comment_id}",status_code=status.HTTP_200_OK)
+def editComment(comment_id:int,editInfo:str=Body(...),db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    commentToBeEdited=db.query(models.Comments).filter(and_(models.Comments.id==comment_id,models.Comments.user_id==currentUser.id)).first()
+    commentToBeEdited.comment_content=editInfo
+    db.commit()
+    db.refresh()
+    return {"message":f"successfully editede comment {comment_id} of user {currentUser.username}"}

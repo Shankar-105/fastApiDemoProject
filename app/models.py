@@ -18,6 +18,12 @@ class Votes(Base):
     post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     action=Column(Boolean,nullable=False)
+
+class CommentVotes(Base):
+    __tablename__='comment_votes'
+    comment_id=Column(Integer,ForeignKey("comments.id",ondelete="CASCADE"),primary_key=True,nullable=False)
+    user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
+    like=Column(Boolean,nullable=False)
     
 class Comments(Base):
     __tablename__='comments'

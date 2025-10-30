@@ -81,6 +81,10 @@ class PostAnalytics(BaseModel):
     comments:int
     createdOn:datetime
 
+
+class CommentVoteModel(BaseModel):
+    comment_id:int
+    choice:bool
 class SearchFeature(BaseModel):
     q:str=Query(None, description="Search query")
     limit:int=10

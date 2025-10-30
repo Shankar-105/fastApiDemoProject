@@ -23,18 +23,21 @@ def create_comment(comment:sch.Comment=Body(...),db:Session=Depends(db.getDb),cu
     db.refresh(new_comment)
     return {f"{currentUser.username} commented on":f"post {post.id}","comment content":comment.content}
 
-@router.delete("/delete_comment/{comment_id}",status_code=status.HTTP_200_OK)
+@router.delete("/comments/delete_comment/{comment_id}",status_code=status.HTTP_200_OK)
 def delete_comment(comment_id:int,db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    commetnTodelete=db.query(models.Comments).filter(and_(models.Comments.id==comment_id,models.Comments.user_id==currentUser.id)).first()
-    db.delete(commetnTodelete)
+    commentTodelete=db.query(models.Comments).filter(and_(models.Comments.id==comment_id,models.Comments.user_id==currentUser.id)).first()
+    if not commentTodelete:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"comment with Id {comment_id} not Found") 
+    db.delete(commentTodelete)
     db.commit()
-    db.refresh()
     return {"message":f"comment {comment_id} of user {currentUser.username} deleted"}
 
-@router.patch("/edit_comment/{comment_id}",status_code=status.HTTP_200_OK)
-def editComment(comment_id:int,editInfo:str=Body(...),db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.patch("/comments/edit_comment/{comment_id}",status_code=status.HTTP_200_OK)
+def editComment(comment_id:int,editInfo:sch.EditCommentModel=Body(...),db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     commentToBeEdited=db.query(models.Comments).filter(and_(models.Comments.id==comment_id,models.Comments.user_id==currentUser.id)).first()
-    commentToBeEdited.comment_content=editInfo
+    if not commentToBeEdited:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {comment_id} not Found")
+    commentToBeEdited.comment_content=editInfo.comment_content
     db.commit()
-    db.refresh()
-    return {"message":f"successfully editede comment {comment_id} of user {currentUser.username}"}
+    db.refresh(commentToBeEdited)
+    return {"message":f"successfully edited comment {comment_id} of user {currentUser.username}"}

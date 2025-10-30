@@ -32,7 +32,7 @@ class Comments(Base):
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     comment_content=Column(String,nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
+    likes=Column(Integer,default=0,nullable=False)
 class Post(Base):
     __tablename__='posts'
     id=Column(Integer,primary_key=True,nullable=False)

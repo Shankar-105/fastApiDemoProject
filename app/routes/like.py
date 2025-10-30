@@ -10,7 +10,7 @@ router=APIRouter(
     tags=['likes']
 )
 
-@router.post("/vote_on_post",status_code=status.HTTP_201_CREATED)
+@router.post("/vote/on_post",status_code=status.HTTP_201_CREATED)
 # get the post user that user wants to vote on with which user he is
 def voteOnPost(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # search for the post he wants to vote on against the db 
@@ -73,7 +73,7 @@ def voteOnPost(post:sch.VoteModel=Body(...),db:Session=Depends(getDb),currentUse
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Database error, please try again"
                             )
-@router.post("/vote_on_comment",status_code=status.HTTP_201_CREATED)
+@router.post("/vote/on_comment",status_code=status.HTTP_201_CREATED)
 def likeAComment(comment:sch.CommentVoteModel=Body(...),db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # search for the comment he wants to vote on against the db 
     # to firstly check whether that particular comment is present or not in the db
@@ -95,13 +95,13 @@ def likeAComment(comment:sch.CommentVoteModel=Body(...),db:Session=Depends(getDb
                 # update the same on the CommentVotes table also
                 # by removing the vote (like)
                 if comment.choice:
-                    currentVote.like-=1
+                    queriedComment.likes-=1
                 db.commit()
-                db.refresh(currentVote)
+                db.refresh(queriedComment)
                 return {"message": "Vote removed successfully"}
         else:
             # New like on a comment
-            newVote = models.CommentVotes(
+            newVote=models.CommentVotes(
                 comment_id=comment.comment_id,
                 user_id=currentUser.id,
                 like=comment.choice
@@ -109,9 +109,9 @@ def likeAComment(comment:sch.CommentVoteModel=Body(...),db:Session=Depends(getDb
             db.add(newVote)
             # if user choice is true increase likes count
             if comment.choice:
-                newVote.like+=1
+                queriedComment.likes+=1
             db.commit()
-            db.refresh(newVote)
+            db.refresh(queriedComment)
             return {"message": "New vote added successfully"}
     # triggers if any thing goes wrong in db as the logic is solid
     except IntegrityError:

@@ -81,6 +81,8 @@ class PostAnalytics(BaseModel):
     comments:int
     createdOn:datetime
 
+class EditCommentModel(BaseModel):
+    comment_content:str
 
 class CommentVoteModel(BaseModel):
     comment_id:int

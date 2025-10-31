@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 import app.utils as utils
 import os,shutil
 from fastapi import UploadFile,File
-from sqlalchemy import and_,distinct
+from sqlalchemy import and_,distinct,func,case
 
 router=APIRouter(
     tags=['Users']
@@ -84,13 +84,16 @@ def getVotedPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:models.Us
 
 @router.get("/users/voteStats",status_code=status.HTTP_200_OK)
 def voteStatus(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
-    liked_count = db.query(models.Votes).filter_by(user_id=user_id,action=True).count()
-    disliked_count = db.query(models.Votes).filter_by(user_id=user_id,action=False).count()
+    # using the func,case and quering in pass
+    summary=db.query(
+        func.count(case(models.Votes.action==True,1)).label("likes"),
+        func.count(case(models.Votes.action==False,1)).label("dislikes")
+    ).filter(models.User.id==currentUser.id).all()
     return {
         f"{currentUser.username} here's your vote stats":
        { 
-           "number of liked posts":liked_count,
-           "number of dislked posts":disliked_count
+           "number of liked posts":summary.likes,
+           "number of dislked posts":summary.dislikes
        }
 }
 

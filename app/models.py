@@ -32,7 +32,7 @@ class Comments(Base):
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     comment_content=Column(String,nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    likes=Column(Integer,default=0,nullable=False)
+    likes=Column(Integer,default=0,server_default=text("0"),nullable=False)
 class Post(Base):
     __tablename__='posts'
     id=Column(Integer,primary_key=True,nullable=False)
@@ -41,10 +41,10 @@ class Post(Base):
     enable_comments=Column(Boolean,server_default="TRUE",nullable=False)
     created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
-    likes=Column(Integer,server_default="0",nullable=False)
-    dis_likes=Column(Integer,server_default="0",nullable=False)
-    views=Column(Integer,default=0)
-    comments_cnt=Column(Integer,default=0)
+    likes=Column(Integer,default=0,server_default="0",nullable=False)
+    dis_likes=Column(Integer,default=0,server_default="0",nullable=False)
+    views=Column(Integer,default=0,server_default=text("0"))
+    comments_cnt=Column(Integer,default=0,server_default=text("0"))
     hashtags=Column(String,nullable=True)
 class PostView(Base):
     __tablename__ = "post_views"
@@ -60,8 +60,8 @@ class User(Base):
       bio=Column(String,server_default=" ",nullable=True)
       profile_picture=Column(String,nullable=True)
       created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
-      followers_cnt=Column(Integer,server_default="0",nullable=False)
-      following_cnt=Column(Integer,server_default="0",nullable=False)
+      followers_cnt=Column(Integer,default=0,server_default="0",nullable=False)
+      following_cnt=Column(Integer,default=0,server_default="0",nullable=False)
       # added relationship between the posts table and the users table so that
       # when you actually need all the posts of a user there's no need from now on 
       # to go check the posts table and query it for Posts.user_id==currentUser.id

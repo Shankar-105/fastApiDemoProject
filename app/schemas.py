@@ -92,3 +92,11 @@ class SearchFeature(BaseModel):
     limit:int=10
     offset:int=0
     orderBy:Optional[str]="created_at"
+
+class UserProfile(BaseModel):
+    username:str
+    nickname:str
+    bio:str|None=None
+    posts:int
+    followers:int
+    following:int

@@ -39,7 +39,6 @@ def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb),curr
     db.refresh(newPost)
     return newPost
 
-
 # delets a specific post with the mentioned id -> {id}
 @router.delete("/posts/deletePost/{postId}",response_model=sch.PostResponse)
 def deletePost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
@@ -52,7 +51,7 @@ def deletePost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depe
 
 # update a specific post with id -> {id}
 @router.put("/posts/editPost/{postId}")
-def editPost(postId:int,post:sch.PostEssentials,db:Session=Depends(getDb)):
+def editPost(postId:int,post:sch.PostEssentials,db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     postToUpdate=db.query(models.Post).filter(models.Post.id==postId).first()
     if not postToUpdate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found")

@@ -10,7 +10,17 @@ from sqlalchemy import and_,distinct,func,case
 router=APIRouter(
     tags=['me']
 )
-@router.get("/me/profile",status_code=status.HTTP_200_OK)
+@router.get("/me/profile",status_code=status.HTTP_200_OK,response_model=sch.UserProfile)
+def myProfile(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    currentUserProfile=sch.UserProfile(
+        username=currentUser.username,
+        nickname=currentUser.nickname,
+        bio=currentUser.bio,
+        posts=len(currentUser.posts),
+        followers=currentUser.followers_cnt,
+        following=currentUser.following_cnt,
+    )
+    return currentUserProfile
 # retrives all posts using sqlAlchemy
 @router.get("/me/posts",response_model=List[sch.PostResponse])  
 def getAllPosts(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):

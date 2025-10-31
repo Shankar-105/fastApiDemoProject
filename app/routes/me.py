@@ -20,6 +20,8 @@ def myProfile(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth
         followers=currentUser.followers_cnt,
         following=currentUser.following_cnt,
     )
+    if not currentUserProfile.bio:
+        currentUserProfile.bio=""
     return currentUserProfile
 # retrives all posts using sqlAlchemy
 @router.get("/me/posts",response_model=List[sch.PostResponse])  

@@ -1,5 +1,6 @@
 from fastapi import status,HTTPException,Depends,Body,APIRouter,Form
 import app.schemas as sch
+from typing import List
 from app import models,db,oauth2
 from sqlalchemy.orm import Session
 import os,shutil
@@ -9,14 +10,22 @@ from sqlalchemy import and_,distinct,func,case
 router=APIRouter(
     tags=['me']
 )
-
+@router.get("/me/profile",status_code=status.HTTP_200_OK)
+# retrives all posts using sqlAlchemy
+@router.get("/me/posts",response_model=List[sch.PostResponse])  
+def getAllPosts(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+   # allPosts=db.query(models.Post).filter(models.Post.user_id==currentUser.id).all()
+   # simple way of querying 
+   # Thanks to the relationship() method 
+    allPosts=currentUser.posts
+    return allPosts
 # a patch endpoint so that user can update what he wants to unlike put
 # profile picture cannot be taken as a json data so it must be passed via Form
 # and the username and bio can be passed via Body params but its resulting in an
 # ambiguity as one of the section is being passed via Form and the other via Body
 # so made everything to be passed via Form only
 @router.patch("/me/updateInfo",status_code=status.HTTP_200_OK)
-def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_picture:UploadFile=File(None),db:Session=Depends(db.getDb),currentUser:sch.TokenModel=Depends(oauth2.getCurrentUser)):
+def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_picture:UploadFile=File(None),db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # to store updates the user does
     updates={}
     if username:
@@ -51,7 +60,7 @@ def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_picture:Up
     return updates
 
 @router.get("/me/votedOnPosts",status_code=status.HTTP_200_OK)
-def getVotedPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User =Depends(oauth2.getCurrentUser)):
+def getVotedPosts(db:Session=Depends(db.getDb),currentUser:models.User =Depends(oauth2.getCurrentUser)):
     voted_posts=currentUser.voted_posts
     return {
                 f"{currentUser.username} you have voted on posts":
@@ -66,7 +75,7 @@ def getVotedPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:models.Us
     }
 
 @router.get("/me/voteStats",status_code=status.HTTP_200_OK)
-def voteStatus(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
+def voteStatus(db:Session=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
     # using the func,case and quering in pass
     summary=db.query(
         func.count(case(models.Votes.action==True,1)).label("likes"),
@@ -81,12 +90,12 @@ def voteStatus(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User 
 }
 
 @router.get("/me/likedPosts")
-def get_liked_posts(user_id: int,db:Session = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+def get_liked_posts(db:Session = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # Query liked posts
     liked_posts = (
         db.query(models.Post)
         .join(models.Votes, models.Votes.post_id==models.Post.id)
-        .filter(and_(models.Votes.user_id==user_id, models.Votes.action==True))
+        .filter(and_(models.Votes.user_id==currentUser.id, models.Votes.action==True))
         .all()
     )
     return {
@@ -100,11 +109,11 @@ def get_liked_posts(user_id: int,db:Session = Depends(db.getDb),currentUser:mode
         ]
     }
 @router.get("/me/dislikedPosts")
-def get_liked_posts(user_id: int,db:Session = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):    # Query disliked posts
+def get_liked_posts(db:Session = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):    # Query disliked posts
     liked_posts = (
         db.query(models.Post)
         .join(models.Votes,models.Votes.post_id==models.Post.id)
-        .filter(and_(models.Votes.user_id==user_id, models.Votes.action==False))
+        .filter(and_(models.Votes.user_id==currentUser.id, models.Votes.action==False))
         .all()
     )
     return {
@@ -119,7 +128,7 @@ def get_liked_posts(user_id: int,db:Session = Depends(db.getDb),currentUser:mode
     }
 
 @router.get("/me/commented-on",status_code=status.HTTP_200_OK)
-def getCommentedPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User =Depends(oauth2.getCurrentUser)):
+def getCommentedPosts(db:Session=Depends(db.getDb),currentUser:models.User =Depends(oauth2.getCurrentUser)):
     # get the current users all commented posts id's ignore duplicates
     uniquePostIds=db.query(distinct(models.Comments.post_id)).filter(models.Comments.user_id==currentUser.id).all()
     # the 'uniquePostIds' is a list of tuples where each tuple is
@@ -145,7 +154,7 @@ def getCommentedPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:model
     }
 
 @router.get("/me/comment-stats",status_code=status.HTTP_200_OK)
-def commentStatus(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
+def commentStatus(db:Session=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
     comment_count = currentUser.total_comments
     uniquePostIds=db.query(distinct(models.Comments.post_id)).filter(models.Comments.user_id==currentUser.id).count()
     return {

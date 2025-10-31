@@ -13,6 +13,7 @@ router=APIRouter(
 @router.get("/me/profile",status_code=status.HTTP_200_OK,response_model=sch.UserProfile)
 def myProfile(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     currentUserProfile=sch.UserProfile(
+        profilePicture=currentUser.profile_picture,
         username=currentUser.username,
         nickname=currentUser.nickname,
         bio=currentUser.bio,
@@ -22,6 +23,8 @@ def myProfile(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth
     )
     if not currentUserProfile.bio:
         currentUserProfile.bio=""
+    if not currentUserProfile.profilePicture:
+        currentUserProfile.profilePicture=""
     return currentUserProfile
 # retrives all posts using sqlAlchemy
 @router.get("/me/posts",response_model=List[sch.PostResponse])  

@@ -8,7 +8,23 @@ import app.utils as utils
 router=APIRouter(
     tags=['Users']
 )
-
+@router.get("/users/{user_id}/profile",status_code=status.HTTP_200_OK,response_model=sch.UserProfile)
+def userProfile(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    user=db.query(models.User).filter(models.User.id==user_id).first()
+    userProfile=sch.UserProfile(
+        profilePicture=user.profile_picture,
+        username=user.username,
+        nickname=user.nickname,
+        bio=user.bio,
+        posts=len(user.posts),
+        followers=user.followers_cnt,
+        following=user.following_cnt,
+    )
+    if not userProfile.bio:
+        userProfile.bio=""
+    if not userProfile.profilePicture:
+        userProfile.profilePicture="no profile picture"
+    return userProfile
 @router.post("/user/signup",status_code=status.HTTP_201_CREATED,response_model=sch.UserResponse)
 def createUser(userData:sch.UserEssentials=Body(...),db:Session=Depends(db.getDb)):
     # hash the password using the bcrypt lib

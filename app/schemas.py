@@ -94,9 +94,10 @@ class SearchFeature(BaseModel):
     orderBy:Optional[str]="created_at"
 
 class UserProfile(BaseModel):
+    profilePicture:str|None
     username:str
     nickname:str
-    bio:str|None=None
+    bio:str|None
     posts:int
     followers:int
     following:int

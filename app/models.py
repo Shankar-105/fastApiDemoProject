@@ -58,6 +58,7 @@ class User(Base):
       password=Column(String,nullable=False)
       nickname=Column(String,nullable=False)
       bio=Column(String,nullable=True)
+      email=Column(String,nullable=True)
       profile_picture=Column(String,nullable=True)
       created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
       followers_cnt=Column(Integer,default=0,server_default="0",nullable=False)

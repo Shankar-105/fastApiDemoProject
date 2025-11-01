@@ -101,3 +101,7 @@ class UserProfile(BaseModel):
     posts:int
     followers:int
     following:int
+
+class ResetPassword(BaseModel):
+    otp: str
+    new_password: str  # New pass, like "strong123

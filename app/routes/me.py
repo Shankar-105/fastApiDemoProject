@@ -29,18 +29,21 @@ def myProfile(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth
         currentUserProfile.profilePicture=""
     return currentUserProfile
 
-@router.get("/me/profile/pic",status_code=status.HTTP_200_OK,response_class=FileResponse)
+@router.get("/me/profile/pic",status_code=status.HTTP_200_OK)
 def myProfilePicture(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    profilePicturePath = currentUser.profile_picture  # e.g., "shankar.png"
+    # get the curretn users profile pic
+    profilePicturePath = currentUser.profile_picture
+    # if he doesnt have a porfile pic return 404
     if not profilePicturePath:
         raise HTTPException(status_code=404, detail="No profile picture")
     file_path=f"profilepics/{profilePicturePath}"
+    # optional check
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Image not found")
-    return FileResponse(
-        path=file_path,
-        media_type="image/png" # or detect dynamically
-    )
+    # return a FileResponse class response to view it directly
+    # as in commit hash <96bd0a3> or else return the link and you can
+    # view it in the broswer by entering the output url
+    return sch.UserProfileDisplay.displayUserProfilePic(currentUser)
 # retrives all posts using sqlAlchemy
 @router.get("/me/posts",response_model=List[sch.PostResponse])  
 def getAllPosts(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
@@ -75,13 +78,15 @@ def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_picture:Up
         allowedFileTypes=['image/jpeg','image/png','image/gif']
         if profile_picture.content_type not in allowedFileTypes:
             raise HTTPException(status_code=400,detail="only jpeg,png,gif files allowed")
-        # if not we create a filePath to store this path in the db 
-        # instead of directly storing the image itself
+        # file path to store in db we just store the filename in the db 
+        # not the entire image or the entire path just the filename
+        filename_toput_inDb=f"{currentUser.username}_{profile_picture.filename}"
+        # this is the actual file path where the profile pics reside
         file_path=f"profilepics/{currentUser.username}_{profile_picture.filename}"
-        # py methods to copy the argumented image in our filepath
+        # py methods to copy the argumented image in our file_path
         with open(file_path, "wb") as buffer:
            shutil.copyfileobj(profile_picture.file, buffer)
-        updates['profile_picture']=file_path
+        updates['profile_picture']=filename_toput_inDb
         # if any updates update them
     if updates:
         db.query(models.User).filter(models.User.id==currentUser.id).update(updates)

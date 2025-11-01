@@ -105,3 +105,10 @@ class UserProfile(BaseModel):
 class ResetPassword(BaseModel):
     otp:str
     new_password:str  # New pass, like "strong123
+
+class UserProfileDisplay(BaseModel):
+    @staticmethod
+    def displayUserProfilePic(user:models.User):
+        return {
+            "profile_pic":f"{config.settings.base_url}/profilepics/{user.profile_picture}"
+        }

@@ -9,6 +9,13 @@ models.Base.metadata.create_all(bind=engine)
 
 # fastapi instance
 app = FastAPI()
+# tells the uvicorn to render any images at the new paths while displaying profile pics or etc
+# example : without this mount method suppose you hit the see your profile pic endpoint
+# the postman or anyother application returns the url of the profile pic as json
+# as of according ot this commit <96bd0a3> so when you run that url on broswer
+# for example the url is http://127.0.0.1:8000/profilepics/yash_m77bbOnjacket.png
+# without mount the uvicorn server running at http://127.0.0.1:8000 
+# wouldn"t be able to render that image and give a 404 error
 app.mount("/profilepics",StaticFiles(directory="profilepics"),name="profilepics")
 # when the domain or the port changes
 # browser blocks the api-url(cross origin requests COR's)

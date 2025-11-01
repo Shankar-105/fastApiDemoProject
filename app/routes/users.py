@@ -76,7 +76,7 @@ def get_following(user_id:int,db:Session=Depends(db.getDb),currentUser:models.Us
 @router.get("/users/{user_id}/posts",response_model=List[sch.PostResponse])  
 def getAllPosts(user_id:int,db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
    # allPosts=db.query(models.Post).filter(models.Post.user_id==currentUser.id).all()
-   # simple way of querying 
+   # simple way of querying
    # Thanks to the relationship() method 
     user=db.query(models.User).filter(models.User.id==user_id).first()
     allPosts=user.posts

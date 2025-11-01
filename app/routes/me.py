@@ -44,6 +44,18 @@ def myProfilePicture(db:Session=Depends(db.getDb),currentUser:models.User=Depend
     # as in commit hash <96bd0a3> or else return the link and you can
     # view it in the broswer by entering the output url
     return sch.UserProfileDisplay.displayUserProfilePic(currentUser)
+@router.delete("/me/profilepic/delete",status_code=status.HTTP_200_OK)
+def removeProfilePicture(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    profilePic=currentUser.profile_picture
+    if not profilePic:
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="no profile pic to remove")
+    file_path=f"profilepics/{profilePic}"
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    currentUser.profile_picture=None
+    db.commit()
+    return {"message":"removed profile pic"}
+
 # retrives all posts using sqlAlchemy
 @router.get("/me/posts",response_model=List[sch.PostResponse])  
 def getAllPosts(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):

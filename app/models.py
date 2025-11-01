@@ -43,6 +43,8 @@ class Comments(Base):
 class Post(Base):
     __tablename__='posts'
     id=Column(Integer,primary_key=True,nullable=False)
+    media_path = Column(String, nullable=True)  # NEW: stores "posts_media/funny_cat.mp4"
+    media_type = Column(String, nullable=True)  # "image" or "video"
     title=Column(String,nullable=False)
     content=Column(String,nullable=False)
     enable_comments=Column(Boolean,server_default="TRUE",nullable=False)

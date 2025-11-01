@@ -1,14 +1,17 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter
-from typing import List
+from fastapi import status,HTTPException,Depends,APIRouter,Form,UploadFile,File
 import app.schemas as sch
+from typing import Optional
 from app import models,oauth2
 from app.db import getDb
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-
+import os,uuid,shutil
 router=APIRouter(
     tags=['Posts']
 )
+
+MEDIA_FOLDER="posts_media"
+
 # gets a specific post with id -> {postId}
 @router.get("/posts/getPost/{postId}",response_model=sch.PostResponse)
 def getPost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
@@ -31,14 +34,43 @@ def getPost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depends
 
 
 # creates a new post using sqlAlchemy
-@router.post("/posts/createPost",status_code=status.HTTP_201_CREATED,response_model=sch.PostResponse)
-def createPosts(post:sch.PostEssentials=Body(...),db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    newPost=models.Post(**post.dict(),user_id=currentUser.id,views=1)
-    db.add(newPost)
+@router.post("/posts/createPost",status_code=status.HTTP_201_CREATED)
+def create_post(
+    title:str=Form(...),
+    content:str=Form(...),
+    media:Optional[UploadFile]=File(None),  # Optional file
+    db: Session=Depends(getDb),
+    currentUser:dict=Depends(oauth2.getCurrentUser) 
+):
+    # set to None change if uploaded later
+    media_path = None
+    media_type = None
+    if media:
+        # ensure the file type is in bounds
+        if media.content_type not in ["image/jpeg", "image/png", "video/mp4"]:
+            raise HTTPException(400, "Only JPG, PNG, MP4 allowed")
+        # Generate unique filename
+        # using uuid Universally unique ID which generates a 36 characters
+        ext=media.filename.split(".")[-1]
+        filename=f"{uuid.uuid4()}.{ext}"
+        file_path=os.path.join(MEDIA_FOLDER,filename)
+        # transfer the data from args to the file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(media.file, buffer)
+        # we will only store the filename in the db
+        media_path=filename
+        media_type="image" if media.content_type.startswith("image") else "video"
+    new_post = models.Post(
+        title=title,
+        content=content,
+        media_path=media_path,
+        media_type=media_type,
+        user_id=currentUser.id
+    )
+    db.add(new_post)
     db.commit()
-    db.refresh(newPost)
-    return newPost
-
+    db.refresh(new_post)
+    return {"message": "Post created!", "post": new_post}
 # delets a specific post with the mentioned id -> {id}
 @router.delete("/posts/deletePost/{postId}",response_model=sch.PostResponse)
 def deletePost(postId:int,db:Session=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):

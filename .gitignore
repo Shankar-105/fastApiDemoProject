@@ -39,5 +39,6 @@ __pypackages__/
 # ignore the alembic.ini
 alembic.ini
 
-# ignore the profile pictures
+# ignore the profile pictures and post media
 profilepics/
+posts_media/

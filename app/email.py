@@ -13,13 +13,12 @@ conf = ConnectionConfig(
 )
 
 # Function to send OTP
-def send_otp_email(to_email: str, otp: str):
+async def send_otp_email(to_email:str,otp:str):
     html = f"""
     <h3>Password Reset OTP</h3>
     <p>Your OTP is: <b style="font-size: 20px;">{otp}</b></p>
     <p>Valid for 5 minutes only.</p>
     """
-
     message = MessageSchema(
         subject="Your OTP Code",
         recipients=[to_email],
@@ -27,4 +26,4 @@ def send_otp_email(to_email: str, otp: str):
         subtype="html"
     )
     fm = FastMail(conf)
-    fm.send_message(message)
+    await fm.send_message(message)

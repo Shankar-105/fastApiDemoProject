@@ -5,15 +5,22 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    # database info
     database_host: str
     database_port: int
     database_password: str
     database_user: str
     database_name: str
+    # jwt info
     secret_key: str
     algorithm: str
     access_token_expire_time: int
-
+    # email info
+    email_username: str
+    email_password: str
+    email_from: str
+    email_port: int
+    email_server: str
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

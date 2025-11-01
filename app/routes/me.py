@@ -10,6 +10,7 @@ from sqlalchemy import and_,distinct,func,case
 router=APIRouter(
     tags=['me']
 )
+
 @router.get("/me/profile",status_code=status.HTTP_200_OK,response_model=sch.UserProfile)
 def myProfile(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     currentUserProfile=sch.UserProfile(

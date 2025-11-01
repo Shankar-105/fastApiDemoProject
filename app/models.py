@@ -13,6 +13,13 @@ connections = Table(
     Column('followed_id', Integer,ForeignKey('users.id'),primary_key=True),
     Column('follower_id', Integer,ForeignKey('users.id'),primary_key=True)
 )
+class OTP(Base):
+    __tablename__ = "otps"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)  # Only 1 per email
+    otp = Column(String, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=func.now())
 class Votes(Base):
     __tablename__='votes'
     post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)

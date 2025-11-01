@@ -1,7 +1,8 @@
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from app.config import settings
 
-# Setup Gmail connection
+# setting up Gmail connection using the fastappi's
+# built-in Connection system
 conf = ConnectionConfig(
     MAIL_USERNAME = settings.email_username,
     MAIL_PASSWORD = settings.email_password,
@@ -12,13 +13,19 @@ conf = ConnectionConfig(
     MAIL_SSL_TLS = False
 )
 
-# Function to send OTP
+# method to send OTP
 async def send_otp_email(to_email:str,otp:str):
+    # a body for the email that will be sent
+    # when this variable "html" passed as an arg to
+    # the MessageSchema constructor it will be converted to
+    # a html body
     html = f"""
     <h3>Password Reset OTP</h3>
     <p>Your OTP is: <b style="font-size: 20px;">{otp}</b></p>
     <p>Valid for 5 minutes only.</p>
     """
+    # create an object of the built in MessageSchema class and send pass
+    # all required fields to it
     message = MessageSchema(
         subject="Your OTP Code",
         recipients=[to_email],
@@ -26,4 +33,5 @@ async def send_otp_email(to_email:str,otp:str):
         subtype="html"
     )
     fm = FastMail(conf)
+    # send the email
     await fm.send_message(message)

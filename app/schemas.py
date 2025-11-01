@@ -1,6 +1,6 @@
 from pydantic import BaseModel,ConfigDict,Field
 from datetime import datetime
-from app.models import Post
+from app import models,config
 from typing import Optional
 from fastapi import Query
 # while the user is creating a post user shouldn't send any unncessary

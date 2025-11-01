@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta  # For time stuff
-from app import models,db
+from app import models
 from sqlalchemy.orm import Session
 import random 
 def generateOtp():
     otp = str(random.randint(100000, 999999))
     return otp
+
 def saveOtp(db:Session,email:str,otp:str,minutes:int=2):
     # remove any other expired otp's of the user if any
     db.query(models.OTP).filter(models.OTP.email == email).delete()

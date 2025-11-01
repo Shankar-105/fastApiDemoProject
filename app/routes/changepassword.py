@@ -1,18 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException,Body
 from sqlalchemy.orm import Session 
-from app import models, otp_service, utils, schemas,db,oauth2,email
+from app import email_service, models, otp_service, utils, schemas,db,oauth2
 
-router = APIRouter(tags=["ForgotPassword"])
+router = APIRouter(tags=["changepassword"])
 
-@router.post("/forgot-password")
-async def forgot_password(db: Session = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.post("/change-password")
+async def change_password(db: Session = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # call the generate otp method in the otp_service file which generates an otp
     otp=otp_service.generateOtp()
     # save this otp in the db using the saveOtp method in the otp_sevice file 
     otp_service.saveOtp(db,currentUser.email,otp)
     # after storing it in the db Send email using the method in email file
     try:
-       await email.send_otp_email(currentUser.email,otp) 
+       await email_service.send_otp_email(currentUser.email,otp) 
     except:
         # if any probelm their raise an exception
         raise HTTPException(status_code=500, detail="Email send failed") 

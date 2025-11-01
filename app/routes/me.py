@@ -1,4 +1,5 @@
 from fastapi import status,HTTPException,Depends,Body,APIRouter,Form
+from fastapi.responses import FileResponse
 import app.schemas as sch
 from typing import List
 from app import models,db,oauth2
@@ -27,6 +28,19 @@ def myProfile(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth
     if not currentUserProfile.profilePicture:
         currentUserProfile.profilePicture=""
     return currentUserProfile
+
+@router.get("/me/profile/pic",status_code=status.HTTP_200_OK,response_class=FileResponse)
+def myProfilePicture(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    profilePicturePath = currentUser.profile_picture  # e.g., "shankar.png"
+    if not profilePicturePath:
+        raise HTTPException(status_code=404, detail="No profile picture")
+    file_path=f"profilepics/{profilePicturePath}"
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(
+        path=file_path,
+        media_type="image/png" # or detect dynamically
+    )
 # retrives all posts using sqlAlchemy
 @router.get("/me/posts",response_model=List[sch.PostResponse])  
 def getAllPosts(db:Session=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):

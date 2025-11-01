@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     email_from: str
     email_port: int
     email_server: str
+    # base url
+    base_url:str
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

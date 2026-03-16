@@ -49,9 +49,11 @@ async def reply_share(
     original_post = post_result.scalars().first()
 
     reply_payload = {
+        "type": "message",
         "id": reply_msg.id,
         "content": reply_msg.content,
         "sender_id": user_id,
+        "receiver_id": payload.to,
         "timestamp": format_timestamp(reply_msg.created_at),
         "is_reply": True,
         "is_reply_to_share": True,

@@ -163,6 +163,17 @@ class PostListResponse(BaseModel):
     posts: List[PostListItemResponse]
     pagination: PaginationMetadata
 
+
+class SavedPostItemResponse(BaseModel):
+    id: int
+    post_id: int
+    saved_at: datetime
+    post: PostDetailResponse
+
+
+class SavedPostsResponse(BaseModel):
+    saved: List[SavedPostItemResponse]
+
 class PostAnalytics(BaseModel):
     """Post analytics data"""
     post_id: int

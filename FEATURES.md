@@ -19,6 +19,7 @@
 | [Comments](#-comments) | Create, edit, delete, like comments |
 | [Voting / Likes System](#-voting--likes-system) | Like/dislike toggle, vote stats, analytics |
 | [Feed System](#-feed-system) | Home feed, explore feed, pagination |
+| [Saved Posts](#-saved-posts) | Save, unsave, and retrieve saved posts |
 | [Search](#-search) | User search, hashtag search, ordering |
 | [Password Management](#-password-management) | Change, forgot, reset via OTP |
 | [Real-Time Chat (WebSockets)](#-real-time-chat-websockets) | Direct messages, media, typing, reactions, read receipts |
@@ -195,6 +196,20 @@ Real-time notification system with persistent storage and live delivery.
 - **`is_liked` flag** — every post in the feed indicates whether the current user has liked it
 - **Owner info** — each feed item includes the post author's username and profile picture
 - **Configurable pagination** — `limit` (1–100) and `offset` query parameters on both feeds
+
+---
+
+## 🔖 Saved Posts
+
+- **Personal save collection** — each user can save posts they want to revisit later
+- **Three dedicated endpoints:**
+  - `POST /saved/{post_id}` — save a post
+  - `DELETE /saved/{post_id}` — remove from saved
+  - `GET /saved/me` — list saved posts newest-first
+- **Duplicate-safe behavior** — saving the same post twice does not create duplicates (unique `(user_id, post_id)` constraint)
+- **Rich response model** — each saved item returns `saved_at` plus a full `PostDetailResponse` payload
+- **Per-user like context** — saved list includes `is_liked` for each post from the perspective of the current user
+- **Automatic cleanup** — saved rows are removed automatically if a user or post is deleted (foreign keys with cascade)
 
 ---
 

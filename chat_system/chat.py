@@ -1,10 +1,9 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect,Depends,Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.my_utils.socket_manager import manager
 from chat_system import delete_msg,delete_shares,dm,edit_msg,load_missed_msgs,msg_reaction,share_reaction,reply_msg,reply_to_share,media_msg,read_receipt
-import json,asyncio
-from datetime import datetime
+import json
 router = APIRouter(tags=["chat"])
 
 # ping_task=None
@@ -13,193 +12,181 @@ router = APIRouter(tags=["chat"])
 async def chat(
     websocket: WebSocket,
     user_id: int,
-    token: str=Query(None,description="Search query params"),
-    db: AsyncSession=Depends(db.getDb)
+    token: str = Query(None, description="Search query params"),
+    db: AsyncSession = Depends(db.getDb)
 ):
-    # we check whether the token is sent or not 
-    # if not sent then we close the socket connection 
-    # because we require token to validate or authunicate the user
     if not token:
         await websocket.close(code=1008)
         return
     try:
-        # get the user from the token passed token
-        current_user = await oauth2.getCurrentUser(token,db)
-        # if he is a different guy well then close the socket connection
-        # this prevents spoofing other users acccessing or pretending to be the actual user
+        current_user = await oauth2.getCurrentUser(token, db)
         if current_user.id != user_id:
             await websocket.close(code=1008)
             return
-    except:
+    except Exception:
         await websocket.close(code=1008)
         return
-    # well if the token has passed all the above tests
-    # make a connection request by using the manager obj 
 
-    await manager.connect(user_id,websocket)   
-    # load missed content  
-    missed_content=await load_missed_msgs.load_missed_content(current_user.id,db)
+    await manager.connect(user_id, websocket)
+    missed_content = await load_missed_msgs.load_missed_content(current_user.id, db)
     if missed_content:
         missed_content.reverse()
     for item in missed_content:
         try:
             await websocket.send_json(item)
-        except:
+        except Exception:
             print("WebSocket broken during missed content delivery")
             break
+
+    def _safe_int(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
     try:
         while True:
             data = await websocket.receive_text()
-            # remove '\r' in the data if present
-            data=data.replace('\r','')
-            # see what you have received 'repr' represents the object
-            print("RAW:", repr(data))
+            data = data.replace('\r', '')
             try:
-               message_data = json.loads(data)
+                message_data = json.loads(data)
             except json.JSONDecodeError:
-        # Not a JSON message (could be plain chat text) — handle or ignore
-                  print("Received non-JSON chat payload; ignoring or handle as needed:", repr(data))
-                  continue
-            # if the type is delete_for_everyone
+                continue
+
+            msg_type = message_data.get("type")
+
             if message_data.get("type") == "delete_for_everyone":
-                    try:
-                        msg_id = int(message_data["message_id"])
-                        recv_id = int(message_data["receiver_id"])
-                    except (ValueError, TypeError):
-                        print("Invalid ID format in delete_for_everyone")
-                        continue  # or send error
-                    await delete_msg.delete_for_everyone(
-                        db=db,
-                        message_id=msg_id,
-                        sender_id=current_user.id,
-                        receiver_id=recv_id
-                    )
-            # if the message is of type a reaction to a message
-            elif message_data.get("type") == "reaction":
-                reacted_by=current_user.id
-                reaction_emoji=message_data.get("reaction")
-                msg_id=message_data.get("message_id")
-                reactionPayLoad=schemas.ReactionPayload(
-                     message_id=msg_id,
-                     reaction=reaction_emoji
+                msg_id = _safe_int(message_data.get("message_id"))
+                recv_id = _safe_int(message_data.get("receiver_id"))
+                if msg_id is None or recv_id is None:
+                    continue
+                await delete_msg.delete_for_everyone(
+                    db=db,
+                    message_id=msg_id,
+                    sender_id=current_user.id,
+                    receiver_id=recv_id
                 )
-                await msg_reaction.react(reactionPayLoad,reacted_by,db)
-            # if the message is of type reacting to a shared post
-            elif message_data.get("type") == "shared_post_reaction":
+
+            elif msg_type == "reaction":
                 reacted_by = current_user.id
                 reaction_emoji = message_data.get("reaction")
-                shared_id = message_data.get("shared_post_id")
-
-                reaction_payload = schemas.ReactionPayload(
-                    message_id=shared_id,  # reuse field
+                msg_id = _safe_int(message_data.get("message_id"))
+                if not reaction_emoji or msg_id is None:
+                    continue
+                reactionPayLoad = schemas.ReactionPayload(
+                    message_id=msg_id,
                     reaction=reaction_emoji
                 )
-                await share_reaction.react_to_shared_post(reaction_payload,reacted_by,db)
-            # if the message is of type edit
-            elif message_data.get("type") == "edit_message":
-                try:
-                        msg_id = int(message_data.get("msg_id"))
-                        new_content = message_data.get("new_content").strip()
-                        recv_id = int(message_data.get("receiver_id"))
-                except (ValueError,TypeError):
-                        print("Invalid ID format in edit_msg")
-                        continue  # or send error
+                await msg_reaction.react(reactionPayLoad, reacted_by, db)
+
+            elif msg_type == "shared_post_reaction":
+                reacted_by = current_user.id
+                reaction_emoji = message_data.get("reaction")
+                shared_id = _safe_int(message_data.get("shared_post_id"))
+                if not reaction_emoji or shared_id is None:
+                    continue
+
+                reaction_payload = schemas.ReactionPayload(
+                    message_id=shared_id,
+                    reaction=reaction_emoji
+                )
+                await share_reaction.react_to_shared_post(reaction_payload, reacted_by, db)
+
+            elif msg_type == "edit_message":
+                msg_id = _safe_int(message_data.get("msg_id"))
+                recv_id = _safe_int(message_data.get("receiver_id"))
+                new_content = (message_data.get("new_content") or "").strip()
+                if msg_id is None or recv_id is None or not new_content:
+                    continue
                 await edit_msg.edit_message(
-                        db=db,
-                        message_id=msg_id,
-                        new_content=new_content,
-                        sender_id=current_user.id,
-                        recv_id=recv_id
-                    )
-            # if its a pong then simply mark it and set the event
-            elif message_data.get("type") == "pong":
-                print("Pong received — user alive")
+                    db=db,
+                    message_id=msg_id,
+                    new_content=new_content,
+                    sender_id=current_user.id,
+                    recv_id=recv_id
+                )
+
+            elif msg_type == "pong":
                 manager.mark_pong(user_id)
                 continue
-            # if its of type delete_share_for_everyone
-            # simply call the method whcih does that job
-            elif message_data.get("type") == "delete_share_for_everyone":
-                try:
-                        share_id = int(message_data["message_id"])
-                        recv_id = int(message_data["receiver_id"])
-                except (ValueError,TypeError):
-                        print("Invalid ID format in delete_for_everyone")
-                        continue  # or send error
+
+            elif msg_type == "delete_share_for_everyone":
+                share_id = _safe_int(message_data.get("message_id"))
+                recv_id = _safe_int(message_data.get("receiver_id"))
+                if share_id is None or recv_id is None:
+                    continue
                 await delete_shares.delete_share_for_everyone(
-                        db=db,
-                        share_id=share_id,
-                        sender_id=current_user.id,
-                        receiver_id=recv_id
-                    )
-            # if its of type - typing 
-            elif message_data.get("type") == "typing":
-                 type=message_data.get("type")
-                 is_typing=message_data.get("is_typing")
-                 receiver_id=message_data.get("receiver_id")
-                 await manager.typing_status(type=type,receiver_id=receiver_id,typing_status=is_typing)
-            # if its of type read_receipt
-            elif message_data.get("type") == "read_receipt":
-                # client sends: {"type": "read_receipt", "sender_id": <id of user whose messages I read>}
+                    db=db,
+                    share_id=share_id,
+                    sender_id=current_user.id,
+                    receiver_id=recv_id
+                )
+
+            elif msg_type == "typing":
+                is_typing = bool(message_data.get("is_typing"))
+                receiver_id = _safe_int(message_data.get("receiver_id"))
+                if receiver_id is None:
+                    continue
+                await manager.typing_status(
+                    message_type=msg_type,
+                    receiver_id=receiver_id,
+                    typing_status=is_typing,
+                )
+
+            elif msg_type == "read_receipt":
                 await read_receipt.mark_as_read(message_data, current_user.id, db)
-            # if the message is of type reply
-            elif message_data.get("type") == "reply_message":
-                receiver_id=int(message_data.get("to"))
-                content=message_data.get("content")
-                reply_msg_id=int(message_data.get("reply_msg_id"))
-                media_url=message_data.get("media_url")
-                media_type=message_data.get("media_type")
-                payload=schemas.ReplyMessageSchema(
-                     to=receiver_id,
-                     reply_msg_id=reply_msg_id,
-                     content=content,
-                     media_type=media_type,
-                     media_url=media_url
+
+            elif msg_type == "reply_message":
+                receiver_id = _safe_int(message_data.get("to"))
+                reply_msg_id = _safe_int(message_data.get("reply_msg_id"))
+                content = message_data.get("content")
+                media_url = message_data.get("media_url")
+                media_type = message_data.get("media_type")
+                if receiver_id is None or reply_msg_id is None:
+                    continue
+                payload = schemas.ReplyMessageSchema(
+                    to=receiver_id,
+                    reply_msg_id=reply_msg_id,
+                    content=content,
+                    media_type=media_type,
+                    media_url=media_url
                 )
-                await reply_msg.reply_msg(payload,current_user.id,db)
-            # replying to a shared post
-            elif message_data.get("type") == "reply_to_share":
-                receiver_id=int(message_data.get("to"))
-                content=message_data.get("content")
-                shared_post_id=int(message_data.get("reply_share_id"))
-                media_url=message_data.get("media_url")
-                media_type=message_data.get("media_type")
-                payload=schemas.ReplyToShareSchema(
-                     to=receiver_id,
-                     shared_post_id=shared_post_id,
-                     content=content,
-                     media_type=media_type,
-                     media_url=media_url
+                await reply_msg.reply_msg(payload, current_user.id, db)
+
+            elif msg_type == "reply_to_share":
+                receiver_id = _safe_int(message_data.get("to"))
+                shared_post_id = _safe_int(message_data.get("reply_share_id"))
+                content = message_data.get("content")
+                media_url = message_data.get("media_url")
+                media_type = message_data.get("media_type")
+                if receiver_id is None or shared_post_id is None:
+                    continue
+                payload = schemas.ReplyToShareSchema(
+                    to=receiver_id,
+                    shared_post_id=shared_post_id,
+                    content=content,
+                    media_type=media_type,
+                    media_url=media_url
                 )
-                await reply_to_share.reply_share(payload,current_user.id,db)
-            # else then its a chat message
+                await reply_to_share.reply_share(payload, current_user.id, db)
+
             else:
-                receiver_id=int(message_data.get("to"))
-                content=message_data.get("content")
-                media_url=message_data.get("media_url")
-                media_type=message_data.get("media_type")
-                payload=schemas.MessageSchema(
-                     to=receiver_id,
-                     content=content,
-                     media_type=media_type,
-                     media_url=media_url
+                receiver_id = _safe_int(message_data.get("to"))
+                content = message_data.get("content")
+                media_url = message_data.get("media_url")
+                media_type = message_data.get("media_type")
+                if receiver_id is None:
+                    continue
+                payload = schemas.MessageSchema(
+                    to=receiver_id,
+                    content=content,
+                    media_type=media_type,
+                    media_url=media_url
                 )
-                await dm.messageUser(payload,current_user.id,db)         
+                await dm.messageUser(payload, current_user.id, db)
+
     except WebSocketDisconnect:
-        # this is executed only when the client tries to disconnect
-        # like in development clicking on the disconnect button in the
-        # tools like postman or in production just getting out of the app
-        # at this point of time remember the frontend tool has already
-        # intiated the close that is it has already sent a ws.close()
-        # frame to the websocket server and it handles it you dont need 
-        # again do a ws.close() here which leads to the run time errors
-        # like its happening now so we take off that ws.close() and only
-        # do a ws.close() manually that is we writing ws.close() only when
-        # we want to kick off the user that is when he doesnt send a pong
-        # and cases like that so we use a client_intitated var and do few
-        # checks on it inside the disconnect method 
-        manager.disconnect(user_id,client_initiated=True)
+        manager.disconnect(user_id, client_initiated=True)
     except Exception as e:
-        # some probelm with the client so we (the server) are 
-        # kicking him offf after printing whats the probelm
         print(e)
-        manager.disconnect(user_id,client_initiated=False)
+        manager.disconnect(user_id, client_initiated=False)

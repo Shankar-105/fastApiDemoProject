@@ -56,9 +56,11 @@ async def reply_msg(
         if receiver_id in manager.active_connections:
             try:
                 reply_message_payload={
+                "type": "message",
                 "id": msg.id,
                 "content": msg.content,
                 "sender_id": user_id,
+                "receiver_id": payload.to,
                 "timestamp": format_timestamp(msg.created_at),
                 "is_reply": True,
                 "is_reply_to_share": False,
@@ -88,9 +90,11 @@ async def reply_msg(
             print("Receiver offline — message saved in DB")
         # Send response back to sender
         payload_to_user={
+            "type": "message",
                 "id": msg.id,
                 "content": msg.content,
                 "sender_id": user_id,
+            "receiver_id": payload.to,
                 "timestamp":format_timestamp(msg.created_at),
                 "is_reply": True,
                 "is_reply_to_share": False,

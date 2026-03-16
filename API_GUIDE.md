@@ -6,7 +6,7 @@
 
 | Type | Count |
 |------|-------|
-| **REST Endpoints** | **55** |
+| **REST Endpoints** | **59** |
 | **WebSocket Endpoints** | **1** (`/chat/ws/{user_id}`) |
 | **WebSocket Message Types** | **11** (send) + **7** (receive) |
 
@@ -57,6 +57,7 @@ Most endpoints require a **JWT Bearer Token**. Here's the flow:
 | [Votes / Likes](#-votes--likes) | Like/dislike posts and comments |
 | [Connections](#-connections-followunfollow) | Follow, unfollow, remove followers |
 | [Feed](#-feed) | Home feed & explore |
+| [Saved Posts](#-saved-posts) | Save, unsave, and list saved posts |
 | [Search](#-search) | Search users & hashtags |
 | [Password Management](#-password-management) | Change/reset password via OTP (authenticated & unauthenticated) |
 | [Chat — Recent Chats](#-chat--recent-chats) | List recent conversations |
@@ -480,7 +481,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 ---
 
-## � Notifications
+## 🔔 Notifications
 
 ### 1. Get My Notifications
 
@@ -555,7 +556,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 ---
 
-## �👥 Users
+## 👥 Users
 
 ### 1. Get All Users
 
@@ -1082,6 +1083,93 @@ curl -X POST http://localhost:8000/posts/createPost \
 | `offset` | int | `0` |
 
 **Response — `200 OK`:** Same paginated `PostListResponse` structure as `GET /me/posts`.
+
+---
+
+## 🔖 Saved Posts
+
+### 1. Save a Post
+
+| Detail | Value |
+|--------|-------|
+| **Endpoint** | `POST /saved/{post_id}` |
+| **Auth** | 🔐 Bearer Token |
+| **Description** | Save a post to your personal saved collection. If already saved, returns a success message without duplicating rows. |
+
+**Response — `201 Created`:**
+```json
+{
+  "message": "Post saved"
+}
+```
+
+Possible duplicate-save response:
+```json
+{
+  "message": "Post already saved"
+}
+```
+
+---
+
+### 2. Unsave a Post
+
+| Detail | Value |
+|--------|-------|
+| **Endpoint** | `DELETE /saved/{post_id}` |
+| **Auth** | 🔐 Bearer Token |
+| **Description** | Remove a post from your saved collection. |
+
+**Response — `200 OK`:**
+```json
+{
+  "message": "Saved post removed"
+}
+```
+
+---
+
+### 3. Get My Saved Posts
+
+| Detail | Value |
+|--------|-------|
+| **Endpoint** | `GET /saved/me` |
+| **Auth** | 🔐 Bearer Token |
+| **Description** | Returns saved posts newest-first, including full `PostDetailResponse` per saved item and `saved_at` timestamp. |
+
+**Response — `200 OK`:**
+```json
+{
+  "saved": [
+    {
+      "id": 14,
+      "post_id": 5,
+      "saved_at": "2026-03-16T11:20:00Z",
+      "post": {
+        "id": 5,
+        "title": "Sunset vibes",
+        "content": "Golden hour",
+        "media_url": "https://<storage-account>.blob.core.windows.net/posts-media/sunset.jpg",
+        "media_type": "image",
+        "likes": 12,
+        "dislikes": 1,
+        "views": 40,
+        "comments_count": 3,
+        "enable_comments": true,
+        "hashtags": "#sunset,#travel",
+        "created_at": "2026-03-15T09:00:00Z",
+        "is_liked": true,
+        "owner": {
+          "id": 2,
+          "username": "jane_doe",
+          "nickname": "Jane",
+          "profile_pic": null
+        }
+      }
+    }
+  ]
+}
+```
 
 ---
 
@@ -1752,7 +1840,7 @@ You will receive various event payloads from the server:
 
 ## 📊 Quick Reference — All Endpoints at a Glance
 
-### REST API Endpoints (55 total)
+### REST API Endpoints (59 total)
 
 | # | Method | Endpoint | Auth | Description |
 |---|--------|----------|------|-------------|
@@ -1762,7 +1850,7 @@ You will receive various event payloads from the server:
 | 4 | `POST` | `/refresh` | 🌐 ⚡ | Rotate refresh token |
 | 5 | `POST` | `/logout` | 🔐 | Blacklist token + revoke refresh tokens |
 | 6 | `POST` | `/forgot-password` | 🌐 ⚡ | Initiate unauthenticated password reset |
-| 7 | `POST` | `/reset-password` (auth) | 🌐 ⚡ | Complete unauthenticated password reset |
+| 7 | `POST` | `/reset-password` | 🌐 ⚡ | Complete unauthenticated password reset |
 | 8 | `GET` | `/users/getAllUsers` | 🌐 | List all users |
 | 9 | `GET` | `/users/{id}/profile` | 🔐 | View user profile |
 | 10 | `GET` | `/users/{id}/profile/pic` | 🔐 | Get user's profile pic |
@@ -1798,20 +1886,23 @@ You will receive various event payloads from the server:
 | 40 | `DELETE` | `/remove_follower/{user_id}` | 🔐 | Remove follower |
 | 41 | `GET` | `/feed/home` | 🔐 | Home feed |
 | 42 | `GET` | `/feed/explore` | 🔐 | Explore feed |
-| 43 | `GET` | `/search` | 🔐 | Search users/hashtags |
-| 44 | `POST` | `/change-password` | 🔐 ⚡ | Request password OTP |
-| 45 | `POST` | `/reset-password` (auth) | 🔐 ⚡ | Reset password with OTP |
-| 46 | `GET` | `/recent-chats` | 🔐 | Recent conversations |
-| 47 | `POST` | `/share` | 🔐 | Share post to DM |
-| 48 | `POST` | `/upload-media` | 🔐 | Upload chat media |
-| 49 | `GET` | `/chat/history/{friend_id}` | 🔐 | Chat history |
-| 50 | `GET` | `/msgs/{msg_id}/info` | 🔐 | Message delivery info |
-| 51 | `GET` | `/msgs/{msg_id}/msg_reaction_info` | 🔐 | Message reactions |
-| 52 | `GET` | `/shared/{id}/reactions` | 🔐 | Shared post reactions |
-| 53 | `POST` | `/delete/for-me/{msg_id}` | 🔐 | Delete message for me |
-| 54 | `POST` | `/delete-share/for-me/{id}` | 🔐 | Delete share for me |
-| 55 | `DELETE` | `/clear-chat/{friend_id}` | 🔐 | Clear chat |
-| 56 | `GET` | `/msg/{msg_id}/can_edit` | 🔐 | Check edit eligibility |
+| 43 | `POST` | `/saved/{post_id}` | 🔐 | Save a post |
+| 44 | `DELETE` | `/saved/{post_id}` | 🔐 | Remove a saved post |
+| 45 | `GET` | `/saved/me` | 🔐 | List my saved posts |
+| 46 | `GET` | `/search` | 🔐 | Search users/hashtags |
+| 47 | `POST` | `/change-password` | 🔐 ⚡ | Request password OTP |
+| 48 | `POST` | `/reset-password` (auth) | 🔐 ⚡ | Reset password with OTP |
+| 49 | `GET` | `/recent-chats` | 🔐 | Recent conversations |
+| 50 | `POST` | `/share` | 🔐 | Share post to DM |
+| 51 | `POST` | `/upload-media` | 🔐 | Upload chat media |
+| 52 | `GET` | `/chat/history/{friend_id}` | 🔐 | Chat history |
+| 53 | `GET` | `/msgs/{msg_id}/info` | 🔐 | Message delivery info |
+| 54 | `GET` | `/msgs/{msg_id}/msg_reaction_info` | 🔐 | Message reactions |
+| 55 | `GET` | `/shared/{id}/reactions` | 🔐 | Shared post reactions |
+| 56 | `POST` | `/delete/for-me/{msg_id}` | 🔐 | Delete message for me |
+| 57 | `POST` | `/delete-share/for-me/{id}` | 🔐 | Delete share for me |
+| 58 | `DELETE` | `/clear-chat/{friend_id}` | 🔐 | Clear chat |
+| 59 | `GET` | `/msg/{msg_id}/can_edit` | 🔐 | Check edit eligibility |
 
 > ⚡ = Rate-limited endpoint. See [FEATURES.md](./FEATURES.md) for default limits and `.env` configuration.
 

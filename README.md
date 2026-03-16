@@ -46,17 +46,10 @@ _Ready to verify everything works? Check out [`TESTS.md`](./TESTS.md) for a comp
 _All tests use a separate test database—your dev data stays safe! 🛡️_
 
 ---
-## 🤝 Contributing
- open to all contributors 
-- **Clone the repo**
-- Create a new branch (`git checkout -b feature-xyz`)
-- Make your changes and commit with clear messages
-- Raise and Issue and Open a Pull Request (PR)
-- I will review & merge if the changes make sense.
-- Want to add a frontend? **Sponsor a frontend integration!**  
-  Just reach out or open a PR for any frontend you build (React, Vue, whatever you love).
 
-If you have questions, need guidance, or want to contribute something unique, just open an issue or reach out using the gmail or the linkedIn (checkout the profile for links)!
+## 🤝 Contributing
+
+_Backend developer? Frontend developer? Either, there's a clear path for you. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for role-specific setup guides, code conventions, and PR instructions._
 
 ---
 

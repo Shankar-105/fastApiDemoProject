@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app import models, config
 from app import redis_service as _redis_svc   # accessed via module so tests can patch redis_client
 from app.db import sync_engine
-from app.routes import changepassword, posts,users,auth,like,connect,comment,search,me,feed
+from app.routes import changepassword, posts,users,auth,like,connect,comment,search,me,feed,saved
 from app.routes import notifications
 from app.redis_service import check_redis_connection
 from app.my_utils.socket_manager import manager
@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
     if redis_ok:
         _listener_task = asyncio.create_task(_notification_listener())
     else:
-        print("⚠️  Skipping Redis notification listener (Redis unavailable)")
+        print("Skipping Redis notification listener (Redis unavailable)!")
 
     yield   # app is running between these two points
 
@@ -108,6 +108,7 @@ app.include_router(search.router)
 app.include_router(me.router)
 app.include_router(changepassword.router)
 app.include_router(feed.router)
+app.include_router(saved.router)
 app.include_router(notifications.router)
 app.include_router(chat.router)
 app.include_router(chat_history.router)

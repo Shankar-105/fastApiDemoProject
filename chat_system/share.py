@@ -51,6 +51,8 @@ async def share_post(
         "type": "shared_post",
         "shared_id": shared.id,
         "post_id": post.id,
+        "sender_id": me.id,
+        "receiver_id": receiver.id,
         "title": (post.title or "")[:60] + ("..." if post.title and len(post.title) > 60 else ""),
         "media_type": post.media_type,          
         "media_url": post.media_path,       

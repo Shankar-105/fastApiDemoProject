@@ -40,11 +40,6 @@ alembic.ini
 profilepics/
 posts_media/
 
-# ignore the node_modules
-chat_system/node_modules
-chat_system/package-lock.json
-chat_system/package.json
-
 # ignore my lcoal sql files
 *.sql
 
@@ -57,8 +52,9 @@ seed.py
 # ignore the  pytests cache
 .pytest_cache
 
-# avoid my personal guides and mini frontend
+# avoid my personal guides and frontend
 my-mini-frontend/
+social_media_app-main/
 FastAPI_to_Express_Guide.md
 ASYNC_MIGRATION.md
 DATABASE_CONNECTIONS.md
@@ -77,5 +73,6 @@ deploy.zip
 vm.env
 create_db.py
 
-# ignore VS Code folder
+# ignore VS Code, visual studio folders
 .vscode/
+.vs/

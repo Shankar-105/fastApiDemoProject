@@ -28,6 +28,8 @@ async def messageUser(
         "media_url":msg.media_url,
         "media_type":msg.media_type,
         "sender_id": user_id,
+        "receiver_id": payload.to,
+        "type": "message",
         "timestamp": format_timestamp(msg.created_at),
         "is_reply": False,
         "is_reply_to_share": False,

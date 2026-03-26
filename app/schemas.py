@@ -86,13 +86,6 @@ class UserResponse(BaseModel):
     
     model_config = ConfigDict(from_attributes=True)
 
-
-class PresenceResponse(BaseModel):
-    """Online presence snapshot for a user."""
-    user_id: int
-    online: bool
-    last_seen_at: Optional[datetime] = None
-
 # AUTHENTICATION SCHEMAS
 
 class TokenModel(BaseModel):

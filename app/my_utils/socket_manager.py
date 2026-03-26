@@ -5,6 +5,9 @@ import json
 import asyncio
 from datetime import datetime, timezone
 from fastapi.websockets import WebSocketState
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
+from app import models
 
 class ConnectionManager:
     def __init__(self):
@@ -53,6 +56,87 @@ class ConnectionManager:
             "online": online,
             "last_seen_at": self._iso_or_none(last_seen),
         }
+
+    async def mark_last_seen(self, db: AsyncSession, user_id: int) -> datetime:
+        seen_at = datetime.now(timezone.utc)
+        try:
+            await db.execute(
+                update(models.User)
+                .where(models.User.id == user_id)
+                .values(last_seen_at=seen_at)
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+        return seen_at
+
+    async def _peer_ids(self, db: AsyncSession, user_id: int) -> set[int]:
+        peers: set[int] = set()
+
+        sent_to = await db.execute(
+            select(models.Message.receiver_id).where(models.Message.sender_id == user_id)
+        )
+        peers.update(row[0] for row in sent_to.all())
+
+        received_from = await db.execute(
+            select(models.Message.sender_id).where(models.Message.receiver_id == user_id)
+        )
+        peers.update(row[0] for row in received_from.all())
+
+        shared_to = await db.execute(
+            select(models.SharedPost.to_user_id).where(models.SharedPost.from_user_id == user_id)
+        )
+        peers.update(row[0] for row in shared_to.all())
+
+        shared_from = await db.execute(
+            select(models.SharedPost.from_user_id).where(models.SharedPost.to_user_id == user_id)
+        )
+        peers.update(row[0] for row in shared_from.all())
+
+        peers.discard(user_id)
+        return peers
+
+    async def broadcast_presence_update(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        online: bool,
+        last_seen_at: datetime | None = None,
+    ) -> None:
+        payload = {
+            "type": "presence_update",
+            "presence": {
+                "user_id": user_id,
+                "online": online,
+                "last_seen_at": self._iso_or_none(last_seen_at),
+            },
+        }
+        peers = await self._peer_ids(db, user_id)
+        for peer_id in peers:
+            await self.send_personal_message(payload, peer_id)
+
+    async def run_presence_watchdog(
+        self,
+        websocket: WebSocket,
+        heartbeat_event: asyncio.Event,
+        timeout_seconds: int,
+    ) -> None:
+        """Close stale sockets when heartbeats stop arriving."""
+        try:
+            while True:
+                await asyncio.wait_for(heartbeat_event.wait(), timeout=timeout_seconds)
+                heartbeat_event.clear()
+        except asyncio.TimeoutError:
+            try:
+                await websocket.close(code=1001, reason="Presence heartbeat timeout")
+            except Exception:
+                pass
+        except asyncio.CancelledError:
+            return
+
+    async def ack_presence_heartbeat(self, user_id: int, heartbeat_event: asyncio.Event) -> None:
+        heartbeat_event.set()
+        await self.send_personal_message({"type": "presence_ack"}, user_id)
 
     def _inject_peer_presence(self, message: dict, target_user_id: int) -> dict:
         if not isinstance(message, dict):

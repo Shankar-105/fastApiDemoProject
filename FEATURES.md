@@ -256,7 +256,8 @@ A production-grade 1-on-1 chat system running over a single persistent WebSocket
 
 ### Live Features
 - **Typing indicators** — real-time "user is typing..." status pushed to the other party
-- **Online/offline detection** — users are marked online when their WebSocket connects and offline on disconnect
+- **Online/offline detection** — users are marked online when their WebSocket connects, and marked offline if they disconnect or stop sending presence heartbeats
+- **Presence heartbeats** — clients send `presence_heartbeat` at intervals; server replies with `presence_ack` and uses timeout to detect zombie sessions
 - **Instant presence updates** — a dedicated `presence_update` event is broadcast to conversation peers on connect/disconnect
 - **Last seen tracking** — `last_seen_at` is persisted on disconnect and included in presence payloads
 - **Read receipts** — mark all unread messages from a sender as read; the sender gets a real-time notification with the read timestamp

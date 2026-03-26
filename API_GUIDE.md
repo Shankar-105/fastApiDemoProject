@@ -8,7 +8,7 @@
 |------|-------|
 | **REST Endpoints** | **59** |
 | **WebSocket Endpoints** | **1** (`/chat/ws/{user_id}`) |
-| **WebSocket Message Types** | **10** (send) + **11** (receive) |
+| **WebSocket Message Types** | **11** (send) + **12** (receive) |
 
 ---
 
@@ -1806,6 +1806,18 @@ All messages are sent as **JSON strings** through the WebSocket. The `type` fiel
 
 ---
 
+#### 11. Presence Heartbeat
+
+```json
+{
+  "type": "presence_heartbeat"
+}
+```
+
+> Send this periodically (recommended every 15-30 seconds) to keep your presence alive while the user is idle (for example, just scrolling reels).
+
+---
+
 ### Message Types — Receiving
 
 You will receive various event payloads from the server:
@@ -1822,6 +1834,7 @@ You will receive various event payloads from the server:
 | `share_deleted` | `{ "type": "share_deleted", "share_id", "is_deleted_for_everyone": true }` |
 | `typing` | `{ "type": "typing", "is_typing": true/false }` |
 | `read_receipt` | `{ "type": "read_receipt", "reader_id", "read_at", ... }` |
+| `presence_ack` | `{ "type": "presence_ack" }` |
 | `presence_update` | `{ "type": "presence_update", "presence": { "user_id", "online", "last_seen_at" } }` |
 
 ---
@@ -1914,6 +1927,7 @@ You will receive various event payloads from the server:
 | 8 | `shared_post_reaction` | React to a shared post |
 | 9 | `typing` | Typing indicator |
 | 10 | `read_receipt` | Mark messages as read |
+| 11 | `presence_heartbeat` | Keep connection alive for instant presence |
 
 ---
 

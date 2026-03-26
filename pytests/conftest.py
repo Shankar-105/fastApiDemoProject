@@ -16,6 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.main import app
 from app.models import Base
 from app.db import getDb
+from app import db as app_db
 from app.config import settings
 
 # Mock Redis with fakeredis (no real Redis server needed for tests)
@@ -170,6 +171,9 @@ def setup_test_db():
     # Teardown: Delete the test database after all tests are finished
     print(f"\n🧹 Cleaning up test database: {TEST_DB_NAME}...")
     # First, dispose engines to close all active connections
+    asyncio.run(async_test_engine.dispose())
+    asyncio.run(app_db.async_engine.dispose())
+    asyncio.run(redis_service.redis_client.aclose())
     sync_test_engine.dispose()
     # Connect to the default 'postgres' database to perform the drop
     cleanup_db_url = (

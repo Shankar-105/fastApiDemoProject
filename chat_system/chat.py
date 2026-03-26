@@ -1,12 +1,13 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
-from app import schemas, models, oauth2,db
+from app import schemas, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import update, select
 from app.my_utils.socket_manager import manager
 from chat_system import delete_msg,delete_shares,dm,edit_msg,load_missed_msgs,msg_reaction,share_reaction,reply_msg,reply_to_share,media_msg,read_receipt
 import json
-from datetime import datetime, timezone
+import asyncio
 router = APIRouter(tags=["chat"])
+
+PRESENCE_HEARTBEAT_TIMEOUT_SECONDS = 45
 
 # ping_task=None
 
@@ -17,57 +18,8 @@ async def chat(
     token: str = Query(None, description="Search query params"),
     db: AsyncSession = Depends(db.getDb)
 ):
-    async def _peer_ids(uid: int) -> set[int]:
-        peers: set[int] = set()
-
-        sent_to = await db.execute(
-            select(models.Message.receiver_id).where(models.Message.sender_id == uid)
-        )
-        peers.update(row[0] for row in sent_to.all())
-
-        received_from = await db.execute(
-            select(models.Message.sender_id).where(models.Message.receiver_id == uid)
-        )
-        peers.update(row[0] for row in received_from.all())
-
-        shared_to = await db.execute(
-            select(models.SharedPost.to_user_id).where(models.SharedPost.from_user_id == uid)
-        )
-        peers.update(row[0] for row in shared_to.all())
-
-        shared_from = await db.execute(
-            select(models.SharedPost.from_user_id).where(models.SharedPost.to_user_id == uid)
-        )
-        peers.update(row[0] for row in shared_from.all())
-
-        peers.discard(uid)
-        return peers
-
-    async def _broadcast_presence(uid: int, online: bool, last_seen_at: datetime | None = None) -> None:
-        payload = {
-            "type": "presence_update",
-            "presence": {
-                "user_id": uid,
-                "online": online,
-                "last_seen_at": (last_seen_at.isoformat() if last_seen_at else None),
-            },
-        }
-        peers = await _peer_ids(uid)
-        for peer_id in peers:
-            await manager.send_personal_message(payload, peer_id)
-
-    async def _mark_last_seen(uid: int) -> datetime:
-        seen_at = datetime.now(timezone.utc)
-        try:
-            await db.execute(
-                update(models.User)
-                .where(models.User.id == uid)
-                .values(last_seen_at=seen_at)
-            )
-            await db.commit()
-        except Exception:
-            await db.rollback()
-        return seen_at
+    heartbeat_event = asyncio.Event()
+    heartbeat_task: asyncio.Task | None = None
 
     if not token:
         await websocket.close(code=1008)
@@ -82,7 +34,11 @@ async def chat(
         return
 
     await manager.connect(user_id, websocket)
-    await _broadcast_presence(user_id, online=True, last_seen_at=None)
+    heartbeat_event.set()  # initial connect counts as alive
+    heartbeat_task = asyncio.create_task(
+        manager.run_presence_watchdog(websocket, heartbeat_event, PRESENCE_HEARTBEAT_TIMEOUT_SECONDS)
+    )
+    await manager.broadcast_presence_update(db, user_id, online=True, last_seen_at=None)
 
     missed_content = await load_missed_msgs.load_missed_content(current_user.id, db)
     if missed_content:
@@ -185,6 +141,9 @@ async def chat(
                     typing_status=is_typing,
                 )
 
+            elif msg_type == "presence_heartbeat":
+                await manager.ack_presence_heartbeat(user_id, heartbeat_event)
+
             elif msg_type == "read_receipt":
                 await read_receipt.mark_as_read(message_data, current_user.id, db)
 
@@ -238,11 +197,14 @@ async def chat(
                 await dm.messageUser(payload, current_user.id, db)
 
     except WebSocketDisconnect:
-        seen_at = await _mark_last_seen(user_id)
+        seen_at = await manager.mark_last_seen(db, user_id)
         manager.disconnect(user_id, client_initiated=True, last_seen_at=seen_at)
-        await _broadcast_presence(user_id, online=False, last_seen_at=seen_at)
+        await manager.broadcast_presence_update(db, user_id, online=False, last_seen_at=seen_at)
     except Exception as e:
         print(e)
-        seen_at = await _mark_last_seen(user_id)
+        seen_at = await manager.mark_last_seen(db, user_id)
         manager.disconnect(user_id, client_initiated=False, last_seen_at=seen_at)
-        await _broadcast_presence(user_id, online=False, last_seen_at=seen_at)
+        await manager.broadcast_presence_update(db, user_id, online=False, last_seen_at=seen_at)
+    finally:
+        if heartbeat_task:
+            heartbeat_task.cancel()

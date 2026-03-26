@@ -8,7 +8,7 @@
 |------|-------|
 | **REST Endpoints** | **59** |
 | **WebSocket Endpoints** | **1** (`/chat/ws/{user_id}`) |
-| **WebSocket Message Types** | **11** (send) + **7** (receive) |
+| **WebSocket Message Types** | **10** (send) + **11** (receive) |
 
 ---
 
@@ -1806,18 +1806,6 @@ All messages are sent as **JSON strings** through the WebSocket. The `type` fiel
 
 ---
 
-#### 11. Pong (Heartbeat Response)
-
-```json
-{
-  "type": "pong"
-}
-```
-
-> The server sends periodic `ping` messages. Respond with `pong` to signal you're still connected. Failure to respond may result in disconnection (zombie detection).
-
----
-
 ### Message Types — Receiving
 
 You will receive various event payloads from the server:
@@ -1834,7 +1822,7 @@ You will receive various event payloads from the server:
 | `share_deleted` | `{ "type": "share_deleted", "share_id", "is_deleted_for_everyone": true }` |
 | `typing` | `{ "type": "typing", "is_typing": true/false }` |
 | `read_receipt` | `{ "type": "read_receipt", "reader_id", "read_at", ... }` |
-| `ping` | Server heartbeat — respond with `{ "type": "pong" }` |
+| `presence_update` | `{ "type": "presence_update", "presence": { "user_id", "online", "last_seen_at" } }` |
 
 ---
 
@@ -1926,7 +1914,6 @@ You will receive various event payloads from the server:
 | 8 | `shared_post_reaction` | React to a shared post |
 | 9 | `typing` | Typing indicator |
 | 10 | `read_receipt` | Mark messages as read |
-| 11 | `pong` | Heartbeat response |
 
 ---
 
@@ -1935,7 +1922,7 @@ You will receive various event payloads from the server:
 - **Getting `401 Unauthorized`?** Your access token may have expired. Use `POST /refresh` with your refresh token to get a new one silently — no re-login needed.
 - **Getting `429 Too Many Requests`?** You've hit a rate limit. Check the `Retry-After` header for when you can try again.
 - **Getting `404 Not Found` for media?** Ensure the Docker volumes are mounted and the folders (`profilepics/`, `posts_media/`, `chat-media/`) exist.
-- **WebSocket disconnecting?** Make sure to respond to `ping` messages with `pong` to avoid zombie detection.
+- **Presence not updating instantly?** Keep the WebSocket connection open and listen for `presence_update` events.
 - **Swagger UI** at `http://localhost:8000/docs` is the fastest way to test REST endpoints — it handles auth and request formatting for you.
 - **For WebSocket testing**, use **Postman** (WebSocket tab), the **[websocat](https://github.com/nickel-org/websocat)** CLI tool, or the browser DevTools console.
 - **Rate limits on edit**: Message editing is time-limited (default 15 minutes). Always check `/msg/{msg_id}/can_edit` first.

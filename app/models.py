@@ -144,26 +144,27 @@ class PostView(Base):
     user_id = Column(Integer, ForeignKey("users.id",ondelete="CASCADE"),primary_key=True)
     viewed_at = Column(DateTime,default=datetime.utcnow)
 class User(Base):
-      __tablename__='users'
-      id=Column(Integer,primary_key=True,nullable=False)
-      username=Column(String,nullable=False,unique=True)
-      password=Column(String,nullable=False)
-      nickname=Column(String,nullable=False)
-      bio=Column(String,nullable=True)
-      email=Column(String,nullable=True)
-      profile_picture=Column(String,nullable=True)
-      created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
-      followers_cnt=Column(Integer,default=0,server_default="0",nullable=False)
-      following_cnt=Column(Integer,default=0,server_default="0",nullable=False)
-      # added relationship between the posts table and the users table so that
-      # when you actually need all the posts of a user there's no need from now on 
-      # to go check the posts table and query it for Posts.user_id==currentUser.id
-      # inorder to get all posts of a certain user but rather by declaring this relationship
-      # you just do the currentUser.posts and sqlAlchemy internally does the joins
-      # and retrievs you all of the users posts!
-      posts=relationship('Post',backref=backref('user', lazy='selectin'), lazy='selectin')
-      # a many to many relationship
-      followers = relationship(
+        __tablename__='users'
+        id=Column(Integer,primary_key=True,nullable=False)
+        username=Column(String,nullable=False,unique=True)
+        password=Column(String,nullable=False)
+        nickname=Column(String,nullable=False)
+        bio=Column(String,nullable=True)
+        email=Column(String,nullable=True)
+        profile_picture=Column(String,nullable=True)
+        created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
+        last_seen_at=Column(DateTime(timezone=True), nullable=True)
+        followers_cnt=Column(Integer,default=0,server_default="0",nullable=False)
+        following_cnt=Column(Integer,default=0,server_default="0",nullable=False)
+        # added relationship between the posts table and the users table so that
+        # when you actually need all the posts of a user there's no need from now on 
+        # to go check the posts table and query it for Posts.user_id==currentUser.id
+        # inorder to get all posts of a certain user but rather by declaring this relationship
+        # you just do the currentUser.posts and sqlAlchemy internally does the joins
+        # and retrievs you all of the users posts!
+        posts=relationship('Post',backref=backref('user', lazy='selectin'), lazy='selectin')
+        # a many to many relationship
+        followers = relationship(
         'User',
         secondary=connections,  # The middle table
         primaryjoin=(connections.c.followed_id == id),  # "I am the follwed guyy"
@@ -171,7 +172,7 @@ class User(Base):
         backref=backref('following', lazy='selectin'),  # reverse property
         lazy='selectin'
     )
-      voted_posts = relationship(
+        voted_posts = relationship(
         'Post',
         secondary='votes',  # The middle table
         primaryjoin=(Votes.user_id == id),  # User.id links to Votes.user_id
@@ -179,10 +180,10 @@ class User(Base):
         backref=backref('voters', lazy='selectin'),  # allows posts to access users who voted on them
         lazy='selectin'
     )
-      total_comments=relationship('Comments',backref=backref('user', lazy='selectin'), lazy='selectin')
-      sent_posts = relationship("SharedPost", foreign_keys=[SharedPost.from_user_id],back_populates="from_user", lazy="selectin")
-      received_posts = relationship("SharedPost", foreign_keys=[SharedPost.to_user_id],back_populates="to_user", lazy="selectin")
-      shared_post_reactions = relationship("SharedPostReaction", back_populates="user", lazy="selectin")
+        total_comments=relationship('Comments',backref=backref('user', lazy='selectin'), lazy='selectin')
+        sent_posts = relationship("SharedPost", foreign_keys=[SharedPost.from_user_id],back_populates="from_user", lazy="selectin")
+        received_posts = relationship("SharedPost", foreign_keys=[SharedPost.to_user_id],back_populates="to_user", lazy="selectin")
+        shared_post_reactions = relationship("SharedPostReaction", back_populates="user", lazy="selectin")
 class MessageReplies(Base):
     __tablename__ = "message_replies"
     reply_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)

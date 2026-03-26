@@ -1,9 +1,11 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update, select
 from app.my_utils.socket_manager import manager
 from chat_system import delete_msg,delete_shares,dm,edit_msg,load_missed_msgs,msg_reaction,share_reaction,reply_msg,reply_to_share,media_msg,read_receipt
 import json
+from datetime import datetime, timezone
 router = APIRouter(tags=["chat"])
 
 # ping_task=None
@@ -15,6 +17,58 @@ async def chat(
     token: str = Query(None, description="Search query params"),
     db: AsyncSession = Depends(db.getDb)
 ):
+    async def _peer_ids(uid: int) -> set[int]:
+        peers: set[int] = set()
+
+        sent_to = await db.execute(
+            select(models.Message.receiver_id).where(models.Message.sender_id == uid)
+        )
+        peers.update(row[0] for row in sent_to.all())
+
+        received_from = await db.execute(
+            select(models.Message.sender_id).where(models.Message.receiver_id == uid)
+        )
+        peers.update(row[0] for row in received_from.all())
+
+        shared_to = await db.execute(
+            select(models.SharedPost.to_user_id).where(models.SharedPost.from_user_id == uid)
+        )
+        peers.update(row[0] for row in shared_to.all())
+
+        shared_from = await db.execute(
+            select(models.SharedPost.from_user_id).where(models.SharedPost.to_user_id == uid)
+        )
+        peers.update(row[0] for row in shared_from.all())
+
+        peers.discard(uid)
+        return peers
+
+    async def _broadcast_presence(uid: int, online: bool, last_seen_at: datetime | None = None) -> None:
+        payload = {
+            "type": "presence_update",
+            "presence": {
+                "user_id": uid,
+                "online": online,
+                "last_seen_at": (last_seen_at.isoformat() if last_seen_at else None),
+            },
+        }
+        peers = await _peer_ids(uid)
+        for peer_id in peers:
+            await manager.send_personal_message(payload, peer_id)
+
+    async def _mark_last_seen(uid: int) -> datetime:
+        seen_at = datetime.now(timezone.utc)
+        try:
+            await db.execute(
+                update(models.User)
+                .where(models.User.id == uid)
+                .values(last_seen_at=seen_at)
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+        return seen_at
+
     if not token:
         await websocket.close(code=1008)
         return
@@ -28,6 +82,8 @@ async def chat(
         return
 
     await manager.connect(user_id, websocket)
+    await _broadcast_presence(user_id, online=True, last_seen_at=None)
+
     missed_content = await load_missed_msgs.load_missed_content(current_user.id, db)
     if missed_content:
         missed_content.reverse()
@@ -106,10 +162,6 @@ async def chat(
                     recv_id=recv_id
                 )
 
-            elif msg_type == "pong":
-                manager.mark_pong(user_id)
-                continue
-
             elif msg_type == "delete_share_for_everyone":
                 share_id = _safe_int(message_data.get("message_id"))
                 recv_id = _safe_int(message_data.get("receiver_id"))
@@ -186,7 +238,11 @@ async def chat(
                 await dm.messageUser(payload, current_user.id, db)
 
     except WebSocketDisconnect:
-        manager.disconnect(user_id, client_initiated=True)
+        seen_at = await _mark_last_seen(user_id)
+        manager.disconnect(user_id, client_initiated=True, last_seen_at=seen_at)
+        await _broadcast_presence(user_id, online=False, last_seen_at=seen_at)
     except Exception as e:
         print(e)
-        manager.disconnect(user_id, client_initiated=False)
+        seen_at = await _mark_last_seen(user_id)
+        manager.disconnect(user_id, client_initiated=False, last_seen_at=seen_at)
+        await _broadcast_presence(user_id, online=False, last_seen_at=seen_at)

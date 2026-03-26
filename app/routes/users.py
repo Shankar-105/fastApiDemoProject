@@ -10,9 +10,27 @@ import os
 from app.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
 from app.rate_limiter import signup_limiter
 from app.blob_service import get_blob_url
+from app.my_utils.socket_manager import manager
 router=APIRouter(
     tags=['Users']
 )
+
+
+@router.get("/users/{user_id}/presence", status_code=status.HTTP_200_OK, response_model=sch.PresenceResponse)
+async def get_user_presence(user_id: int, db: AsyncSession = Depends(db.getDb), _: models.User = Depends(oauth2.getCurrentUser)):
+    result = await db.execute(select(models.User).where(models.User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    online = manager.is_online(user_id)
+    last_seen_at = None if online else (user.last_seen_at or manager.get_last_seen(user_id))
+
+    return sch.PresenceResponse(
+        user_id=user_id,
+        online=online,
+        last_seen_at=last_seen_at,
+    )
 
 @router.get("/users/{user_id}/profile",status_code=status.HTTP_200_OK,response_model=sch.UserProfileResponse)
 async def userProfile(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):

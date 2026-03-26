@@ -44,7 +44,7 @@ The entire backend is built on an **async-first** philosophy — from the first 
 - **Thread-pool offloading for CPU-bound work** — operations like `bcrypt` password hashing/verification and `JWT` encode/decode are CPU-intensive. These are offloaded via `asyncio.to_thread()` so the event loop stays free while cryptographic operations crunch in the background.
 - **Async Redis operations** — all cache reads, writes, and deletions go through `redis.asyncio`, keeping the caching layer fully non-blocking.
 - **Async email delivery** — OTP emails are sent via `fastapi-mail` with `aiosmtplib` under the hood — no synchronous SMTP calls blocking the server.
-- **Async WebSocket management** — the `ConnectionManager` uses `asyncio.Event` and `asyncio.create_task()` for per-connection ping loops, typing indicators, and message delivery without blocking any other connection.
+- **Async WebSocket management** — the `ConnectionManager` tracks active sockets, injects peer presence metadata, and delivers typing/message events without blocking any other connection.
 - **Zero sync bottlenecks** — even utility functions like OTP generation, cache invalidation, and expired OTP cleanup are fully async.
 
 > **What this means in practice:** The server can handle hundreds of simultaneous REST requests, WebSocket connections, file uploads, and database queries — all on a single worker process — without any request waiting on another.
@@ -256,9 +256,9 @@ A production-grade 1-on-1 chat system running over a single persistent WebSocket
 
 ### Live Features
 - **Typing indicators** — real-time "user is typing..." status pushed to the other party
-- **Online/offline detection** — server sends periodic `ping` messages; clients must respond with `pong` to stay connected
-- **Zombie connection detection** — connections that fail to respond to pings are automatically terminated and cleaned up
-- **Per-connection ping loop** — each WebSocket gets its own independent `asyncio.Task` for heartbeat monitoring
+- **Online/offline detection** — users are marked online when their WebSocket connects and offline on disconnect
+- **Instant presence updates** — a dedicated `presence_update` event is broadcast to conversation peers on connect/disconnect
+- **Last seen tracking** — `last_seen_at` is persisted on disconnect and included in presence payloads
 - **Read receipts** — mark all unread messages from a sender as read; the sender gets a real-time notification with the read timestamp
 - **Message reactions (emoji)** — react to any message with any emoji; toggle behavior (same emoji = remove, different emoji = switch)
 

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import or_,and_,select
 from typing import List
 from sqlalchemy.exc import IntegrityError
+from app.my_utils.socket_manager import manager
 
 router = APIRouter(prefix="/chat", tags=["chat_history"])
 
@@ -171,6 +172,8 @@ async def get_recent_chats(
             "username": user.username,
             "nickname": user.nickname,
             "profile_pic": user.profile_picture,
+            "online": manager.is_online(user.id),
+            "last_seen_at": None if manager.is_online(user.id) else (user.last_seen_at or manager.get_last_seen(user.id)),
             "last_message": {
                 "content": msg.content,
                 "timestamp": format_timestamp(msg.created_at),

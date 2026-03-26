@@ -44,7 +44,7 @@ The entire backend is built on an **async-first** philosophy — from the first 
 - **Thread-pool offloading for CPU-bound work** — operations like `bcrypt` password hashing/verification and `JWT` encode/decode are CPU-intensive. These are offloaded via `asyncio.to_thread()` so the event loop stays free while cryptographic operations crunch in the background.
 - **Async Redis operations** — all cache reads, writes, and deletions go through `redis.asyncio`, keeping the caching layer fully non-blocking.
 - **Async email delivery** — OTP emails are sent via `fastapi-mail` with `aiosmtplib` under the hood — no synchronous SMTP calls blocking the server.
-- **Async WebSocket management** — the `ConnectionManager` uses `asyncio.Event` and `asyncio.create_task()` for per-connection ping loops, typing indicators, and message delivery without blocking any other connection.
+- **Async WebSocket management** — the `ConnectionManager` tracks active sockets, injects peer presence metadata, and delivers typing/message events without blocking any other connection.
 - **Zero sync bottlenecks** — even utility functions like OTP generation, cache invalidation, and expired OTP cleanup are fully async.
 
 > **What this means in practice:** The server can handle hundreds of simultaneous REST requests, WebSocket connections, file uploads, and database queries — all on a single worker process — without any request waiting on another.
@@ -54,6 +54,7 @@ The entire backend is built on an **async-first** philosophy — from the first 
 ## 🔐 Authentication & Security
 
 - **JWT access tokens** with configurable expiry time — generated using HMAC-SHA256 via `python-jose`
+- **Email verification on signup** — newly registered users receive an OTP by email and must verify before first login
 - **Explicit JWT expiry verification** — every token decode checks the `expTime` claim against `datetime.now(timezone.utc)`; expired tokens are rejected immediately with a clear error
 - **UTC-aware timestamps everywhere** — token creation, expiry checks, and blacklist TTL calculations all use `timezone.utc` to prevent clock-skew issues
 - **Secure password hashing** using `bcrypt` with automatic salt generation
@@ -61,6 +62,7 @@ The entire backend is built on an **async-first** philosophy — from the first 
 - **Blacklist check on every request** — every protected endpoint verifies the token hasn't been blacklisted before processing
 - **OAuth2PasswordBearer** scheme — extracts the JWT from the `Authorization: Bearer <token>` header automatically
 - **User enumeration prevention** — login returns a generic `"Invalid credentials"` message with `401` for both wrong username and wrong password; forgot-password returns a generic success message regardless of whether the email exists
+- **Unverified account login block** — login returns `403` for users who have not completed email verification
 - **Form-based login** — uses FastAPI's built-in `OAuth2PasswordRequestForm` for standards-compliant login
 - **CORS middleware** — Cross-Origin Resource Sharing enabled for frontend integration
 
@@ -122,7 +124,7 @@ Real-time notification system with persistent storage and live delivery.
 
 ## 👤 User Profiles
 
-- **Registration** with username (unique, 3–50 chars), password (6–72 chars, bcrypt-hashed), optional nickname and email
+- **Registration** with username (unique, 3–50 chars), password (6–72 chars, bcrypt-hashed), optional nickname, and required email (OTP verified)
 - **Profile fields** — username, nickname, bio (up to 500 chars), email, profile picture
 - **Profile picture upload** — accepts JPEG, PNG, and GIF files via `multipart/form-data`
 - **Profile picture removal** — deletes the file from disk and clears the database reference
@@ -256,9 +258,10 @@ A production-grade 1-on-1 chat system running over a single persistent WebSocket
 
 ### Live Features
 - **Typing indicators** — real-time "user is typing..." status pushed to the other party
-- **Online/offline detection** — server sends periodic `ping` messages; clients must respond with `pong` to stay connected
-- **Zombie connection detection** — connections that fail to respond to pings are automatically terminated and cleaned up
-- **Per-connection ping loop** — each WebSocket gets its own independent `asyncio.Task` for heartbeat monitoring
+- **Online/offline detection** — users are marked online when their WebSocket connects, and marked offline if they disconnect or stop sending presence heartbeats
+- **Presence heartbeats** — clients send `presence_heartbeat` at intervals; server replies with `presence_ack` and uses timeout to detect zombie sessions
+- **Instant presence updates** — a dedicated `presence_update` event is broadcast to conversation peers on connect/disconnect
+- **Last seen tracking** — `last_seen_at` is persisted on disconnect and included in presence payloads
 - **Read receipts** — mark all unread messages from a sender as read; the sender gets a real-time notification with the read timestamp
 - **Message reactions (emoji)** — react to any message with any emoji; toggle behavior (same emoji = remove, different emoji = switch)
 

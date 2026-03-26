@@ -2,7 +2,7 @@
 # pydantic_settings package this class automattically collects
 # data from the '.env' file with it being set as the config
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # database info
@@ -57,8 +57,9 @@ class Settings(BaseSettings):
     rl_create_post_window: int = 60
     rl_follow_max: int = 20
     rl_follow_window: int = 60
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
 settings = Settings()

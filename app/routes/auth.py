@@ -1,4 +1,4 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter
+﻿from fastapi import status,HTTPException,Depends,Body,APIRouter
 from app import db,models,oauth2,token_service
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -19,28 +19,31 @@ router=APIRouter(tags=['Authentication'])
 # using the built-in schema for login 'OAuth2PasswordRequestForm'
 # which is equivalent to our 'sch.UserLoginCred'
 async def loginUser(userCred:OAuth2PasswordRequestForm=Depends(),db:AsyncSession=Depends(db.getDb),_:None=Depends(login_limiter)):
-  # checks against the db for the username provided 
-  result=await db.execute(select(models.User).where(models.User.username==userCred.username))
-  isUserPresent=result.scalars().first()
-  # if not found tell the user not found
-  if not isUserPresent:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Invalid credentials")
-  # if found but he entered a wrong password tell him 
-  if not await utils.verifyPassword(userCred.password,isUserPresent.password):
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Invalid credentials")
-  # if both username and password verfication is successfull call
-  # the createAccessToken from oauth2 file which generates an jwt token
-  tokenData={"userId":isUserPresent.id,"userName":isUserPresent.username}
-  access_token=await oauth2.createAccessToken(tokenData)
-  # create a refresh token for this login session (new family)
-  refresh_token=await token_service.create_refresh_token(db, isUserPresent.id)
-  # return both tokens
-  return sch.TokenModel(id=isUserPresent.id,
-                        username=isUserPresent.username,
-                        accessToken=access_token,
-                        refreshToken=refresh_token,
-                        tokenType="bearer" 
-                        )
+    # checks against the db for the username provided
+    result = await db.execute(select(models.User).where(models.User.username == userCred.username))
+    isUserPresent = result.scalars().first()
+    # if not found tell the user not found
+    if not isUserPresent:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    # if found but he entered a wrong password tell him
+    if not await utils.verifyPassword(userCred.password, isUserPresent.password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if not isUserPresent.email_verified:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email not verified")
+    # if both username and password verfication is successfull call
+    # the createAccessToken from oauth2 file which generates an jwt token
+    tokenData = {"userId": isUserPresent.id, "userName": isUserPresent.username}
+    access_token = await oauth2.createAccessToken(tokenData)
+    # create a refresh token for this login session (new family)
+    refresh_token = await token_service.create_refresh_token(db, isUserPresent.id)
+    # return both tokens
+    return sch.TokenModel(
+        id=isUserPresent.id,
+        username=isUserPresent.username,
+        accessToken=access_token,
+        refreshToken=refresh_token,
+        tokenType="bearer"
+    )
 
 @router.post("/refresh", status_code=status.HTTP_200_OK)
 async def refresh(payload: sch.RefreshTokenRequest = Body(...), db: AsyncSession = Depends(db.getDb), _: None = Depends(refresh_limiter)):
@@ -126,4 +129,46 @@ async def reset_password(payload: sch.ResetPasswordSchema, db: AsyncSession = De
     await db.commit()
 
     return {"message": "Password has been reset successfully."}
+
+
+@router.post("/verify-email", status_code=status.HTTP_200_OK)
+async def verify_email(payload: sch.VerifyEmailRequest, db: AsyncSession = Depends(db.getDb)):
+    result = await db.execute(select(models.User).where(models.User.email == payload.email))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.email_verified:
+        return {"message": "Email already verified"}
+
+    ok = await otp_service.checkOtp(db, payload.email, payload.otp)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
+
+    user.email_verified = True
+    await db.commit()
+    return {"message": "Email verified successfully"}
+
+
+@router.post("/resend-verification-otp", status_code=status.HTTP_200_OK)
+async def resend_verification_otp(payload: sch.ResendVerificationOtpRequest, db: AsyncSession = Depends(db.getDb), _: None = Depends(forgot_password_limiter)):
+    result = await db.execute(select(models.User).where(models.User.email == payload.email))
+    user = result.scalars().first()
+    if not user:
+        return {"message": "If an account with this email exists, an OTP has been sent."}
+
+    if user.email_verified:
+        return {"message": "Email already verified"}
+
+    otp = otp_service.generateOtp()
+    await otp_service.saveOtp(db, payload.email, otp, minutes=5)
+    try:
+        await email_service.send_verification_email(to_email=payload.email, otp=otp)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="There was an error sending the email."
+        )
+    return {"message": "Verification OTP sent to your email."}
+
 

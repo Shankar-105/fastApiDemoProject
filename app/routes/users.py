@@ -10,6 +10,8 @@ import os
 from app.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
 from app.rate_limiter import signup_limiter
 from app.blob_service import get_blob_url
+import app.otp_service as otp_service
+import app.email_service as email_service
 router=APIRouter(
     tags=['Users']
 )
@@ -76,13 +78,32 @@ async def myProfilePicture(user_id:int,db:AsyncSession=Depends(db.getDb),current
 
 @router.post("/user/signup",status_code=status.HTTP_201_CREATED,response_model=sch.UserResponse)
 async def createUser(userData:sch.UserSignupRequest=Body(...),db:AsyncSession=Depends(db.getDb),_:None=Depends(signup_limiter)):
+    # prevent duplicate emails to keep OTP verification deterministic per user
+    existing_email = await db.execute(select(models.User).where(models.User.email == userData.email))
+    if existing_email.scalars().first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+
     # hash the password using the bcrypt lib (offloaded to thread pool)
     hashedPw=await utils.hashPassword(userData.password)
     userData.password=hashedPw
-    newUser=models.User(**userData.dict())
+    user_payload = userData.model_dump()
+    user_payload["email_verified"] = False
+    newUser=models.User(**user_payload)
     db.add(newUser)
     await db.commit()
     await db.refresh(newUser)
+
+    # send signup verification OTP
+    otp = otp_service.generateOtp()
+    await otp_service.saveOtp(db, userData.email, otp, minutes=5)
+    try:
+        await email_service.send_verification_email(to_email=userData.email, otp=otp)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User created but failed to send verification email"
+        )
+
     # Invalidate the all_users cache because a new user was added
     await delete_cache("all_users")
     return newUser

@@ -16,11 +16,14 @@ def test_ws_chat_connect():
     """
     with TestClient(app, raise_server_exceptions=False) as tc:
         # Create/login user to get a token (user may already exist from other tests)
-        tc.post("/user/signup", json={
+        signup = tc.post("/user/signup", json={
             "username": "testuser",
             "password": "testpassword",
-            "nickname": "TestUser"
+            "nickname": "TestUser",
+            "email": "testuser@example.com"
         })
+        if signup.status_code == 201:
+            tc.post("/verify-email", json={"email": "testuser@example.com", "otp": "123456"})
         resp = tc.post("/login", data={
             "username": "testuser",
             "password": "testpassword"

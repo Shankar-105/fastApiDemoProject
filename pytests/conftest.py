@@ -16,12 +16,27 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.main import app
 from app.models import Base
 from app.db import getDb
+from app import db as app_db
 from app.config import settings
 
 # Mock Redis with fakeredis (no real Redis server needed for tests)
 import fakeredis
 from app import redis_service
 redis_service.redis_client = fakeredis.FakeAsyncRedis(decode_responses=True)
+
+# Mock OTP generation + email sending for deterministic and fast tests.
+from app import otp_service
+from app import email_service
+
+def _fixed_otp() -> str:
+    return "123456"
+
+async def _noop_send(*args, **kwargs):
+    return None
+
+otp_service.generateOtp = _fixed_otp
+email_service.send_otp_email = _noop_send
+email_service.send_verification_email = _noop_send
 
 # Disable rate limiting in tests.
 # All test requests come from the same fake IP and the test session makes far
@@ -170,6 +185,9 @@ def setup_test_db():
     # Teardown: Delete the test database after all tests are finished
     print(f"\n🧹 Cleaning up test database: {TEST_DB_NAME}...")
     # First, dispose engines to close all active connections
+    asyncio.run(async_test_engine.dispose())
+    asyncio.run(app_db.async_engine.dispose())
+    asyncio.run(redis_service.redis_client.aclose())
     sync_test_engine.dispose()
     # Connect to the default 'postgres' database to perform the drop
     cleanup_db_url = (
@@ -214,10 +232,18 @@ async def create_test_user(client):
     user_data = {
         "username": "testuser",
         "password": "testpassword",
-        "nickname": "TestUser"
+        "nickname": "TestUser",
+        "email": "testuser@example.com",
     }
     resp = await client.post("/user/signup", json=user_data)
     assert resp.status_code in (201, 409)  # 201=created, 409=already exists
+
+    verify = await client.post(
+        "/verify-email",
+        json={"email": user_data["email"], "otp": "123456"},
+    )
+    assert verify.status_code in (200, 404)
+
     return user_data
 
 # preserve the token!

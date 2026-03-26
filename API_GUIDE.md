@@ -6,9 +6,9 @@
 
 | Type | Count |
 |------|-------|
-| **REST Endpoints** | **59** |
+| **REST Endpoints** | **61** |
 | **WebSocket Endpoints** | **1** (`/chat/ws/{user_id}`) |
-| **WebSocket Message Types** | **11** (send) + **7** (receive) |
+| **WebSocket Message Types** | **11** (send) + **12** (receive) |
 
 ---
 
@@ -29,13 +29,14 @@ Before calling **any** endpoint, make sure you have:
 Most endpoints require a **JWT Bearer Token**. Here's the flow:
 
 1. **Sign up** → `POST /user/signup`
-2. **Log in** → `POST /login` → you receive an `accessToken` + `refreshToken`
-3. **Use the access token** in subsequent requests:
+2. **Verify email** → `POST /verify-email` with OTP sent during signup
+3. **Log in** → `POST /login` → you receive an `accessToken` + `refreshToken`
+4. **Use the access token** in subsequent requests:
    - **Header:** `Authorization: Bearer <your_access_token>`
    - **Postman:** Go to the *Authorization* tab → select *Bearer Token* → paste your token.
    - **cURL:** `curl -H "Authorization: Bearer <token>" http://localhost:8000/me/profile`
-4. **When the access token expires** → call `POST /refresh` with your `refreshToken` to get a fresh pair (old refresh token is revoked)
-5. **Log out** → `POST /logout` — blacklists the access token and revokes all refresh tokens for that user
+5. **When the access token expires** → call `POST /refresh` with your `refreshToken` to get a fresh pair (old refresh token is revoked)
+6. **Log out** → `POST /logout` — blacklists the access token and revokes all refresh tokens for that user
 
 > 🔒 Endpoints marked with 🔐 require authentication. Public endpoints are marked with 🌐.
 > 
@@ -117,7 +118,7 @@ curl http://localhost:8000/health
 | `username` | string | ✅ | 3–50 chars, must be unique |
 | `password` | string | ✅ | 6–72 chars, stored hashed (bcrypt) |
 | `nickname` | string | ❌ | Max 50 chars |
-| `email` | string | ❌ | Valid email format |
+| `email` | string | ✅ | Valid email format. Verification OTP is sent here. |
 
 **Response — `201 Created`:**
 ```json
@@ -127,6 +128,8 @@ curl http://localhost:8000/health
   "created_at": "2026-02-09T10:30:00.000Z"
 }
 ```
+
+> 🔐 New users are created with `email_verified=false`. Check your email for OTP and call `POST /verify-email` before login.
 
 ---
 
@@ -225,6 +228,58 @@ curl -X POST http://localhost:8000/logout \
 ```
 
 > After logout, both the access token and all refresh tokens are invalidated. The user must log in again to get new tokens.
+
+---
+
+### 5. Verify Email (Signup OTP)
+
+| Detail | Value |
+|--------|-------|
+| **Endpoint** | `POST /verify-email` |
+| **Auth** | 🌐 None |
+| **Content-Type** | `application/json` |
+| **Description** | Verify a newly registered account using the OTP sent to email during signup. |
+
+**Request Body:**
+```json
+{
+  "email": "john@example.com",
+  "otp": "123456"
+}
+```
+
+**Response — `200 OK`:**
+```json
+{
+  "message": "Email verified successfully"
+}
+```
+
+---
+
+### 6. Resend Verification OTP
+
+| Detail | Value |
+|--------|-------|
+| **Endpoint** | `POST /resend-verification-otp` |
+| **Auth** | 🌐 None |
+| **Rate Limit** | ⚡ 3 requests / 1 hour per IP |
+| **Content-Type** | `application/json` |
+| **Description** | Re-send verification OTP for accounts that are not yet verified. |
+
+**Request Body:**
+```json
+{
+  "email": "john@example.com"
+}
+```
+
+**Response — `200 OK`:**
+```json
+{
+  "message": "Verification OTP sent to your email."
+}
+```
 
 ---
 
@@ -1806,15 +1861,15 @@ All messages are sent as **JSON strings** through the WebSocket. The `type` fiel
 
 ---
 
-#### 11. Pong (Heartbeat Response)
+#### 11. Presence Heartbeat
 
 ```json
 {
-  "type": "pong"
+  "type": "presence_heartbeat"
 }
 ```
 
-> The server sends periodic `ping` messages. Respond with `pong` to signal you're still connected. Failure to respond may result in disconnection (zombie detection).
+> Send this periodically (recommended every 15-30 seconds) to keep your presence alive while the user is idle (for example, just scrolling reels).
 
 ---
 
@@ -1834,7 +1889,8 @@ You will receive various event payloads from the server:
 | `share_deleted` | `{ "type": "share_deleted", "share_id", "is_deleted_for_everyone": true }` |
 | `typing` | `{ "type": "typing", "is_typing": true/false }` |
 | `read_receipt` | `{ "type": "read_receipt", "reader_id", "read_at", ... }` |
-| `ping` | Server heartbeat — respond with `{ "type": "pong" }` |
+| `presence_ack` | `{ "type": "presence_ack" }` |
+| `presence_update` | `{ "type": "presence_update", "presence": { "user_id", "online", "last_seen_at" } }` |
 
 ---
 
@@ -1851,6 +1907,8 @@ You will receive various event payloads from the server:
 | 5 | `POST` | `/logout` | 🔐 | Blacklist token + revoke refresh tokens |
 | 6 | `POST` | `/forgot-password` | 🌐 ⚡ | Initiate unauthenticated password reset |
 | 7 | `POST` | `/reset-password` | 🌐 ⚡ | Complete unauthenticated password reset |
+| 60 | `POST` | `/verify-email` | 🌐 | Verify email with signup OTP |
+| 61 | `POST` | `/resend-verification-otp` | 🌐 ⚡ | Re-send verification OTP |
 | 8 | `GET` | `/users/getAllUsers` | 🌐 | List all users |
 | 9 | `GET` | `/users/{id}/profile` | 🔐 | View user profile |
 | 10 | `GET` | `/users/{id}/profile/pic` | 🔐 | Get user's profile pic |
@@ -1926,7 +1984,7 @@ You will receive various event payloads from the server:
 | 8 | `shared_post_reaction` | React to a shared post |
 | 9 | `typing` | Typing indicator |
 | 10 | `read_receipt` | Mark messages as read |
-| 11 | `pong` | Heartbeat response |
+| 11 | `presence_heartbeat` | Keep connection alive for instant presence |
 
 ---
 
@@ -1935,7 +1993,7 @@ You will receive various event payloads from the server:
 - **Getting `401 Unauthorized`?** Your access token may have expired. Use `POST /refresh` with your refresh token to get a new one silently — no re-login needed.
 - **Getting `429 Too Many Requests`?** You've hit a rate limit. Check the `Retry-After` header for when you can try again.
 - **Getting `404 Not Found` for media?** Ensure the Docker volumes are mounted and the folders (`profilepics/`, `posts_media/`, `chat-media/`) exist.
-- **WebSocket disconnecting?** Make sure to respond to `ping` messages with `pong` to avoid zombie detection.
+- **Presence not updating instantly?** Keep the WebSocket connection open and listen for `presence_update` events.
 - **Swagger UI** at `http://localhost:8000/docs` is the fastest way to test REST endpoints — it handles auth and request formatting for you.
 - **For WebSocket testing**, use **Postman** (WebSocket tab), the **[websocat](https://github.com/nickel-org/websocat)** CLI tool, or the browser DevTools console.
 - **Rate limits on edit**: Message editing is time-limited (default 15 minutes). Always check `/msg/{msg_id}/can_edit` first.

@@ -1,10 +1,13 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
-from app import schemas, models, oauth2,db
+from app import schemas, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.my_utils.socket_manager import manager
 from chat_system import delete_msg,delete_shares,dm,edit_msg,load_missed_msgs,msg_reaction,share_reaction,reply_msg,reply_to_share,media_msg,read_receipt
 import json
+import asyncio
 router = APIRouter(tags=["chat"])
+
+PRESENCE_HEARTBEAT_TIMEOUT_SECONDS = 45
 
 # ping_task=None
 
@@ -15,6 +18,9 @@ async def chat(
     token: str = Query(None, description="Search query params"),
     db: AsyncSession = Depends(db.getDb)
 ):
+    heartbeat_event = asyncio.Event()
+    heartbeat_task: asyncio.Task | None = None
+
     if not token:
         await websocket.close(code=1008)
         return
@@ -28,6 +34,12 @@ async def chat(
         return
 
     await manager.connect(user_id, websocket)
+    heartbeat_event.set()  # initial connect counts as alive
+    heartbeat_task = asyncio.create_task(
+        manager.run_presence_watchdog(websocket, heartbeat_event, PRESENCE_HEARTBEAT_TIMEOUT_SECONDS)
+    )
+    await manager.broadcast_presence_update(db, user_id, online=True, last_seen_at=None)
+
     missed_content = await load_missed_msgs.load_missed_content(current_user.id, db)
     if missed_content:
         missed_content.reverse()
@@ -106,10 +118,6 @@ async def chat(
                     recv_id=recv_id
                 )
 
-            elif msg_type == "pong":
-                manager.mark_pong(user_id)
-                continue
-
             elif msg_type == "delete_share_for_everyone":
                 share_id = _safe_int(message_data.get("message_id"))
                 recv_id = _safe_int(message_data.get("receiver_id"))
@@ -132,6 +140,9 @@ async def chat(
                     receiver_id=receiver_id,
                     typing_status=is_typing,
                 )
+
+            elif msg_type == "presence_heartbeat":
+                await manager.ack_presence_heartbeat(user_id, heartbeat_event)
 
             elif msg_type == "read_receipt":
                 await read_receipt.mark_as_read(message_data, current_user.id, db)
@@ -186,7 +197,14 @@ async def chat(
                 await dm.messageUser(payload, current_user.id, db)
 
     except WebSocketDisconnect:
-        manager.disconnect(user_id, client_initiated=True)
+        seen_at = await manager.mark_last_seen(db, user_id)
+        manager.disconnect(user_id, client_initiated=True, last_seen_at=seen_at)
+        await manager.broadcast_presence_update(db, user_id, online=False, last_seen_at=seen_at)
     except Exception as e:
         print(e)
-        manager.disconnect(user_id, client_initiated=False)
+        seen_at = await manager.mark_last_seen(db, user_id)
+        manager.disconnect(user_id, client_initiated=False, last_seen_at=seen_at)
+        await manager.broadcast_presence_update(db, user_id, online=False, last_seen_at=seen_at)
+    finally:
+        if heartbeat_task:
+            heartbeat_task.cancel()

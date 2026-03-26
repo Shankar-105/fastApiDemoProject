@@ -151,6 +151,7 @@ class User(Base):
         nickname=Column(String,nullable=False)
         bio=Column(String,nullable=True)
         email=Column(String,nullable=True)
+        email_verified=Column(Boolean, default=False, server_default="false", nullable=False)
         profile_picture=Column(String,nullable=True)
         created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
         last_seen_at=Column(DateTime(timezone=True), nullable=True)

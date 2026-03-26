@@ -54,6 +54,7 @@ The entire backend is built on an **async-first** philosophy — from the first 
 ## 🔐 Authentication & Security
 
 - **JWT access tokens** with configurable expiry time — generated using HMAC-SHA256 via `python-jose`
+- **Email verification on signup** — newly registered users receive an OTP by email and must verify before first login
 - **Explicit JWT expiry verification** — every token decode checks the `expTime` claim against `datetime.now(timezone.utc)`; expired tokens are rejected immediately with a clear error
 - **UTC-aware timestamps everywhere** — token creation, expiry checks, and blacklist TTL calculations all use `timezone.utc` to prevent clock-skew issues
 - **Secure password hashing** using `bcrypt` with automatic salt generation
@@ -61,6 +62,7 @@ The entire backend is built on an **async-first** philosophy — from the first 
 - **Blacklist check on every request** — every protected endpoint verifies the token hasn't been blacklisted before processing
 - **OAuth2PasswordBearer** scheme — extracts the JWT from the `Authorization: Bearer <token>` header automatically
 - **User enumeration prevention** — login returns a generic `"Invalid credentials"` message with `401` for both wrong username and wrong password; forgot-password returns a generic success message regardless of whether the email exists
+- **Unverified account login block** — login returns `403` for users who have not completed email verification
 - **Form-based login** — uses FastAPI's built-in `OAuth2PasswordRequestForm` for standards-compliant login
 - **CORS middleware** — Cross-Origin Resource Sharing enabled for frontend integration
 
@@ -122,7 +124,7 @@ Real-time notification system with persistent storage and live delivery.
 
 ## 👤 User Profiles
 
-- **Registration** with username (unique, 3–50 chars), password (6–72 chars, bcrypt-hashed), optional nickname and email
+- **Registration** with username (unique, 3–50 chars), password (6–72 chars, bcrypt-hashed), optional nickname, and required email (OTP verified)
 - **Profile fields** — username, nickname, bio (up to 500 chars), email, profile picture
 - **Profile picture upload** — accepts JPEG, PNG, and GIF files via `multipart/form-data`
 - **Profile picture removal** — deletes the file from disk and clears the database reference

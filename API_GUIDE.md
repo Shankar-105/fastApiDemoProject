@@ -6,7 +6,7 @@
 
 | Type | Count |
 |------|-------|
-| **REST Endpoints** | **59** |
+| **REST Endpoints** | **61** |
 | **WebSocket Endpoints** | **1** (`/chat/ws/{user_id}`) |
 | **WebSocket Message Types** | **11** (send) + **12** (receive) |
 
@@ -29,13 +29,14 @@ Before calling **any** endpoint, make sure you have:
 Most endpoints require a **JWT Bearer Token**. Here's the flow:
 
 1. **Sign up** → `POST /user/signup`
-2. **Log in** → `POST /login` → you receive an `accessToken` + `refreshToken`
-3. **Use the access token** in subsequent requests:
+2. **Verify email** → `POST /verify-email` with OTP sent during signup
+3. **Log in** → `POST /login` → you receive an `accessToken` + `refreshToken`
+4. **Use the access token** in subsequent requests:
    - **Header:** `Authorization: Bearer <your_access_token>`
    - **Postman:** Go to the *Authorization* tab → select *Bearer Token* → paste your token.
    - **cURL:** `curl -H "Authorization: Bearer <token>" http://localhost:8000/me/profile`
-4. **When the access token expires** → call `POST /refresh` with your `refreshToken` to get a fresh pair (old refresh token is revoked)
-5. **Log out** → `POST /logout` — blacklists the access token and revokes all refresh tokens for that user
+5. **When the access token expires** → call `POST /refresh` with your `refreshToken` to get a fresh pair (old refresh token is revoked)
+6. **Log out** → `POST /logout` — blacklists the access token and revokes all refresh tokens for that user
 
 > 🔒 Endpoints marked with 🔐 require authentication. Public endpoints are marked with 🌐.
 > 
@@ -117,7 +118,7 @@ curl http://localhost:8000/health
 | `username` | string | ✅ | 3–50 chars, must be unique |
 | `password` | string | ✅ | 6–72 chars, stored hashed (bcrypt) |
 | `nickname` | string | ❌ | Max 50 chars |
-| `email` | string | ❌ | Valid email format |
+| `email` | string | ✅ | Valid email format. Verification OTP is sent here. |
 
 **Response — `201 Created`:**
 ```json
@@ -127,6 +128,8 @@ curl http://localhost:8000/health
   "created_at": "2026-02-09T10:30:00.000Z"
 }
 ```
+
+> 🔐 New users are created with `email_verified=false`. Check your email for OTP and call `POST /verify-email` before login.
 
 ---
 
@@ -225,6 +228,58 @@ curl -X POST http://localhost:8000/logout \
 ```
 
 > After logout, both the access token and all refresh tokens are invalidated. The user must log in again to get new tokens.
+
+---
+
+### 5. Verify Email (Signup OTP)
+
+| Detail | Value |
+|--------|-------|
+| **Endpoint** | `POST /verify-email` |
+| **Auth** | 🌐 None |
+| **Content-Type** | `application/json` |
+| **Description** | Verify a newly registered account using the OTP sent to email during signup. |
+
+**Request Body:**
+```json
+{
+  "email": "john@example.com",
+  "otp": "123456"
+}
+```
+
+**Response — `200 OK`:**
+```json
+{
+  "message": "Email verified successfully"
+}
+```
+
+---
+
+### 6. Resend Verification OTP
+
+| Detail | Value |
+|--------|-------|
+| **Endpoint** | `POST /resend-verification-otp` |
+| **Auth** | 🌐 None |
+| **Rate Limit** | ⚡ 3 requests / 1 hour per IP |
+| **Content-Type** | `application/json` |
+| **Description** | Re-send verification OTP for accounts that are not yet verified. |
+
+**Request Body:**
+```json
+{
+  "email": "john@example.com"
+}
+```
+
+**Response — `200 OK`:**
+```json
+{
+  "message": "Verification OTP sent to your email."
+}
+```
 
 ---
 
@@ -1852,6 +1907,8 @@ You will receive various event payloads from the server:
 | 5 | `POST` | `/logout` | 🔐 | Blacklist token + revoke refresh tokens |
 | 6 | `POST` | `/forgot-password` | 🌐 ⚡ | Initiate unauthenticated password reset |
 | 7 | `POST` | `/reset-password` | 🌐 ⚡ | Complete unauthenticated password reset |
+| 60 | `POST` | `/verify-email` | 🌐 | Verify email with signup OTP |
+| 61 | `POST` | `/resend-verification-otp` | 🌐 ⚡ | Re-send verification OTP |
 | 8 | `GET` | `/users/getAllUsers` | 🌐 | List all users |
 | 9 | `GET` | `/users/{id}/profile` | 🔐 | View user profile |
 | 10 | `GET` | `/users/{id}/profile/pic` | 🔐 | Get user's profile pic |

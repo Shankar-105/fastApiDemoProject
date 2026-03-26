@@ -1,6 +1,6 @@
 async def test_follow_unfollow(client, get_token):
     # Sign up a second user
-    user2 = {"username": "user2", "password": "password", "nickname": "Nick2"}
+    user2 = {"username": "user2", "password": "password", "nickname": "Nick2", "email": "user2@example.com"}
     await client.post("/user/signup", json=user2)
     # Get second user ID
     users_resp = await client.get("/users/getAllUsers", headers={"Authorization": f"Bearer {get_token}"})

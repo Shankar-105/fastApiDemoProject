@@ -35,3 +35,19 @@ async def send_otp_email(to_email:str,otp:str):
     fm = FastMail(conf)
     # send the email
     await fm.send_message(message)
+
+
+async def send_verification_email(to_email: str, otp: str):
+    html = f"""
+    <h3>Verify Your Email</h3>
+    <p>Use this OTP to verify your account: <b style="font-size: 20px;">{otp}</b></p>
+    <p>Valid for 5 minutes only.</p>
+    """
+    message = MessageSchema(
+        subject="Verify your email",
+        recipients=[to_email],
+        body=html,
+        subtype="html"
+    )
+    fm = FastMail(conf)
+    await fm.send_message(message)

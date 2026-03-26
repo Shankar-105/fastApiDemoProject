@@ -2,11 +2,15 @@
 
 async def signup_and_login(client, username: str, password: str = "password123") -> str:
     """Create a fresh user and return their access token."""
+    email = f"{username}@example.com"
     await client.post("/user/signup", json={
         "username": username,
         "password": password,
         "nickname": username,
+        "email": email,
     })
+    verify = await client.post("/verify-email", json={"email": email, "otp": "123456"})
+    assert verify.status_code == 200, f"verify failed for {username}: {verify.text}"
     login = await client.post("/login", data={"username": username, "password": password})
     assert login.status_code == 202, f"login failed for {username}: {login.text}"
     return login.json()["accessToken"]

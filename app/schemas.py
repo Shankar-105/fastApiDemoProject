@@ -40,7 +40,7 @@ class UserSignupRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=6, max_length=72)
     nickname: Optional[str] = Field(None, max_length=50)
-    email: Optional[EmailStr] = None
+    email: EmailStr
     
 class UserLoginRequest(BaseModel):
     """Request schema for user login"""
@@ -99,6 +99,17 @@ class TokenModel(BaseModel):
 class RefreshTokenRequest(BaseModel):
     """Request body for POST /refresh"""
     refresh_token: str
+
+
+class VerifyEmailRequest(BaseModel):
+    """Request body for verifying signup email with OTP."""
+    email: EmailStr
+    otp: str = Field(..., min_length=6, max_length=6)
+
+
+class ResendVerificationOtpRequest(BaseModel):
+    """Request body for re-sending verification OTP."""
+    email: EmailStr
 
 class ForgotPasswordSchema(BaseModel):
     """Request schema for forgot password"""

@@ -13,6 +13,7 @@ from app.redis_service import check_redis_connection
 from app.my_utils.socket_manager import manager
 from chat_system import chat,chat_history,share,delete_msg,delete_shares,edit_msg,msg_info,msg_reaction,share_reaction,media_msg,clear_chat
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 # creates tables from models.py if the tables doesnt exist
 
 models.Base.metadata.create_all(bind=sync_engine)
@@ -121,6 +122,99 @@ app.include_router(msg_reaction.router)
 app.include_router(share_reaction.router)
 app.include_router(media_msg.router)
 app.include_router(clear_chat.router)
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def root_home() -> str:
+        return """
+<!doctype html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>FastAPI Social Backend</title>
+    <style>
+        :root {
+            --bg1: #f7fbff;
+            --bg2: #e8f1ff;
+            --ink: #10243e;
+            --muted: #3e5b7f;
+            --accent: #1f6feb;
+            --card: #ffffff;
+            --border: #d7e3f4;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at 10% 10%, #ffffff 0%, transparent 35%),
+                radial-gradient(circle at 90% 80%, #dbeafe 0%, transparent 30%),
+                linear-gradient(135deg, var(--bg1), var(--bg2));
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+        .card {
+            width: min(680px, 100%);
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 30px;
+            box-shadow: 0 12px 40px rgba(16, 36, 62, 0.09);
+        }
+        h1 {
+            margin: 0 0 10px;
+            font-size: clamp(1.55rem, 2.2vw, 2.05rem);
+            letter-spacing: 0.2px;
+        }
+        p {
+            margin: 8px 0;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+        .links {
+            margin-top: 18px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        a {
+            text-decoration: none;
+            color: var(--accent);
+            background: #eef5ff;
+            border: 1px solid #cfe2ff;
+            padding: 9px 13px;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: transform 0.12s ease, background 0.12s ease;
+        }
+        a:hover {
+            background: #e4efff;
+            transform: translateY(-1px);
+        }
+        .hint {
+            margin-top: 14px;
+            font-size: 0.94rem;
+        }
+    </style>
+</head>
+<body>
+    <main class=\"card\">
+        <h1>FastAPI Social Backend Is Running</h1>
+        <p>This is the API server root page.</p>
+        <p>Use the links below to explore available routes and health status.</p>
+        <div class=\"links\">
+            <a href=\"/docs\">OpenAPI Docs</a>
+            <a href=\"/redoc\">ReDoc</a>
+            <a href=\"/health\">Health Check</a>
+        </div>
+        <p class=\"hint\">Tip: frontend apps should call API endpoints directly, while this page is only a friendly landing screen.</p>
+    </main>
+</body>
+</html>
+        """
 
 @app.get("/health",status_code=200)
 def hello():

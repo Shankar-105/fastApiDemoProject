@@ -143,7 +143,7 @@ async def remove_follower(user_id: int, db: AsyncSession = Depends(getDb), curre
     await delete_cache(f"following:{userToRemove.id}")
     return sch.FollowResponse(message=f"Removed follower {userToRemove.username}", following_count=currentUser.following_cnt)
 
-@router.get("/users/{user_id}/followers", response_model=List[sch.UserBasicResponse])
+@router.get("/connections/users/{user_id}/followers", response_model=List[sch.UserBasicResponse])
 async def get_followers(user_id:int,db:AsyncSession=Depends(getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()
@@ -174,7 +174,7 @@ async def get_followers(user_id:int,db:AsyncSession=Depends(getDb), currentUser:
         ) for f in followers
     ]
 
-@router.get("/users/{user_id}/following", response_model=List[sch.UserBasicResponse])
+@router.get("/connections/users/{user_id}/following", response_model=List[sch.UserBasicResponse])
 async def get_following(user_id:int,db:AsyncSession=Depends(getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()

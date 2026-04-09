@@ -328,11 +328,14 @@ A production-grade 1-on-1 chat system running over a single persistent WebSocket
 
 ## 📁 Media & File Management
 
+- **Dual storage mode (Azure + local fallback):**
+  - Production/hosted deployment uses Azure Blob Storage when blob env vars are configured.
+  - Local clones run without Azure keys by automatically storing media in local folders.
 - **Three separate media directories:**
   - `profilepics/` — user profile pictures
   - `posts_media/` — post images and videos
   - `chat-media/` — chat images, videos, and audio files (organized into `images/`, `videos/`, `audios/` subdirectories)
-- **Auto-creation** — directories are created automatically if they don't exist
+- **Local fallback storage** — when Azure Blob env values are empty, uploads are persisted to local folders and served through mounted static routes
 - **Static file serving** — all three directories are mounted as FastAPI `StaticFiles` endpoints, so media URLs are directly accessible in the browser
 - **Supported formats:**
   - Profile pictures: JPEG, PNG, GIF

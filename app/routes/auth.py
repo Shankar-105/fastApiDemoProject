@@ -1,5 +1,6 @@
-﻿from fastapi import status,HTTPException,Depends,Body,APIRouter
-from app import db,models,oauth2,token_service
+from fastapi import status,HTTPException,Depends,Body,APIRouter
+from app import db,models,oauth2
+from app.services import token_service
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import app.my_utils.utils as utils
@@ -7,9 +8,9 @@ import app.schemas as sch
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError
 from datetime import datetime, timezone
-import app.redis_service as redis_service
-import app.otp_service as otp_service
-import app.email_service as email_service
+import app.services.redis_service as redis_service
+import app.services.otp_service as otp_service
+import app.services.email_service as email_service
 from app.rate_limiter import login_limiter, forgot_password_limiter, reset_password_limiter, refresh_limiter
 
 router=APIRouter(tags=['Authentication'])
@@ -170,5 +171,6 @@ async def resend_verification_otp(payload: sch.ResendVerificationOtpRequest, db:
             detail="There was an error sending the email."
         )
     return {"message": "Verification OTP sent to your email."}
+
 
 

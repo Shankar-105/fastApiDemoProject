@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, Request, status
 from app import models, oauth2
-from app import redis_service as _redis_svc
+from app.services import redis_service as _redis_svc
 from app.config import settings
 
 

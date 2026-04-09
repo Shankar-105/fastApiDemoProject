@@ -3,9 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from app.db import AsyncSessionLocal
 from app.models import Notification, NotificationType
-from app.redis_service import redis_client, delete_cache_pattern
+from app.services.redis_service import redis_client, delete_cache_pattern
 
-# ── Patchable session factory ──
+# -- Patchable session factory --
 # Mirrors exactly what redis_service.py does with redis_client.
 # In production this is AsyncSessionLocal (production DB).
 # In tests conftest.py replaces it with TestingAsyncSessionLocal so
@@ -13,7 +13,7 @@ from app.redis_service import redis_client, delete_cache_pattern
 _session_factory = AsyncSessionLocal
 
 
-# ── Human-readable notification text builders ──
+# -- Human-readable notification text builders --
 # Lambda per type: given the actor's username, produce the display string.
 
 _NOTIFICATION_TEXT = {
@@ -39,7 +39,7 @@ async def create_notification(
 
     text = _NOTIFICATION_TEXT[notif_type](actor_username)
 
-    # ── Step A: Persist to DB ──
+    # -- Step A: Persist to DB --
     # We open a FRESH session here. The route's session is already closed by
     # the time BackgroundTasks run (FastAPI closes it when the response is sent).
     # We use _session_factory (not AsyncSessionLocal directly) so tests can
@@ -55,7 +55,7 @@ async def create_notification(
         )
         db.add(notif)
         await db.commit()
-        await db.refresh(notif)     # ← needed to get the auto-assigned id + created_at
+        await db.refresh(notif)     # <- needed to get the auto-assigned id + created_at
 
         # Invalidate notification caches for the recipient
         await delete_cache_pattern(f"notifications:{owner_id}:*")
@@ -65,7 +65,7 @@ async def create_notification(
         # Channel name is unique per user: "notifications:42"
         # The subscriber started in main.py (step 5) listens on this pattern and
         # forwards the message to the user's active WebSocket if they are online.
-        # If they are offline, this publish is a no-op — the notification already
+        # If they are offline, this publish is a no-op - the notification already
         # lives in the DB and will be delivered on their next WebSocket connection.
         payload = json.dumps({
             "type":         "notification",
@@ -82,13 +82,13 @@ async def create_notification(
         try:
             await redis_client.publish(f"notifications:{owner_id}",payload)
         except Exception:
-            # Redis is down → notification is already safely in the DB.
+            # Redis is down -> notification is already safely in the DB.
             # The user will receive it via the missed-notifications delivery on
             # their next WebSocket connect (step 6). Never crash the background task.
             pass
 
 
-# ── REST helper functions ──
+# -- REST helper functions --
 # These are called by the notification routes added in step 7.
 # Defined here (not inside the routes) to keep the service layer clean.
 
@@ -110,7 +110,7 @@ async def get_notifications(
 
 
 async def get_unread_count(db: AsyncSession, user_id: int) -> int:
-    """Return the count of unread notifications — used for the badge number."""
+    """Return the count of unread notifications - used for the badge number."""
     result = await db.execute(
         select(func.count())
         .select_from(Notification)
@@ -127,3 +127,4 @@ async def mark_all_read(db: AsyncSession, user_id: int) -> None:
         .values(is_read=True)
     )
     await db.commit()
+

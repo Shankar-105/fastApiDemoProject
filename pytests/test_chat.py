@@ -34,10 +34,10 @@ def test_ws_chat_connect():
 
         try:
             with tc.websocket_connect(f"/chat/ws/{user_id}?token={token}") as ws:
-                # TestClient WebSocket is synchronous
+                # Use heartbeat round-trip as a deterministic liveness check.
+                ws.send_json({"type": "presence_heartbeat"})
                 msg = ws.receive_json(mode="text")
-                if msg.get("type") == "ping":
-                    ws.send_json({"type": "pong"})
+                assert msg.get("type") == "presence_ack"
         except Exception:
             # WebSocket might close immediately or timeout — not a failure
             pass

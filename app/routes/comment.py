@@ -2,10 +2,10 @@ from fastapi import Body,HTTPException,status,APIRouter,Depends,Query,Background
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_,func
 from app import oauth2,models,db,schemas as sch
-from app.notification_service import create_notification
+from app.services.notification_service import create_notification
 from app.models import NotificationType
 from app.rate_limiter import comment_limiter
-from app.redis_service import get_cache, set_cache, delete_cache_pattern
+from app.services.redis_service import get_cache, set_cache, delete_cache_pattern
 
 router=APIRouter(tags=['comment'])
 

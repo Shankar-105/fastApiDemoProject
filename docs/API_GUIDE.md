@@ -20,6 +20,8 @@ Before calling **any** endpoint, make sure you have:
 2. ✅ Docker containers are **running** — `docker compose up -d` and verified via `http://localhost:8000/health`.
 3. ✅ A tool to make HTTP requests — **[Postman](https://www.postman.com/)**, **[Insomnia](https://insomnia.rest/)**, **cURL**, **HTTPie**, or the built-in **Swagger UI** at `http://localhost:8000/docs`.
 
+> 📦 **Media storage note:** For local clones, leaving Azure Blob env values empty will store uploads in local folders (`profilepics/`, `posts_media/`, `chat-media/`). Hosted deployment uses Azure Blob Storage.
+
 > 💡 **Tip:** FastAPI auto-generates interactive API docs. Visit **`http://localhost:8000/docs`** (Swagger UI) or **`http://localhost:8000/redoc`** (ReDoc) to explore and test endpoints right from your browser.
 
 ---

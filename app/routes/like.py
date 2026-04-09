@@ -5,9 +5,9 @@ from app.db import getDb
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_
 from sqlalchemy.exc import IntegrityError
-from app.notification_service import create_notification
+from app.services.notification_service import create_notification
 from app.models import NotificationType
-from app.redis_service import delete_cache_pattern
+from app.services.redis_service import delete_cache_pattern
 
 router=APIRouter(
     tags=['likes']

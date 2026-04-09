@@ -3,8 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func,desc
 from typing import List
 from app import models, schemas, oauth2 , db
-from app.redis_service import get_cache, set_cache, delete_cache
-from app.blob_service import get_blob_url
+from app.services.redis_service import get_cache, set_cache, delete_cache
+from app.services.blob_service import get_blob_url
 import os
 
 router = APIRouter(tags=["Feed"])

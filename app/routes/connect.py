@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_,insert,delete,func
 from sqlalchemy.exc import IntegrityError
 from typing import List
-from app.redis_service import delete_cache, delete_cache_pattern
-from app.notification_service import create_notification
+from app.services.redis_service import delete_cache, delete_cache_pattern
+from app.services.notification_service import create_notification
 from app.models import NotificationType
 from app.rate_limiter import follow_limiter
 
@@ -41,7 +41,7 @@ async def follow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.U
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to follow user")
-    # follower/following counts changed on both users — invalidate both profiles
+    # follower/following counts changed on both users - invalidate both profiles
     await delete_cache(f"user_profile:{currentUser.id}")
     await delete_cache(f"user_profile:{userToFollow.id}")
     # Invalidate followers/following list caches
@@ -92,7 +92,7 @@ async def unfollow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to unfollow user")
-    # follower/following counts changed on both users — invalidate both profiles
+    # follower/following counts changed on both users - invalidate both profiles
     await delete_cache(f"user_profile:{currentUser.id}")
     await delete_cache(f"user_profile:{userToUnFollow.id}")
     # Invalidate followers/following list caches
@@ -135,7 +135,7 @@ async def remove_follower(user_id: int, db: AsyncSession = Depends(getDb), curre
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to remove follower")
-    # follower/following counts changed on both users — invalidate both profiles
+    # follower/following counts changed on both users - invalidate both profiles
     await delete_cache(f"user_profile:{currentUser.id}")
     await delete_cache(f"user_profile:{userToRemove.id}")
     # Invalidate followers/following list caches

@@ -16,28 +16,33 @@ A **fully async, non-blocking** social media backend built to handle **thousands
 
 ## 🌟 Features — Everything Inside
 
-_This API packs **a lot**. For the full breakdown of every feature — async architecture, auth, chat, caching, media, DevOps, and more — see [`FEATURES.md`](./FEATURES.md)._
+_This API packs **a lot**. For the full breakdown of every feature — async architecture, auth, chat, caching, media, DevOps, and more — see [`docs/FEATURES.md`](./docs/FEATURES.md)._ 
 
 ---
 
 ## 🚦 Getting Started — Simplified with Docker!
 
-_Want to Run the Api or wanna test or make your own changes to the code here's [`SET-UP`](https://github.com/Shankar-105/Social-Media-Api/blob/main/SETUP.md) how you can 
-clone the repositroy and set up the environment._
+_Want to run the API, test it, or make your own changes? Start with [`docs/SETUP.md`](./docs/SETUP.md) to clone the repository and set up the environment._
 
 ---
 
 ## 📖 How to Use the API — Complete Endpoint Reference
 
-_Now that your setup is running, explore every endpoint this API has to offer! Check out [`API_GUIDE.md`](./API_GUIDE.md) for a detailed walkthrough of all **55 REST endpoints** and the **real-time WebSocket chat system**._
+_Now that your setup is running, explore every endpoint this API has to offer! Check out [`docs/API_GUIDE.md`](./docs/API_GUIDE.md) for a detailed walkthrough of all **55 REST endpoints** and the **real-time WebSocket chat system**._
 
 > 💡 **Quick Start:** Visit `http://localhost:8000/docs` for the built-in Swagger UI — test endpoints right from your browser!
 
 ---
 
+## ☁️ Azure Deployment — How the app is hosted
+
+_Want to know how this project runs in the cloud? Read [`docs/AZURE_DEPLOYMENT.md`](./docs/AZURE_DEPLOYMENT.md) for the Azure VM, PostgreSQL, Blob Storage, Redis, and CI/CD setup behind the live deployment._
+
+---
+
 ## 🧪 Testing — Comprehensive Test Suite!
 
-_Ready to verify everything works? Check out [`TESTS.md`](./TESTS.md) for a complete guide on running the test suite._
+_Ready to verify everything works? Check out [`docs/TESTS.md`](./docs/TESTS.md) for a complete guide on running the test suite._
 
 **Quick Test Run:**
 - 🐳 **Inside Docker** (Recommended): `docker compose exec api pytest pytests/ -v`

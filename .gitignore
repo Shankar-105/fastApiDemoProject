@@ -59,6 +59,7 @@ seed.py
 
 # avoid my personal guides and mini frontend
 my-mini-frontend/
+social_media_app-main/
 FastAPI_to_Express_Guide.md
 ASYNC_MIGRATION.md
 DATABASE_CONNECTIONS.md
@@ -78,6 +79,6 @@ create_db.py
 
 # ignore VS Code folder
 .vscode/
-
+.vs/
 # ignore azure integration plan (has credentials)
-azure_integration_plan.md
+AZURE_INTEGRATION.md

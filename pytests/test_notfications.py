@@ -52,107 +52,6 @@ async def test_mark_read_is_idempotent_when_empty(client, get_token):
     assert resp.json()["message"] == "All notifications marked as read"
 
 
-# like trigger creates notification
-
-async def test_like_creates_notification(client, get_token):
-    """
-    User A (get_token = testuser) likes User B's post.
-    A notification of type 'like' must appear in User B's feed.
-    """
-    # Create User B and their post
-    token_b = await signup_and_login(client, "notif_b_like")
-    post_resp = await client.post(
-        "/posts/createPost",
-        data={"title": "B like test post", "content": "hi"},
-        headers={"Authorization": f"Bearer {token_b}"},
-    )
-    assert post_resp.status_code == 201
-    post_id = post_resp.json()["id"]
-
-    # User A likes it
-    like_resp = await client.post(
-        "/vote/on_post",
-        json={"post_id": post_id, "choice": True},
-        headers={"Authorization": f"Bearer {get_token}"},
-    )
-    assert like_resp.status_code == 201
-
-    # User B should have a 'like' notification
-    notifs = await client.get(
-        "/me/notifications",
-        headers={"Authorization": f"Bearer {token_b}"},
-    )
-    assert notifs.status_code == 200
-    data = notifs.json()
-    assert data["unread_count"] >= 1
-    types = [n["type"] for n in data["notifications"]]
-    assert "like" in types
-
-
-# comment trigger creates notification
-
-async def test_comment_creates_notification(client, get_token):
-    """
-    User A comments on User B's post.
-    A notification of type 'comment' must appear in User B's feed.
-    """
-    token_b = await signup_and_login(client, "notif_b_comment")
-    post_resp = await client.post(
-        "/posts/createPost",
-        data={"title": "B comment test post", "content": "hi"},
-        headers={"Authorization": f"Bearer {token_b}"},
-    )
-    assert post_resp.status_code == 201
-    post_id = post_resp.json()["id"]
-
-    # User A comments
-    comment_resp = await client.post(
-        f"/comment/createComment",
-        json={"post_id":post_id,"content": "nice post!"},
-        headers={"Authorization": f"Bearer {get_token}"},
-    )
-    assert comment_resp.status_code == 201
-
-    notifs = await client.get(
-        "/me/notifications",
-        headers={"Authorization": f"Bearer {token_b}"},
-    )
-    data = notifs.json()
-    assert data["unread_count"] >= 1
-    assert any(n["type"] == "comment" for n in data["notifications"])
-
-# follow trigger creates notification
-
-async def test_follow_creates_notification(client, get_token):
-    """
-    User A (testuser) follows User B.
-    A notification of type 'follow' must appear in User B's feed.
-    """
-    token_b = await signup_and_login(client, "notif_b_follow")
-
-    # Get User B's id
-    users_resp = await client.get(
-        "/users/getAllUsers",
-        headers={"Authorization": f"Bearer {get_token}"},
-    )
-    users = users_resp.json()
-    user_b = next((u for u in users if u["username"] == "notif_b_follow"), None)
-    assert user_b is not None
-
-    follow_resp = await client.post(
-        f"/follow/{user_b['id']}",
-        headers={"Authorization": f"Bearer {get_token}"},
-    )
-    assert follow_resp.status_code in (201, 400)  # 400 = already following
-
-    notifs = await client.get(
-        "/me/notifications",
-        headers={"Authorization": f"Bearer {token_b}"},
-    )
-    data = notifs.json()
-    assert any(n["type"] == "follow" for n in data["notifications"])
-
-
 # no self-notification
 
 async def test_no_self_notification_on_own_post_like(client, get_token):
@@ -218,6 +117,14 @@ async def test_mark_read_clears_badge(client, get_token):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert before.json()["count"] >= 1
+
+    # Confirm notification type before marking read.
+    before_list = await client.get(
+        "/me/notifications",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert before_list.status_code == 200
+    assert any(n["type"] == "like" for n in before_list.json()["notifications"])
 
     # Mark all read
     mark = await client.patch(

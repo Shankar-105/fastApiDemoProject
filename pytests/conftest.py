@@ -14,6 +14,7 @@ from httpx import AsyncClient, ASGITransport
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 # after setting the PYTHONPATH then import any other folders in project dir
 from app.main import app
+import app.main as app_main
 from app.models import Base
 from app.db import getDb
 from app import db as app_db
@@ -24,9 +25,16 @@ import fakeredis
 from app.services import redis_service
 redis_service.redis_client = fakeredis.FakeAsyncRedis(decode_responses=True)
 
+# Redis pubsub listener is not required for API-level tests and can add latency.
+async def _skip_listener_startup() -> bool:
+    return False
+
+app_main.check_redis_connection = _skip_listener_startup
+
 # Mock OTP generation + email sending for deterministic and fast tests.
 from app.services import otp_service
 from app.services import email_service
+from app.my_utils import utils as password_utils
 
 def _fixed_otp() -> str:
     return "123456"
@@ -37,6 +45,18 @@ async def _noop_send(*args, **kwargs):
 otp_service.generateOtp = _fixed_otp
 email_service.send_otp_email = _noop_send
 email_service.send_verification_email = _noop_send
+
+# Speed up auth-heavy tests by replacing bcrypt with deterministic test doubles.
+async def _fast_hash_password(raw: str) -> str:
+    return f"test-hash::{raw}"
+
+
+async def _fast_verify_password(raw: str, hashed: str) -> bool:
+    return hashed == f"test-hash::{raw}"
+
+
+password_utils.hashPassword = _fast_hash_password
+password_utils.verifyPassword = _fast_verify_password
 
 # Disable rate limiting in tests.
 # All test requests come from the same fake IP and the test session makes far

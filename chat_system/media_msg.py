@@ -1,7 +1,7 @@
 from fastapi import File, UploadFile, APIRouter, Depends
 from uuid import uuid4
 from app import oauth2
-from app.blob_service import upload_blob
+from app.services.blob_service import upload_blob
 router = APIRouter()
 
 @router.post("/upload-media")

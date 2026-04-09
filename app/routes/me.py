@@ -8,8 +8,8 @@ from sqlalchemy import select,and_,distinct,func,case,update
 import os
 import asyncio
 from fastapi import UploadFile,File
-from app.redis_service import delete_cache
-from app.blob_service import upload_blob, delete_blob, get_blob_url
+from app.services.redis_service import delete_cache
+from app.services.blob_service import upload_blob, delete_blob, get_blob_url
 
 router=APIRouter(
     tags=['me']
@@ -51,7 +51,7 @@ async def removeProfilePicture(db:AsyncSession=Depends(db.getDb),currentUser:mod
     await delete_blob("profilepics", profilePic)
     currentUser.profile_picture=None
     await db.commit()
-    # profile changed — bust the cached profile for this user
+    # profile changed - bust the cached profile for this user
     await delete_cache(f"user_profile:{currentUser.id}")
     return sch.SuccessResponse(message="Profile picture removed successfully")
 
@@ -131,7 +131,7 @@ async def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_pict
         await db.execute(update(models.User).where(models.User.id==currentUser.id).values(**updates))
         await db.commit()
         await db.refresh(currentUser)
-        # profile changed — bust the cached profile for this user
+        # profile changed - bust the cached profile for this user
         await delete_cache(f"user_profile:{currentUser.id}")
     
     # Count posts for response

@@ -28,7 +28,7 @@ _Want to run the API, test it, or make your own changes? Start with [`docs/SETUP
 
 ## 📖 How to Use the API — Complete Endpoint Reference
 
-_Now that your setup is running, explore every endpoint this API has to offer! Check out [`docs/API_GUIDE.md`](./docs/API_GUIDE.md) for a detailed walkthrough of all **55 REST endpoints** and the **real-time WebSocket chat system**._
+_Now that your setup is running, explore every endpoint this API has to offer! Check out [`docs/API_GUIDE.md`](./docs/API_GUIDE.md) for a detailed walkthrough of all **61 REST endpoints** and the **real-time WebSocket chat system**._
 
 > 💡 **Quick Start:** Visit `http://localhost:8000/docs` for the built-in Swagger UI — test endpoints right from your browser!
 

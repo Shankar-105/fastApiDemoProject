@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app import db, models, oauth2, schemas as sch
-from app.blob_service import get_blob_url
+from app.services.blob_service import get_blob_url
 
 router = APIRouter(tags=["saved"])
 
@@ -122,3 +122,4 @@ async def get_saved_posts(
         )
 
     return sch.SavedPostsResponse(saved=payload)
+

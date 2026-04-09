@@ -5,11 +5,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from app import models, config
-from app import redis_service as _redis_svc   # accessed via module so tests can patch redis_client
+from app.services import redis_service as _redis_svc   # accessed via module so tests can patch redis_client
 from app.db import sync_engine
 from app.routes import changepassword, posts,users,auth,like,connect,comment,search,me,feed,saved
 from app.routes import notifications
-from app.redis_service import check_redis_connection
+from app.services.redis_service import check_redis_connection
 from app.my_utils.socket_manager import manager
 from chat_system import chat,chat_history,share,delete_msg,delete_shares,edit_msg,msg_info,msg_reaction,share_reaction,media_msg,clear_chat
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,8 +35,8 @@ async def _notification_listener() -> None:
                 payload = _json.loads(message["data"])
                 await manager.send_personal_message(payload,user_id)
             except Exception:
-                # User disconnected between publish and delivery — perfectly normal.
-                # JSON decode error or key error — ignore and keep listening.
+                # User disconnected between publish and delivery - perfectly normal.
+                # JSON decode error or key error - ignore and keep listening.
                 pass
     except asyncio.CancelledError:
         # Clean unsubscribe before the task is marked as done.
@@ -44,14 +44,14 @@ async def _notification_listener() -> None:
         raise   # re-raise so asyncio records the task as Cancelled, not Failed
 
 
-# ── Lifespan: replaces the deprecated @app.on_event("startup"/"shutdown") ────
+# -- Lifespan: replaces the deprecated @app.on_event("startup"/"shutdown") --
 # asynccontextmanager turns this one function into both startup AND shutdown.
 # Everything before `yield` runs at startup; everything after runs at shutdown.
 # FastAPI passes it to FastAPI(lifespan=lifespan) and calls it when uvicorn
-# starts/stops — never at import time, so tests importing `app` are safe.
+# starts/stops - never at import time, so tests importing `app` are safe.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── startup ──
+    # -- startup --
     global _listener_task
     redis_ok = await check_redis_connection()
     if redis_ok:
@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
 
     yield   # app is running between these two points
 
-    # ── shutdown ──
+    # -- shutdown --
     if _listener_task:
         _listener_task.cancel()
         try:
@@ -70,7 +70,7 @@ async def lifespan(app: FastAPI):
             pass
 
 
-# fastapi instance — lifespan wires up the startup/shutdown hooks above
+# fastapi instance - lifespan wires up the startup/shutdown hooks above
 app = FastAPI(lifespan=lifespan)
 
 # tells the uvicorn to render any images at the new paths while displaying profile pics or etc

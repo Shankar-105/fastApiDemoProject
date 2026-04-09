@@ -21,12 +21,12 @@ from app.config import settings
 
 # Mock Redis with fakeredis (no real Redis server needed for tests)
 import fakeredis
-from app import redis_service
+from app.services import redis_service
 redis_service.redis_client = fakeredis.FakeAsyncRedis(decode_responses=True)
 
 # Mock OTP generation + email sending for deterministic and fast tests.
-from app import otp_service
-from app import email_service
+from app.services import otp_service
+from app.services import email_service
 
 def _fixed_otp() -> str:
     return "123456"
@@ -54,7 +54,7 @@ _rate_limiter._check = _noop_check
 # notification_service.create_notification() opens its own session (it can't
 # use the request's session because BackgroundTasks run after it closes).
 # so we redirect the tests to use the TestingAsyncSessionLocal so it writes to the test DB.
-from app import notification_service
+from app.services import notification_service
 
 # SMART DATABASE HOST DETECTION FOR DOCKER vs LOCAL
 

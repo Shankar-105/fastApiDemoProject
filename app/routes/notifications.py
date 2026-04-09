@@ -3,8 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 import app.schemas as sch
 from app import models, db, oauth2
-from app import notification_service as ns
-from app.redis_service import get_cache, set_cache, delete_cache_pattern
+from app.services import notification_service as ns
+from app.services.redis_service import get_cache, set_cache, delete_cache_pattern
 
 router = APIRouter(tags=["notifications"])
 
@@ -59,7 +59,7 @@ async def get_unread_notification_count(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
 ):
-    """Return the unread notification count — used for the badge number in the UI."""
+    """Return the unread notification count - used for the badge number in the UI."""
     cache_key = f"notif:unread:{current_user.id}"
     cached = await get_cache(cache_key)
     if cached:
@@ -86,3 +86,4 @@ async def mark_all_notifications_read(
     await delete_cache_pattern(f"notifications:{current_user.id}:*")
     await delete_cache_pattern(f"notif:unread:{current_user.id}")
     return sch.SuccessResponse(message="All notifications marked as read")
+

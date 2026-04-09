@@ -7,11 +7,11 @@ from sqlalchemy import select,func
 from sqlalchemy.orm import selectinload
 import app.my_utils.utils as utils
 import os
-from app.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
+from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
 from app.rate_limiter import signup_limiter
-from app.blob_service import get_blob_url
-import app.otp_service as otp_service
-import app.email_service as email_service
+from app.services.blob_service import get_blob_url
+import app.services.otp_service as otp_service
+import app.services.email_service as email_service
 router=APIRouter(
     tags=['Users']
 )
@@ -31,11 +31,11 @@ async def userProfile(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:
     cache_key = f"user_profile:{user_id}"
     cached = await get_cache(cache_key)
     if cached:
-        # Cache HIT → return the cached dict directly (FastAPI serializes it)
+        # Cache HIT -> return the cached dict directly (FastAPI serializes it)
         cached["is_following"] = is_following
         return cached
 
-    # Cache MISS → query the database
+    # Cache MISS -> query the database
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()
     if not user:
@@ -115,7 +115,7 @@ async def getAllUsers(db:AsyncSession=Depends(db.getDb)):
     if cached:
         return cached   # cache HIT
 
-    #  Cache MISS → hit DB
+    #  Cache MISS -> hit DB
     result=await db.execute(select(models.User))
     allUsers=result.scalars().all()
 

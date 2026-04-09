@@ -3,7 +3,7 @@ from app import models,db,schemas as sch,oauth2,config
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func
 from typing import Annotated
-from app.blob_service import get_blob_url
+from app.services.blob_service import get_blob_url
 router=APIRouter(tags=['search'])
 
 @router.get("/search", status_code=status.HTTP_202_ACCEPTED, response_model=sch.SearchResultResponse)

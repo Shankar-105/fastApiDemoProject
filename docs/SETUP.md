@@ -15,9 +15,9 @@ cd Social-Media-Api
 
 -  Rename the sample environment file to .env (this keeps secrets/config out of version control)
 ```bash:disable-run
-mv .env.example .env
+mv .env.sample .env
 ```
-> Why: app reads configuration from `.env` so it must be `.env`. Also Renaming the `.env.example` to `.env` ensures sensitive keys (DB password,email creds,JWT secret) are loaded locally and not committed (via .gitignore) when you later commit/push your changes of this clone.
+> Why: app reads configuration from `.env` so it must be `.env`. Also renaming `.env.sample` to `.env` ensures sensitive keys (DB password, email creds, JWT secret) are loaded locally and not committed (via .gitignore) when you later commit/push your changes of this clone.
 
 ---
 ### Prepare Local Folders
@@ -27,6 +27,14 @@ mkdir profilepics posts_media chat-media
 ```
 
 > These folders auto-store profile pictures, post media, and chat files locally. They'll be auto-created if missing.
+
+### Important Local-Clone Requirements
+
+- Folder preparation is mandatory: run `mkdir profilepics posts_media chat-media` before starting the app.
+- Email credentials must be valid for signup verification OTP delivery. Placeholder SMTP values will cause signup verification email sends to fail.
+- Blob credentials are optional for local development:
+  - If `AZURE_STORAGE_CONNECTION_STRING` and `AZURE_STORAGE_ACCOUNT_NAME` are configured, media is stored in Azure Blob.
+  - If they are empty, media is stored in local folders (`profilepics/`, `posts_media/`, `chat-media/`).
 ---
 ### **⚙️ Docker Setup & Running the Project**
 This project uses Docker Compose for an easy multi-service setup (API + Postgres). Containers isolate services and volumes persist your DB data while development.

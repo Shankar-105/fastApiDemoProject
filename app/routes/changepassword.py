@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException,Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app import email_service,models,otp_service,schemas,db,oauth2,token_service
+from app import models,schemas,db,oauth2
+from app.services import email_service, otp_service, token_service
 from app.my_utils import utils
 from app.rate_limiter import change_password_limiter, reset_password_auth_limiter
 

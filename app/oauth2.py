@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi.security import OAuth2PasswordBearer
 from app.config import settings as cg
-from app import redis_service
+from app.services import redis_service
 
 # a scheme for Extracting the sent JWT token 
 # from the Authorization Header

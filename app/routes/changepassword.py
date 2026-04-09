@@ -27,7 +27,7 @@ async def verifyOtp(db:AsyncSession,otp:str,currentUser:models.User):
         return
     raise HTTPException(status_code=400,detail="Wrong or expired OTP")
 
-@router.post("/reset-password", response_model=schemas.SuccessResponse)
+@router.post("/reset-password-auth", response_model=schemas.SuccessResponse)
 async def reset_password(request:schemas.PasswordResetRequest=Body(...),db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),_:None=Depends(reset_password_auth_limiter)):
     # first check whether the user entered the correct current password
     if not await utils.verifyPassword(request.old_password,currentUser.password):

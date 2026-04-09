@@ -18,7 +18,7 @@ Welcome — contributions are open to everyone. Whether you're extending the bac
 
 ### 1. Get the project running locally
 
-Follow [SETUP.md](./SETUP.md) — the fastest way is Docker Compose (spins up API + PostgreSQL + Redis in one command).
+Follow [docs/SETUP.md](./docs/SETUP.md) — the fastest way is Docker Compose (spins up API + PostgreSQL + Redis in one command).
 
 ### 2. Understand the stack before you touch code
 
@@ -42,7 +42,7 @@ Follow [SETUP.md](./SETUP.md) — the fastest way is Docker Compose (spins up AP
 7. Run tests: docker compose exec api pytest pytests/ -v
 ```
 
-Tests use a separate `fastapi_test` database — your dev data is never touched. See [TESTS.md](./TESTS.md) for the full guide.
+Tests use a separate `fastapi_test` database — your dev data is never touched. See [docs/TESTS.md](./docs/TESTS.md) for the full guide.
 
 ---
 
@@ -61,7 +61,7 @@ Both results the same response. So instead of `http://localhost:8000/login` you 
 
 ### Your API Reference
 
-All endpoints are documented in [API_GUIDE.md](./API_GUIDE.md) — every REST route and the WebSocket chat system with request/response examples.
+All endpoints are documented in [docs/API_GUIDE.md](./docs/API_GUIDE.md) — every REST route and the WebSocket chat system with request/response examples.
 
 > **Swagger UI** is live too use it as a reference if you would like too, click the link in Repo About.
 

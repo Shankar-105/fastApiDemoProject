@@ -76,3 +76,5 @@ create_db.py
 # ignore VS Code, visual studio folders
 .vscode/
 .vs/
+# ignore azure integration plan (has credentials)
+AZURE_INTEGRATION.md

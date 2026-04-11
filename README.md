@@ -52,6 +52,12 @@ _All tests use a separate test database—your dev data stays safe! 🛡️_
 
 ---
 
+## 📊 Monitoring and Load Testing
+
+_Want to observe real-time performance and run synthetic traffic on your API? Start with [`docs/MONITORING_AND_LOAD_TESTING.md`](./docs/MONITORING_AND_LOAD_TESTING.md) for Prometheus, Grafana, OpenTelemetry, and k6 setup._
+
+---
+
 ## 🤝 Contributing
 
 _Backend developer? Frontend developer? Either, there's a clear path for you. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for role-specific setup guides, code conventions, and PR instructions._

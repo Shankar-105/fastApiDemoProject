@@ -14,6 +14,8 @@ from app.my_utils.socket_manager import manager
 from chat_system import chat,chat_history,share,delete_msg,delete_shares,edit_msg,msg_info,msg_reaction,share_reaction,media_msg,clear_chat
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+from prometheus_fastapi_instrumentator import Instrumentator
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 # creates tables from models.py if the tables doesnt exist
 
 models.Base.metadata.create_all(bind=sync_engine)
@@ -72,6 +74,12 @@ async def lifespan(app: FastAPI):
 
 # fastapi instance - lifespan wires up the startup/shutdown hooks above
 app = FastAPI(lifespan=lifespan)
+
+# Traces each incoming FastAPI request/response cycle.
+FastAPIInstrumentor.instrument_app(app)
+
+# Exposes Prometheus metrics at /metrics.
+Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
 # tells the uvicorn to render any images at the new paths while displaying profile pics or etc
 # example : without this mount method suppose you hit the see your profile pic endpoint

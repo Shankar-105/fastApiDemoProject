@@ -1,12 +1,14 @@
 # main.py
 import asyncio
 import json as _json
+import logging
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from app import models, config
 from app.services import redis_service as _redis_svc   # accessed via module so tests can patch redis_client
-from app.db import sync_engine
+from app.db import async_engine, sync_engine
 from app.routes import changepassword, posts,users,auth,like,connect,comment,search,me,feed,saved
 from app.routes import notifications
 from app.services.redis_service import check_redis_connection
@@ -14,8 +16,13 @@ from app.my_utils.socket_manager import manager
 from chat_system import chat,chat_history,share,delete_msg,delete_shares,edit_msg,msg_info,msg_reaction,share_reaction,media_msg,clear_chat
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+from opentelemetry import trace
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 # creates tables from models.py if the tables doesnt exist
 
 models.Base.metadata.create_all(bind=sync_engine)
@@ -75,11 +82,44 @@ async def lifespan(app: FastAPI):
 # fastapi instance - lifespan wires up the startup/shutdown hooks above
 app = FastAPI(lifespan=lifespan)
 
+# Export traces to console so tracing can be validated immediately in dev.
+trace.set_tracer_provider(
+    TracerProvider(resource=Resource.create({SERVICE_NAME: "social-media-api"}))
+)
+trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+
 # Traces each incoming FastAPI request/response cycle.
 FastAPIInstrumentor.instrument_app(app)
+SQLAlchemyInstrumentor().instrument(engine=async_engine.sync_engine)
 
 # Exposes Prometheus metrics at /metrics.
 Instrumentator().instrument(app).expose(app, include_in_schema=False)
+
+obs_logger = logging.getLogger("observability")
+
+
+@app.middleware("http")
+async def add_trace_id_log(request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+
+    span = trace.get_current_span()
+    span_ctx = span.get_span_context() if span else None
+    trace_id = (
+        format(span_ctx.trace_id, "032x") if span_ctx and span_ctx.trace_id else "0" * 32
+    )
+
+    obs_logger.info(
+        "method=%s path=%s status=%s duration_ms=%.2f trace_id=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+        trace_id,
+    )
+    response.headers["X-Trace-Id"] = trace_id
+    return response
 
 # tells the uvicorn to render any images at the new paths while displaying profile pics or etc
 # example : without this mount method suppose you hit the see your profile pic endpoint

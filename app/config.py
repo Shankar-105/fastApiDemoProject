@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     rl_create_post_window: int = 60
     rl_follow_max: int = 20
     rl_follow_window: int = 60
+    # observability toggles
+    otel_console_exporter_enabled: bool = False
+    observability_log_enabled: bool = True
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

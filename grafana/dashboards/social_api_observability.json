@@ -6,7 +6,7 @@
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
-  "refresh": "10s",
+  "refresh": "5s",
   "time": {
     "from": "now-15m",
     "to": "now"

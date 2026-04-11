@@ -2,6 +2,7 @@
 import asyncio
 import json as _json
 import logging
+import sys
 import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -82,11 +83,37 @@ async def lifespan(app: FastAPI):
 # fastapi instance - lifespan wires up the startup/shutdown hooks above
 app = FastAPI(lifespan=lifespan)
 
+
+def _configure_observability_logger() -> logging.Logger:
+    logger = logging.getLogger("observability")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    if not config.settings.observability_log_enabled:
+        logger.disabled = True
+        return logger
+
+    # Avoid duplicate handlers when uvicorn reload imports the module more than once.
+    if logger.handlers:
+        return logger
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(
+        logging.Formatter(
+            "\033[96m[OBS]\033[0m %(asctime)s | %(levelname)s | %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
+    logger.addHandler(handler)
+    return logger
+
 # Export traces to console so tracing can be validated immediately in dev.
 trace.set_tracer_provider(
     TracerProvider(resource=Resource.create({SERVICE_NAME: "social-media-api"}))
 )
-trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+if config.settings.otel_console_exporter_enabled:
+    trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
 
 # Traces each incoming FastAPI request/response cycle.
 FastAPIInstrumentor.instrument_app(app)
@@ -95,7 +122,7 @@ SQLAlchemyInstrumentor().instrument(engine=async_engine.sync_engine)
 # Exposes Prometheus metrics at /metrics.
 Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
-obs_logger = logging.getLogger("observability")
+obs_logger = _configure_observability_logger()
 
 
 @app.middleware("http")

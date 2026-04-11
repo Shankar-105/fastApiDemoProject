@@ -23,6 +23,7 @@ services: # all the current services
 
   db:
     image: postgres:16-alpine # get the official postgres image from dockerhub
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       - POSTGRES_USER=postgres  
       - POSTGRES_PASSWORD=iota143  
@@ -38,5 +39,37 @@ services: # all the current services
       - "6379:6379"
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   postgres_data:  # named volume for DB data—survives restarts
+  prometheus_data:
+  grafana_data:

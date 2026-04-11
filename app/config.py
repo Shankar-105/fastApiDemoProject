@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     database_password: str
     database_user: str
     database_name: str
+    # SQLAlchemy async pool tuning
+    db_pool_size: int = 60
+    db_max_overflow: int = 20
+    db_pool_timeout: int = 30
+    db_pool_recycle: int = 1800
     # jwt info
     secret_key: str
     algorithm: str
@@ -57,6 +62,9 @@ class Settings(BaseSettings):
     rl_create_post_window: int = 60
     rl_follow_max: int = 20
     rl_follow_window: int = 60
+    # observability toggles
+    otel_console_exporter_enabled: bool = False
+    observability_log_enabled: bool = True
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

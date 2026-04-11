@@ -3,13 +3,14 @@ import { runMixedScenario, setupContext } from "./common.js";
 
 export const options = {
   stages: [
-    { duration: "20s", target: 20 },
-    { duration: "60s", target: 120 },
-    { duration: "30s", target: 0 },
+    { duration: "30s", target: 200 },
+    { duration: "90s", target: 700 },
+    { duration: "120s", target: 1000 },
+    { duration: "60s", target: 0 },
   ],
   thresholds: {
-    http_req_duration: ["p(95)<1800"],
-    http_req_failed: ["rate<0.20"],
+    http_req_duration: ["p(95)<2500"],
+    http_req_failed: ["rate<0.30"],
   },
 };
 
@@ -19,5 +20,5 @@ export function setup() {
 
 export default function (data) {
   runMixedScenario(data);
-  sleep(0.8);
+  sleep(0.35);
 }

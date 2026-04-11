@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     database_password: str
     database_user: str
     database_name: str
+    # SQLAlchemy async pool tuning
+    db_pool_size: int = 60
+    db_max_overflow: int = 20
+    db_pool_timeout: int = 30
+    db_pool_recycle: int = 1800
     # jwt info
     secret_key: str
     algorithm: str

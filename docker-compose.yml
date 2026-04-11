@@ -23,6 +23,7 @@ services: # all the current services
 
   db:
     image: postgres:16-alpine # get the official postgres image from dockerhub
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       - POSTGRES_USER=postgres  
       - POSTGRES_PASSWORD=iota143  

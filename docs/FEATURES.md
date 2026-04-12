@@ -31,6 +31,7 @@
 | [DevOps & Docker](#-devops--docker) | Docker Compose, multi-service stack, volumes, auto-restart |
 | [API Documentation](#-api-documentation) | Swagger UI, ReDoc, Pydantic schemas |
 | [Testing](#-testing) | Pytest, isolated test DB, 50+ integration tests |
+| [Observability and Load Testing](#-observability-and-load-testing) | OpenTelemetry, Prometheus, Grafana, and k6 traffic simulation |
 | [Human-Readable Timestamps](#-human-readable-timestamps) | "5 min ago", "Yesterday at 3:45 PM" formatting |
 
 ---
@@ -410,6 +411,17 @@ A production-grade 1-on-1 chat system running over a single persistent WebSocket
 - **Isolated test database** — uses a separate `fastapi_test` database so dev data is never affected
 - **Docker-aware** — auto-detects `/.dockerenv` and switches the database host to `db`
 - **Detailed test guide** — [`TESTS.md`](./TESTS.md) with commands, tips, and debugging advice
+
+---
+
+## 📈 Observability and Load Testing
+
+- **OpenTelemetry tracing** — FastAPI and SQLAlchemy request spans are instrumented to expose request flow and DB timing.
+- **Prometheus metrics** — `/metrics` endpoint is exposed for scrape-based monitoring.
+- **Grafana dashboards** — project includes provisioned dashboard and datasource setup for quick startup.
+- **k6 load scripts** — smoke, load, and stress scenarios are included under `loadtests/` for repeatable performance validation.
+- **Route-aware checks** — k6 scripts validate endpoint reachability with expected status handling for protected and heavy routes.
+- **Performance bottleneck discovery** — setup is designed to reveal latency tail growth, timeout behavior, and transport-level failures (EOF/connect timeout) under pressure.
 
 ---
 

@@ -37,7 +37,15 @@ mkdir profilepics posts_media chat-media
   - If they are empty, media is stored in local folders (`profilepics/`, `posts_media/`, `chat-media/`).
 ---
 ### **⚙️ Docker Setup & Running the Project**
-This project uses Docker Compose for an easy multi-service setup (API + Postgres). Containers isolate services and volumes persist your DB data while development.
+This project uses Docker Compose for an easy multi-service setup. Containers isolate services and volumes persist your DB data while development.
+
+Current Compose stack includes:
+
+1. API
+2. PostgreSQL
+3. Redis
+4. Prometheus
+5. Grafana
 
 #### Prerequisites
 - Ensure Docker Desktop is installed and running.
@@ -46,6 +54,29 @@ This project uses Docker Compose for an easy multi-service setup (API + Postgres
 docker --version
 ```
   - Expected: a Docker version output (e.g., `Docker version 20.x.x` or newer).
+
+- Install k6 on your host machine if you want to run load tests.
+  - k6 is not packaged in this repository's Docker Compose services.
+  - Windows (winget):
+```powershell:disable-run
+winget install k6 --source winget
+```
+  - Windows (chocolatey):
+```powershell:disable-run
+choco install k6
+```
+  - Linux:
+```bash:disable-run
+sudo gpg -k
+sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+sudo apt update
+sudo apt install k6
+```
+  - macOS (Homebrew):
+```bash:disable-run
+brew install k6
+```
 
 #### Environment config (.env)
 Open your `.env` and update only the values below that matter for container networking and email:
@@ -71,11 +102,11 @@ Follow these commands to bring everything up:
 docker compose build
 ```
 
-2. Start in detached mode (API + Postgres)
+2. Start in detached mode
 ```bash:disable-run
 docker compose up -d
 ```
-- What happens: Compose starts the DB container first, then the API. If configured, Alembic migrations run automatically on startup.
+- What happens: Compose starts DB/Redis/Prometheus/Grafana and API. Alembic migrations run automatically on startup.
 
 3. Verify the API 
 -  **In your Browser hit this url** http://localhost:8000/health
@@ -86,9 +117,25 @@ docker compose up -d
 ```bash:disable-run
 docker compose logs api
 docker compose logs db
+docker compose logs prometheus
+docker compose logs grafana
 ```
 
-5. If your done with running the api Stop the stack gracefully
+5. Verify monitoring services (Recommended)
+
+- Prometheus UI: http://localhost:9090
+- Grafana UI: http://localhost:3000
+
+Default local Grafana credentials:
+
+- username: admin
+- password: admin
+
+For detailed usage of Grafana dashboards, Prometheus query UI, and k6 monitoring flow, read:
+
+- [docs/MONITORING_AND_LOAD_TESTING.md](./MONITORING_AND_LOAD_TESTING.md)
+
+6. If your done with running the api Stop the stack gracefully
 ```bash:disable-run
 docker compose down
 ```
@@ -117,6 +164,7 @@ docker compose exec -it api alembic upgrade head
 ```
 - If Postgres connection errors occur, confirm `.env` values and that `DATABASE_HOST=db` is set. Use `docker compose logs db` to inspect DB startup errors.
 - If Redis connection errors occur, confirm `REDIS_HOST=redis` is set in the api environment. Use `docker compose logs redis` to inspect Redis startup errors.
+- If Prometheus or Grafana shows no data, first check `http://localhost:8000/metrics` and verify Prometheus target status in its UI.
 - For SMTP/email issues: confirm the app password is correct, and your Gmail account allows SMTP access via App Passwords (2-Step Verification must be enabled).
 </details>
 

@@ -1,4 +1,4 @@
-# 🚀 SocialMediaApi
+# 🚀 Social Media Api
 **Modern Social Media Backend + Real-time Chat – Scalable, Fast, and Beginner-Friendly**
 
 A **fully async, non-blocking** social media backend built to handle **thousands of concurrent connections** without breaking a sweat. Powered by FastAPI, asyncpg, Redis, and WebSockets — every route, every query, every cache hit runs on the event loop. Features **refresh token rotation** with family-based revocation, **real-time notifications** via Redis Pub/Sub, **IP & user-based rate limiting**, **Redis caching across 11+ endpoints** with automatic invalidation. CPU-heavy work (bcrypt, JWT) is offloaded to the thread pool so the server never stalls. Production-grade, real-time, and built for scale.
@@ -13,6 +13,9 @@ A **fully async, non-blocking** social media backend built to handle **thousands
 ![JWT Badge](https://img.shields.io/badge/JWT-000000?style=for-the-badge&logo=JSON%20web%20tokens&logoColor=white)
 ![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=plastic&logo=docker&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7.0+-red?logo=redis&logoColor=white)
+![Grafana](https://img.shields.io/badge/Grafana-Dashboarding-F46800?logo=grafana&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus&logoColor=white)
+![k6](https://img.shields.io/badge/k6-Load%20Testing-7D64FF?logo=k6&logoColor=white)
 
 ## 🌟 Features — Everything Inside
 
@@ -51,10 +54,22 @@ _Ready to verify everything works? Check out [`docs/TESTS.md`](./docs/TESTS.md) 
 _All tests use a separate test database—your dev data stays safe! 🛡️_
 
 ---
+## 📸 Benchmark Proof — RPS, P95 Graphs and What They Mean
+
+_[`docs/BENCHMARK.md`](./docs/BENCHMARK.md)_
+
+> Real benchmark evidence from deployed runs, with charts + clear conclusions.
+
+**What you get inside:**
+- 📈 _**smoke/load** behavior snapshots from **Grafana**_,
+- ⏱️ _request rate, p95 latency, and top slow-endpoint patterns_,
+- 🧠 _interpretation of whether limits are coming from **infrastructure saturation or endpoint-level defects**_.
+
+--- 
 
 ## 📊 Monitoring and Load Testing
 
-_Want to observe real-time performance and run synthetic traffic on your API? Start with [`docs/MONITORING_AND_LOAD_TESTING.md`](./docs/MONITORING_AND_LOAD_TESTING.md) for Prometheus, Grafana, OpenTelemetry, and k6 setup._
+_Want to observe real-time performance and run synthetic traffic on API? Start with [`docs/MONITORING_AND_LOAD_TESTING.md`](./docs/MONITORING_AND_LOAD_TESTING.md) for Prometheus, Grafana, OpenTelemetry, and k6 setup._
 
 ---
 
@@ -64,9 +79,9 @@ _Backend developer? Frontend developer? Either, there's a clear path for you. Se
 
 ---
 
-## 👨‍💻 Built by Bhavani Shankar  
+## 👨‍💻 Built by Bhavani Shankar Mukka 🎓
 **ANITS College, Vizag**
 
 > Thanks for checking out the project.
-> If you use this API , let me know—would love to hear you 🚀 🎓
+> If you use this API , let me know—would love to hear you ❤️
 ---

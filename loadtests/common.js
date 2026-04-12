@@ -1,7 +1,7 @@
 import http from "k6/http";
 import { check, group } from "k6";
 
-export const BASE_URL = __ENV.BASE_URL || "https://fastapi-social-vm.centralindia.cloudapp.azure.com";
+export const BASE_URL = __ENV.BASE_URL || "http://localhost:8000";
 
 const TEST_USER = {
   username: __ENV.LOADTEST_USERNAME || "k6_load_user",

@@ -1,5 +1,13 @@
 # 📸 Benchmark and Deployed Reality
 
+> Benchmark proof = visual evidence + measured numbers + interpretation in one place.
+
+## ✨ At a Glance
+
+1. deployed screenshots for key Grafana panels,
+2. smoke and load test summaries,
+3. clear explanation of infra saturation vs code quality.
+
 This file is the benchmark proof for the deployed app.
 
 ## 🎯 Why This File Exists
@@ -16,25 +24,17 @@ I wanted a separate benchmark-proof page so anyone reading the project can quick
 
 ## 🖼️ Grafana Panels while Smoke Testing
 
-### 1) Requests Per Second (Deployed)
+### 1) Requests Per Second and P95 Latency (Deployed)
 
-<!-- Paste image here -->
+![Requests Per Second and P95 Latency (Deployed)](../loadtests/results/rpsAndP95.png)
 
-### 2) P95 Latency (Deployed)
+Captured on: 2026-04-12 (deployed smoke-test window)
 
-<!-- Paste image here -->
+### 2) Top Slow Endpoints (Deployed)
 
-### 3) Error Rate (Deployed)
+![Top Slow Endpoints (Deployed)](../loadtests/results/topSlow.png)
 
-<!-- Paste image here -->
-
-### 4) 4xx vs 5xx Counts (Deployed)
-
-<!-- Paste image here -->
-
-### 5) Top Slow Endpoints (Deployed)
-
-<!-- Paste image here -->
+Captured on: 2026-04-12 (deployed smoke-test window)
 
 ## ✅ Smoke Test Summary (Deployed, Real Run)
 
@@ -54,6 +54,17 @@ Summary from the deployed run:
 6. endpoint checks: `97.99%` passed (`9134/9321`)
 
 Important context from the same run: repeated transport failures still appeared (`request timeout`, connection attempts failing to respond).
+
+Note on variance: chart values and summary values can vary slightly between runs, and that is expected.
+
+Why you may see bigger p95 differences between k6 output and Grafana panel:
+
+1. k6 computes p95 from client-side request timings for that exact test window,
+2. Grafana panel often uses Prometheus histogram buckets + query windows (for example, rate over 1m or 5m),
+3. sampling interval and scrape timing can smooth spikes differently,
+4. panel time range may include warm-up/ramp-down periods that k6 summary aggregates differently.
+
+So small to moderate mismatch is normal, and even noticeable p95 deltas can happen depending on panel query window and test timing alignment.
 
 ## ❌ Load Test Summary (Deployed, Real Run)
 

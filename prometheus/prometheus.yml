@@ -9,6 +9,5 @@ scrape_configs:
 
   - job_name: "fastapi-api"
     static_configs:
-      - targets: ["fastapi-social-vm.centralindia.cloudapp.azure.com:443"]
-    scheme: https
+      - targets: ["api:8000"]
     metrics_path: /metrics

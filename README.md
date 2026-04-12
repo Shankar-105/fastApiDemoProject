@@ -13,6 +13,9 @@ A **fully async, non-blocking** social media backend built to handle **thousands
 ![JWT Badge](https://img.shields.io/badge/JWT-000000?style=for-the-badge&logo=JSON%20web%20tokens&logoColor=white)
 ![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=plastic&logo=docker&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7.0+-red?logo=redis&logoColor=white)
+![Grafana](https://img.shields.io/badge/Grafana-Dashboarding-F46800?logo=grafana&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus&logoColor=white)
+![k6](https://img.shields.io/badge/k6-Load%20Testing-7D64FF?logo=k6&logoColor=white)
 
 ## 🌟 Features — Everything Inside
 
@@ -51,11 +54,18 @@ _Ready to verify everything works? Check out [`docs/TESTS.md`](./docs/TESTS.md) 
 _All tests use a separate test database—your dev data stays safe! 🛡️_
 
 ---
-# 📸 Benchmark Proof (Charts + Notes)
+## 📸 Benchmark Proof — Charts and What They Mean
 
-- [docs/BENCHMARK.md](./BENCHMARK.md)
+[`docs/BENCHMARK.md`](./BENCHMARK.md)
 
-That file is where deployed Grafana screenshots and short benchmark conclusions are documented.
+> Real benchmark evidence from deployed runs, with charts + clear conclusions.
+
+**What you get inside:**
+- 📈 smoke/load behavior snapshots from Grafana,
+- ⏱️ request rate, p95 latency, and top slow-endpoint patterns,
+- 🧠 interpretation of whether limits are coming from infrastructure saturation or endpoint-level defects.
+
+> Think of this as the "evidence board" for deployed performance, not just raw numbers.
 
 --- 
 

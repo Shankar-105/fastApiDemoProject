@@ -1,5 +1,14 @@
 # 📊 Monitoring and Load Testing
 
+> This is your performance control room: generate traffic with k6, inspect metrics in Prometheus, and read live behavior in Grafana.
+
+## ✨ At a Glance
+
+1. run the stack,
+2. run smoke/load/stress traffic,
+3. observe request rate, p95, and failures,
+4. compare local baseline vs deployed behavior.
+
 This guide is for new contributors who open the repo and want to understand:
 
 1. what observability tools are used here,

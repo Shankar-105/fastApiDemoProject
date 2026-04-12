@@ -21,56 +21,6 @@ Important:
 2. k6 can run against any reachable base URL even if Prometheus or Grafana are down.
 3. Prometheus and Grafana help you observe behavior, but they are not required for traffic generation.
 
-## 🧩 Quick Tool Primer
-
-### 🔎 OpenTelemetry (OTel)
-
-OTel gives traces. Think of traces as a per-request timeline.
-
-It helps answer:
-
-1. which part of the request was slow,
-2. which operation happened before failure,
-3. where latency is accumulating.
-
-### 🗄️ Prometheus
-
-Prometheus stores numeric time-series metrics.
-
-It helps answer:
-
-1. requests per second,
-2. p95 latency trend,
-3. error percentage trend,
-4. per-endpoint load patterns.
-
-Think of Prometheus UI like a query console for metrics data.
-It is similar in spirit to tools like pgAdmin where you query a database, except here you query time-series metrics (TSDB) with PromQL.
-
-### 📈 Grafana
-
-Grafana visualizes Prometheus metrics in dashboards.
-
-It helps answer:
-
-1. is the system healthy right now,
-2. which route is becoming slow,
-3. whether errors are 4xx or 5xx driven.
-
-Prometheus stores and serves the data.
-Grafana is the visualization layer that turns those queries into charts.
-
-### ⚡ k6
-
-k6 is the traffic generator. It sends synthetic user traffic to your app.
-
-It helps answer:
-
-1. how the app behaves under increasing concurrency,
-2. when p95 starts degrading,
-3. when transport-level failures appear (timeouts, EOF, connection resets),
-4. where bottlenecks exist in app or infrastructure.
-
 ## 🚀 Run Everything
 
 ### 1) Start services
@@ -127,27 +77,6 @@ histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by 
 
 If you want visual dashboards, use Grafana.
 If you want direct metric queries/debugging, use Prometheus UI.
-
-## 📌 How to Read k6 Output
-
-The most important lines are:
-
-1. http_req_duration with p95
-2. http_req_failed rate
-3. iterations complete and interrupted
-4. endpoint checks pass or fail
-
-Example interpretation:
-
-1. If p95 crosses threshold but failures are near zero:
-	1. system is still serving requests,
-	2. but latency tail is getting too slow.
-2. If p95 and failure rate both spike:
-	1. system is overloaded,
-	2. queueing and transport failures are happening.
-3. If interrupted iterations increase:
-	1. many VUs were still in progress when test stopped,
-	2. usually a sign of long-running or stuck requests under pressure.
 
 ## 🌍 Local vs Deployed: Why Deployed Can Look Worse
 
@@ -251,9 +180,3 @@ That is why you can see timeout/EOF/connect errors and lower req/s in deployed r
 
 Workers increase app capacity, but they do not remove infrastructure bottlenecks.
 If DB, VM, or network saturates first, p95 latency and timeout/EOF failures will rise even when worker count looks "better" on paper.
-
-## 📝 Final Notes
-
-1. This guide focuses on practical, reproducible testing.
-2. k6 generates traffic, Prometheus stores metrics, Grafana visualizes metrics, and OTel gives request-level trace context.
-3. Use all four together for fastest root-cause analysis.

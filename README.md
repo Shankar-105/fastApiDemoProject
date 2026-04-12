@@ -51,6 +51,13 @@ _Ready to verify everything works? Check out [`docs/TESTS.md`](./docs/TESTS.md) 
 _All tests use a separate test database—your dev data stays safe! 🛡️_
 
 ---
+# 📸 Benchmark Proof (Charts + Notes)
+
+- [docs/BENCHMARK.md](./BENCHMARK.md)
+
+That file is where deployed Grafana screenshots and short benchmark conclusions are documented.
+
+--- 
 
 ## 📊 Monitoring and Load Testing
 

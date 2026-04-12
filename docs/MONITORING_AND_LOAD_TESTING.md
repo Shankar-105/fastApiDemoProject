@@ -1,4 +1,4 @@
-# Monitoring and Load Testing
+# 📊 Monitoring and Load Testing
 
 This guide is for new contributors who open the repo and want to understand:
 
@@ -9,7 +9,7 @@ This guide is for new contributors who open the repo and want to understand:
 
 You do not need to manually wire Prometheus or Grafana. They are already configured in Docker Compose for this project.
 
-## Before You Start
+## ✅ Before You Start
 
 1. Complete the project setup from [docs/SETUP.md](docs/SETUP.md).
 2. Start the stack with Docker Compose.
@@ -21,9 +21,9 @@ Important:
 2. k6 can run against any reachable base URL even if Prometheus or Grafana are down.
 3. Prometheus and Grafana help you observe behavior, but they are not required for traffic generation.
 
-## Quick Tool Primer
+## 🧩 Quick Tool Primer
 
-### OpenTelemetry (OTel)
+### 🔎 OpenTelemetry (OTel)
 
 OTel gives traces. Think of traces as a per-request timeline.
 
@@ -33,7 +33,7 @@ It helps answer:
 2. which operation happened before failure,
 3. where latency is accumulating.
 
-### Prometheus
+### 🗄️ Prometheus
 
 Prometheus stores numeric time-series metrics.
 
@@ -44,7 +44,10 @@ It helps answer:
 3. error percentage trend,
 4. per-endpoint load patterns.
 
-### Grafana
+Think of Prometheus UI like a query console for metrics data.
+It is similar in spirit to tools like pgAdmin where you query a database, except here you query time-series metrics (TSDB) with PromQL.
+
+### 📈 Grafana
 
 Grafana visualizes Prometheus metrics in dashboards.
 
@@ -54,7 +57,10 @@ It helps answer:
 2. which route is becoming slow,
 3. whether errors are 4xx or 5xx driven.
 
-### k6
+Prometheus stores and serves the data.
+Grafana is the visualization layer that turns those queries into charts.
+
+### ⚡ k6
 
 k6 is the traffic generator. It sends synthetic user traffic to your app.
 
@@ -65,19 +71,7 @@ It helps answer:
 3. when transport-level failures appear (timeouts, EOF, connection resets),
 4. where bottlenecks exist in app or infrastructure.
 
-## What Is Already Wired In This Repo
-
-1. Prometheus container and scrape config.
-2. Grafana container with datasource and dashboard provisioning.
-3. FastAPI metrics endpoint at /metrics.
-4. FastAPI tracing instrumentation.
-5. k6 scripts:
-	1. [loadtests/smoke.js](../loadtests/smoke.js)
-	2. [loadtests/load.js](../loadtests/load.js)
-	3. [loadtests/stress.js](../loadtests/stress.js)
-	4. [loadtests/common.js](../loadtests/common.js)
-
-## Run Everything
+## 🚀 Run Everything
 
 ### 1) Start services
 
@@ -91,33 +85,50 @@ Useful URLs after startup:
 2. Prometheus: http://localhost:9090
 3. Grafana: http://localhost:3000
 
-### 2) Run k6 tests
+Tip:
 
-Smoke:
+1. Prometheus and Grafana are for observing behavior.
+2. k6 still works even if those two are down, as long as your API target URL is reachable.
 
-```powershell
-k6 run -e BASE_URL=http://localhost:8000 loadtests/smoke.js
+## 🖥️ How to Use Grafana and Prometheus After k6
+
+After starting a k6 run, keep Grafana and Prometheus open in browser tabs.
+
+### Grafana walkthrough
+
+1. Open http://localhost:3000 and sign in.
+2. Go to Dashboards.
+3. Open folder: Observability.
+4. Open dashboard: Social API Observability.
+5. Watch these panels while load is running:
+	1. Requests per second,
+	2. p95 latency,
+	3. error rate,
+	4. 4xx and 5xx counts,
+	5. top slow endpoints.
+
+This gives the fastest visual story of how the API behaves under traffic.
+
+### Prometheus walkthrough
+
+1. Open http://localhost:9090.
+2. Prometheus is not primarily for pretty charts.
+3. It is the metrics database + query UI.
+4. Run PromQL queries to inspect raw metric series.
+
+Starter queries:
+
+```promql
+up
+sum(http_requests_total)
+rate(http_requests_total[1m])
+histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
 ```
 
-Load:
+If you want visual dashboards, use Grafana.
+If you want direct metric queries/debugging, use Prometheus UI.
 
-```powershell
-k6 run -e BASE_URL=http://localhost:8000 loadtests/load.js
-```
-
-Stress:
-
-```powershell
-k6 run -e BASE_URL=http://localhost:8000 loadtests/stress.js
-```
-
-To test deployed target instead of local:
-
-```powershell
-k6 run -e BASE_URL=https://fastapi-social-vm.centralindia.cloudapp.azure.com loadtests/load.js
-```
-
-## How to Read k6 Output
+## 📌 How to Read k6 Output
 
 The most important lines are:
 
@@ -138,30 +149,110 @@ Example interpretation:
 	1. many VUs were still in progress when test stopped,
 	2. usually a sign of long-running or stuck requests under pressure.
 
-## Local vs Deployed: Why Deployed Can Look Worse
+## 🌍 Local vs Deployed: Why Deployed Can Look Worse
 
-It is common for a deployed environment to underperform local if infrastructure is constrained.
+### 🧪 Local baseline first (recommended)
 
-Typical reasons:
+For local baseline testing:
 
-1. VM size limits (CPU, memory, burst credits),
-2. managed DB tier limits (CPU and IOPS),
-3. network latency to database,
-4. reverse proxy and worker queue saturation,
-5. TLS and internet path overhead,
-6. limited worker count relative to workload shape.
+1. Keep `BASE_URL` in [loadtests/common.js](../loadtests/common.js) pointed to localhost.
+2. Run:
 
-So two workers alone do not guarantee higher throughput.
+```powershell
+k6 run loadtests/load.js
+```
 
-## Suggested Workflow for New Contributors
+From our recent local baseline, the app sustained roughly 500+ req/s with near-zero transport failures and 0% request failure rate on that run, even with a single Uvicorn process. That is a strong baseline.
 
-1. Start with smoke test.
-2. Move to load test.
-3. Observe p95 trend and error rate.
-4. Run stress test only after load baseline is understood.
-5. Compare local and deployed with the same script and explicit BASE_URL.
+### ✅ Local run snapshot (real output)
 
-## Final Notes
+Local `k6 run loadtests/load.js` summary from this project:
+
+1. `http_reqs`: `141339` total (`468.37 req/s`)
+2. `http_req_failed`: `0.00%` (`0 out of 141339`)
+3. `iterations`: `11778`
+4. `interrupted iterations`: `0`
+5. `p95 latency`: `2.71s` (threshold `p(95)<2500` narrowly crossed)
+6. endpoint checks: `100%` passed (`141339/141339`)
+
+Confidence signal: even with one Uvicorn process in local path, the app handled high throughput with stable success behavior.
+
+### ☁️ Now run the same test against deployed URL
+
+After local baseline, run the exact same test for deployed app.
+
+1. In [loadtests/common.js](../loadtests/common.js), set `BASE_URL` to:
+
+```javascript
+https://fastapi-social-vm.centralindia.cloudapp.azure.com
+```
+
+2. Run the same command:
+
+```powershell
+k6 run loadtests/load.js
+```
+
+At first glance, you may expect more throughput because deployment uses Gunicorn + 2 Uvicorn workers, so it feels like it should do maybe close to 1000 req/s.
+
+In real runs, it can still perform worse than local.
+
+### ❌ Deployed run snapshot (real output)
+
+Deployed `k6 run loadtests/load.js` summary from this project:
+
+1. `http_reqs`: `30475` total (`86.66 req/s`)
+2. `http_req_failed`: `33.59%` (`10239 out of 30475`)
+3. `iterations`: `2242`
+4. `interrupted iterations`: `592`
+5. `p95 latency`: `58.91s` (threshold failure)
+6. repeated transport errors: `request timeout`, `EOF`, `connection reset`, `connect timeout`
+
+Confidence signal: this is not a tiny variance. It is a clear saturation pattern difference between local and deployed path.
+
+### 🧠 Why deployed VM can be worse than local even with 2 workers
+
+Two workers are not enough by themselves.
+Worker count is only one layer.
+
+Real throughput depends on the full end-to-end path:
+
+1. Nginx,
+2. Gunicorn/Uvicorn worker behavior,
+3. app code and query shape,
+4. Redis,
+5. Postgres over network,
+6. Azure infrastructure limits.
+
+If you check [docs/AZURE_DEPLOYMENT.md](./AZURE_DEPLOYMENT.md), the deployed profile is resource-constrained for heavy sustained traffic:
+
+1. VM: `Standard_B2ats_v2` (burstable class),
+2. Postgres: `B1ms` tier (small tier),
+3. Redis runs on same VM and competes for CPU/RAM with app and Nginx.
+
+What this means under load:
+
+1. Burstable VM can throttle when CPU credits drain,
+2. remote DB latency and IOPS limits dominate at high concurrency,
+3. this k6 script is heavy per iteration (many endpoints each loop),
+4. Nginx/Gunicorn backlog and timeout behavior can amplify drops,
+5. TLS + public internet overhead exists in deployed path but not localhost.
+
+That is why you can see timeout/EOF/connect errors and lower req/s in deployed runs even when worker count appears better on paper.
+
+### 📉 Failure pattern you usually see when deployed starts saturating
+
+1. p95 rises sharply,
+2. request timeouts and EOF increase,
+3. interrupted iterations increase,
+4. overall req/s flattens or drops.
+
+### 📌 Quick takeaway
+
+Workers increase app capacity, but they do not remove infrastructure bottlenecks.
+If DB, VM, or network saturates first, p95 latency and timeout/EOF failures will rise even when worker count looks "better" on paper.
+
+## 📝 Final Notes
 
 1. This guide focuses on practical, reproducible testing.
 2. k6 generates traffic, Prometheus stores metrics, Grafana visualizes metrics, and OTel gives request-level trace context.

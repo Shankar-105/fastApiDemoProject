@@ -131,6 +131,10 @@ Default local Grafana credentials:
 - username: admin
 - password: admin
 
+For detailed usage of Grafana dashboards, Prometheus query UI, and k6 monitoring flow, read:
+
+- [docs/MONITORING_AND_LOAD_TESTING.md](./MONITORING_AND_LOAD_TESTING.md)
+
 6. If your done with running the api Stop the stack gracefully
 ```bash:disable-run
 docker compose down

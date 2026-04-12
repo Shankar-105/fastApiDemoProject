@@ -1,4 +1,4 @@
-# 🌟 Features — Everything Inside SocialMediaApi
+# 🌟 Features — Everything Inside Social Media Api
 
 > A deep dive into every feature powering this backend. Nothing skipped.
 

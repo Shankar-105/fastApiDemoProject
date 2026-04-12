@@ -46,3 +46,8 @@ async def test_verify_email_then_login_works(client):
     login = await client.post("/login", data={"username": payload["username"], "password": payload["password"]})
     assert login.status_code == 202
     assert "accessToken" in login.json()
+
+
+async def test_login_missing_password_returns_422(client, create_test_user):
+    resp = await client.post("/login", data={"username": "testuser"})
+    assert resp.status_code == 422

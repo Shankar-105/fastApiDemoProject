@@ -2,6 +2,15 @@
 Additional tests for edge cases and WebSocket functionality
 """
 import pytest
+from pydantic import ValidationError
+
+from app.schemas import (
+    ActorBasic,
+    NotificationListResponse,
+    PostCreateRequest,
+    SearchRequest,
+    VerifyEmailRequest,
+)
 
 
 async def test_post_detail_response_complete(client, get_token):
@@ -170,3 +179,35 @@ async def test_user_basic_response_in_followers(client, get_token):
         assert "id" in follower
         assert "username" in follower
         assert "nickname" in follower
+
+
+def test_verify_email_request_rejects_invalid_otp_length():
+    with pytest.raises(ValidationError):
+        VerifyEmailRequest(email="user@example.com", otp="12345")
+
+
+def test_search_request_rejects_limit_above_max():
+    with pytest.raises(ValidationError):
+        SearchRequest(q="hello", limit=101, offset=0)
+
+
+def test_post_create_request_rejects_empty_content():
+    with pytest.raises(ValidationError):
+        PostCreateRequest(title="Valid title", content="")
+
+
+def test_actor_basic_maps_profile_picture_alias():
+    actor = ActorBasic(id=1, username="alice", profile_picture="/img/a.png")
+    assert actor.profile_pic == "/img/a.png"
+
+
+def test_notification_list_response_requires_boolean_has_more():
+    with pytest.raises(ValidationError):
+        NotificationListResponse(
+            notifications=[],
+            unread_count=0,
+            total=0,
+            limit=10,
+            offset=0,
+            has_more={"not": "bool"},
+        )

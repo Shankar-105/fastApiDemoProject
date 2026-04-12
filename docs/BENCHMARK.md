@@ -1,14 +1,12 @@
 # 📸 Benchmark and Deployed Reality
 
-> Benchmark proof = visual evidence + measured numbers + interpretation in one place.
-
 ## ✨ At a Glance
 
 1. deployed screenshots for key Grafana panels,
 2. smoke and load test summaries,
 3. clear explanation of infra saturation vs code quality.
 
-This file is the benchmark proof for the deployed app.
+> **_This file is the benchmark proof for the deployed app_**.
 
 ## 🎯 Why This File Exists
 
@@ -55,16 +53,7 @@ Summary from the deployed run:
 
 Important context from the same run: repeated transport failures still appeared (`request timeout`, connection attempts failing to respond).
 
-Note on variance: chart values and summary values can vary slightly between runs, and that is expected.
-
-Why you may see bigger p95 differences between k6 output and Grafana panel:
-
-1. k6 computes p95 from client-side request timings for that exact test window,
-2. Grafana panel often uses Prometheus histogram buckets + query windows (for example, rate over 1m or 5m),
-3. sampling interval and scrape timing can smooth spikes differently,
-4. panel time range may include warm-up/ramp-down periods that k6 summary aggregates differently.
-
-So small to moderate mismatch is normal, and even noticeable p95 deltas can happen depending on panel query window and test timing alignment.
+> **Note on variance**: _chart values and summary values can vary slightly between runs, and that is expected_.
 
 ## ❌ Load Test Summary (Deployed, Real Run)
 
@@ -90,12 +79,12 @@ From the above smoke,load test runs and the above screenshots, the app currently
 3. p95 and failure rate rise sharply,
 4. transport-level failures appear (`timeout`, `EOF`, connection resets, connection attempts failing).
 
-This is a loud and clear infrastructure saturation signal, not a "weak code" signal.
-The backend architecture is async and solid; the current Azure VM/DB sizing is what is being overrun under sustained concurrency.
+**This is a loud and clear infrastructure saturation signal, not a "weak code" signal.**
+**The backend architecture is async and solid; the current Azure VM/DB sizing is what is being overrun under sustained concurrency.**
 
 ## 🧠 Why Deployed Is Currently Limited
 
-If you check [docs/AZURE_DEPLOYMENT.md](./AZURE_DEPLOYMENT.md), the deployed stack is intentionally basic-tier and student-budget friendly:
+If you check [docs/AZURE_DEPLOYMENT.md](./AZURE_DEPLOYMENT.md), the deployed stack is basic-tier and student-budget friendly:
 
 1. VM is a burstable class (`Standard_B2ats_v2`),
 2. Postgres is small tier (`B1ms`),
@@ -114,5 +103,5 @@ So even with Gunicorn + multiple Uvicorn workers, end-to-end throughput can stil
 
 - Current deployed infra is enough to demonstrate real deployment and moderate traffic.
 - It is not sized for heavy sustained load/stress profiles.
-- The async backend architecture is still a solid foundation and is expected to scale much higher on stronger infra tiers and better resource separation.
+- **_The async backend architecture is still a solid foundation and is expected to scale much higher on stronger infra tiers and better resource separation._**
 

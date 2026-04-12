@@ -1,6 +1,6 @@
 # 📊 Monitoring and Load Testing
 
-> This is your performance control room: generate traffic with k6, inspect metrics in Prometheus, and read live behavior in Grafana.
+> This is performance room: generate traffic with k6, inspect metrics in Prometheus, and read live behavior in Grafana.
 
 ## ✨ At a Glance
 
@@ -100,7 +100,7 @@ For local baseline testing:
 k6 run loadtests/load.js
 ```
 
-From our recent local baseline, the app sustained roughly 500+ req/s with near-zero transport failures and 0% request failure rate on that run, even with a single Uvicorn process. That is a strong baseline.
+> After k6 finishes, **the app sustains roughly ~500 req/sec with near-zero transport failures and 0% request failure** rate on that run, even with a **single Uvicorn process**. That is a strong baseline.
 
 ### ✅ Local run snapshot (real output)
 
@@ -113,7 +113,7 @@ Local `k6 run loadtests/load.js` summary from this project:
 5. `p95 latency`: `2.71s` (threshold `p(95)<2500` narrowly crossed)
 6. endpoint checks: `100%` passed (`141339/141339`)
 
-Confidence signal: even with one Uvicorn process in local path, the app handled high throughput with stable success behavior.
+> **Confidence signal**: _even with one Uvicorn process in local path, the app handled high throughput with stable success behavior_.
 
 ### ☁️ Now run the same test against deployed URL
 
@@ -131,9 +131,9 @@ https://fastapi-social-vm.centralindia.cloudapp.azure.com
 k6 run loadtests/load.js
 ```
 
-At first glance, you may expect more throughput because deployment uses Gunicorn + 2 Uvicorn workers, so it feels like it should do maybe close to 1000 req/s.
+> **At first glance**, you may expect more throughput because deployment uses **_Gunicorn + 2 Uvicorn workers_**, **so it feels like it should do maybe close to 1000 req/sec**.
 
-In real runs, it can still perform worse than local.
+In real runs, it can still perform **worse than local**.
 
 ### ❌ Deployed run snapshot (real output)
 
@@ -146,7 +146,7 @@ Deployed `k6 run loadtests/load.js` summary from this project:
 5. `p95 latency`: `58.91s` (threshold failure)
 6. repeated transport errors: `request timeout`, `EOF`, `connection reset`, `connect timeout`
 
-Confidence signal: this is not a tiny variance. It is a clear saturation pattern difference between local and deployed path.
+> **Confidence signal**: this is not a tiny variance. It is a clear saturation pattern difference between local and deployed path.
 
 ### 🧠 Why deployed VM can be worse than local even with 2 workers
 
@@ -185,7 +185,7 @@ That is why you can see timeout/EOF/connect errors and lower req/s in deployed r
 3. interrupted iterations increase,
 4. overall req/s flattens or drops.
 
-### 📌 Quick takeaway
+### 📌 Takeaway
 
 Workers increase app capacity, but they do not remove infrastructure bottlenecks.
-If DB, VM, or network saturates first, p95 latency and timeout/EOF failures will rise even when worker count looks "better" on paper.
+If DB, VM, or network saturates first, p95 latency and timeout/EOF failures will rise even when worker count looks more.

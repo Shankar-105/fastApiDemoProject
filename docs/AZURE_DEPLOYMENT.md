@@ -15,6 +15,7 @@ The app is deployed on an Azure Linux virtual machine in Central India and is pu
 - VM name: `fastapi-social-vm`
 - Size: `Standard_B2ats_v2`
 - OS: Ubuntu 22.04
+- OS disk: `StandardSSD_LRS` E4 (30 GB class, migrated from `Premium_LRS` P4 in 23rd Apr 2026)
 - Purpose: runs the FastAPI application, Gunicorn/Uvicorn workers, and Nginx
 
 ### 2. Azure Database for PostgreSQL

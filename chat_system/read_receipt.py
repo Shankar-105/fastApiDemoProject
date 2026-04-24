@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import update
 from app import models, schemas
 from datetime import datetime
 from app.my_utils.socket_manager import manager
@@ -7,23 +7,9 @@ from app.my_utils.socket_manager import manager
 async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
     try:
         sender_id = int(payload.get("sender_id"))
-        
-        # Find all unread messages from this sender to the current user (reader)
-        result = await db.execute(
-            select(models.Message).where(
-                models.Message.sender_id == sender_id,
-                models.Message.receiver_id == reader_id,
-                models.Message.is_read == False
-            )
-        )
-        unread_messages = result.scalars().all()
-        
-        if not unread_messages:
-            return
-
         now = datetime.utcnow()
-        # Bulk update using an UPDATE statement
-        await db.execute(
+        # Atomic mark-read to avoid duplicate effects under concurrent receipts.
+        update_result = await db.execute(
             update(models.Message)
             .where(
                 models.Message.sender_id == sender_id,
@@ -31,7 +17,12 @@ async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
                 models.Message.is_read == False
             )
             .values(is_read=True, read_at=now)
+            .returning(models.Message.id)
         )
+        updated_message_ids = update_result.scalars().all()
+        if not updated_message_ids:
+            return
+
         await db.commit()
         
         # Notify the sender that their messages have been read
@@ -40,6 +31,7 @@ async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
                 "type": "read_receipt",
                 "reader_id": reader_id,
                 "read_at": str(now),
+                "read_count": len(updated_message_ids),
                 "conversation_with": reader_id
             },
             sender_id

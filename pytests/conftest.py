@@ -247,6 +247,11 @@ async def client():
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
+
+@pytest.fixture(scope="session")
+def db_session_factory():
+    return TestingAsyncSessionLocal
+
 @pytest_asyncio.fixture(scope="session")
 async def create_test_user(client):
     user_data = {

@@ -1,7 +1,8 @@
 from fastapi import APIRouter,WebSocket, WebSocketDisconnect,Depends,Query,HTTPException
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.my_utils.socket_manager import manager
 import json,asyncio
 from datetime import datetime
@@ -24,13 +25,17 @@ async def deleteForMe(
     message = result.scalars().first()
     if not message:
         return
-    deleted_msg=models.DeletedMessage(
-        user_id=me.id,
-        message_id=msg_id
+    insert_stmt = (
+        pg_insert(models.DeletedMessage)
+        .values(user_id=me.id, message_id=msg_id)
+        .on_conflict_do_nothing(
+            index_elements=[models.DeletedMessage.user_id, models.DeletedMessage.message_id]
+        )
     )
-    db.add(deleted_msg)
+    insert_result = await db.execute(insert_stmt)
     await db.commit()
-    return {"message_id": msg_id, "detail": "Deleted for you"}
+    detail = "Already deleted for you" if insert_result.rowcount == 0 else "Deleted for you"
+    return {"message_id": msg_id, "detail": detail}
  
  # delete for everyone method
  # here we mark the message as deleted for everyone is true
@@ -42,20 +47,20 @@ async def delete_for_everyone(
     receiver_id: int,
     ):
     print(f"Message ID {message_id} Sender ID {sender_id} Recv ID {receiver_id}")
-    # query the message and make sure that message is sent by the sender only
-    # because sender cannot delete messages from the receiver for everyone
-    result = await db.execute(
-        select(models.Message).where(
+    # Atomic transition prevents duplicate broadcasts during retries/concurrency.
+    update_result = await db.execute(
+        update(models.Message)
+        .where(
             models.Message.id == message_id,
-            models.Message.sender_id == sender_id
+            models.Message.sender_id == sender_id,
+            models.Message.is_deleted_for_everyone == False,
         )
+        .values(is_deleted_for_everyone=True)
     )
-    message = result.scalars().first()
-    if not message:
+    if not update_result.rowcount:
         print("Message Not Found")
         return
-    # Mark as deleted for everyone
-    message.is_deleted_for_everyone = True
+
     await db.commit()
     # Notify BOTH users instantly
     payload = {

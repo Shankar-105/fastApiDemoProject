@@ -6,7 +6,8 @@ from app import models,oauth2
 from app.db import getDb
 from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,and_
+from sqlalchemy import select,and_,update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 import os,uuid
 import asyncio
 from app.config import settings
@@ -28,17 +29,19 @@ async def getPost(postId:int,db:AsyncSession=Depends(getDb),currentUser:models.U
     reqPost=result.scalars().first()
     if reqPost==None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with id {postId} not found")
-    # is the post viewed before
-    viewResult=await db.execute(select(models.PostView).where(
-        and_(models.PostView.post_id == postId, models.PostView.user_id == currentUser.id)
-    ))
-    isViewed=viewResult.scalars().first()
-    # If no prior view, record the view and increment the count
-    if not isViewed:
-        # If no prior view, record the view and increment the count
-        new_view = models.PostView(post_id=postId,user_id=currentUser.id)
-        db.add(new_view)
-        reqPost.views+=1
+    # Insert view once per user/post and increment views atomically only when inserted.
+    insert_view_stmt = (
+        pg_insert(models.PostView)
+        .values(post_id=postId, user_id=currentUser.id)
+        .on_conflict_do_nothing(index_elements=[models.PostView.post_id, models.PostView.user_id])
+    )
+    insert_result = await db.execute(insert_view_stmt)
+    if insert_result.rowcount and insert_result.rowcount > 0:
+        await db.execute(
+            update(models.Post)
+            .where(models.Post.id == postId)
+            .values(views=models.Post.views + 1)
+        )
         await db.commit()
         await db.refresh(reqPost)  # Refresh to get updated post data
     

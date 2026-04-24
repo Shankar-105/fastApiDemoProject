@@ -1,6 +1,6 @@
 from fastapi import Body,HTTPException,status,APIRouter,Depends,Query,BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,and_,func
+from sqlalchemy import select,and_,func,update
 from app import oauth2,models,db,schemas as sch
 from app.services.notification_service import create_notification
 from app.models import NotificationType
@@ -21,10 +21,11 @@ async def createComment(comment:sch.CommentCreateRequest=Body(...),db:AsyncSessi
     # Create the comment
     new_comment =models.Comments(post_id=comment.post_id,user_id=currentUser.id,comment_content=comment.content)
     db.add(new_comment)
-    # Update comments_cnt in the Post table
-    if post.comments_cnt is None:
-        post.comments_cnt =0
-    post.comments_cnt += 1
+    await db.execute(
+        update(models.Post)
+        .where(models.Post.id == comment.post_id)
+        .values(comments_cnt=models.Post.comments_cnt + 1)
+    )
     await db.commit()
     await db.refresh(new_comment)
     # Invalidate cached comments for this post and post detail caches
@@ -66,11 +67,17 @@ async def deleteComment(comment_id:int,db:AsyncSession=Depends(db.getDb),current
     commentTodelete=result.scalars().first()
     if not commentTodelete:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"comment with Id {comment_id} not Found") 
+    post_id = commentTodelete.post_id
     await db.delete(commentTodelete)
+    await db.execute(
+        update(models.Post)
+        .where(models.Post.id == post_id)
+        .values(comments_cnt=func.greatest(models.Post.comments_cnt - 1, 0))
+    )
     await db.commit()
     # Invalidate cached comments for this post
-    await delete_cache_pattern(f"comments:post:{commentTodelete.post_id}:*")
-    await delete_cache_pattern(f"post:{commentTodelete.post_id}:*")
+    await delete_cache_pattern(f"comments:post:{post_id}:*")
+    await delete_cache_pattern(f"post:{post_id}:*")
     return sch.SuccessResponse(message=f"Comment {comment_id} deleted successfully")
 
 @router.patch("/comments/edit_comment/{comment_id}",status_code=status.HTTP_200_OK, response_model=sch.CommentDetailResponse)

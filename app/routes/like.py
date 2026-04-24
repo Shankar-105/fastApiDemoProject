@@ -3,7 +3,7 @@ import app.schemas as sch
 from app import models,oauth2
 from app.db import getDb
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,and_
+from sqlalchemy import select,and_,update,func
 from sqlalchemy.exc import IntegrityError
 from app.services.notification_service import create_notification
 from app.models import NotificationType
@@ -38,9 +38,17 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
                 # update the same on the posts table also
                 # by removing the vote accordingly (like/dislike)
                 if post.choice:
-                    queriedPost.likes -= 1
+                    await db.execute(
+                        update(models.Post)
+                        .where(models.Post.id == post.post_id)
+                        .values(likes=func.greatest(models.Post.likes - 1, 0))
+                    )
                 else:
-                    queriedPost.dis_likes-= 1
+                    await db.execute(
+                        update(models.Post)
+                        .where(models.Post.id == post.post_id)
+                        .values(dis_likes=func.greatest(models.Post.dis_likes - 1, 0))
+                    )
                 await db.commit()
                 await db.refresh(queriedPost)
                 await delete_cache_pattern(f"post:{post.post_id}:*")
@@ -50,11 +58,23 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
                 # Switching vote (e.g., like to dislike or vice versa)
                 currentVote.action = post.choice
                 if post.choice:
-                    queriedPost.likes += 1
-                    queriedPost.dis_likes -= 1
+                    await db.execute(
+                        update(models.Post)
+                        .where(models.Post.id == post.post_id)
+                        .values(
+                            likes=models.Post.likes + 1,
+                            dis_likes=func.greatest(models.Post.dis_likes - 1, 0),
+                        )
+                    )
                 else:
-                    queriedPost.likes -= 1
-                    queriedPost.dis_likes += 1
+                    await db.execute(
+                        update(models.Post)
+                        .where(models.Post.id == post.post_id)
+                        .values(
+                            likes=func.greatest(models.Post.likes - 1, 0),
+                            dis_likes=models.Post.dis_likes + 1,
+                        )
+                    )
                 await db.commit()
                 await db.refresh(queriedPost)
                 await delete_cache_pattern(f"post:{post.post_id}:*")
@@ -70,10 +90,18 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
             db.add(newVote)
             # if user choice is true increase likes count
             if post.choice:
-                queriedPost.likes += 1
+                await db.execute(
+                    update(models.Post)
+                    .where(models.Post.id == post.post_id)
+                    .values(likes=models.Post.likes + 1)
+                )
             # or else dilikes count
             else:
-                queriedPost.dis_likes += 1
+                await db.execute(
+                    update(models.Post)
+                    .where(models.Post.id == post.post_id)
+                    .values(dis_likes=models.Post.dis_likes + 1)
+                )
             await db.commit()
             await db.refresh(queriedPost)
             await delete_cache_pattern(f"post:{post.post_id}:*")
@@ -120,7 +148,11 @@ async def likeAComment(comment:sch.CommentVoteRequest=Body(...),db:AsyncSession=
                 # update the same on the CommentVotes table also
                 # by removing the vote (like)
                 if comment.choice:
-                    queriedComment.likes-=1
+                    await db.execute(
+                        update(models.Comments)
+                        .where(models.Comments.id == comment.comment_id)
+                        .values(likes=func.greatest(models.Comments.likes - 1, 0))
+                    )
                 await db.commit()
                 await db.refresh(queriedComment)
                 return sch.VoteResponse(message="Vote removed successfully", likes=queriedComment.likes)
@@ -134,7 +166,11 @@ async def likeAComment(comment:sch.CommentVoteRequest=Body(...),db:AsyncSession=
             db.add(newVote)
             # if user choice is true increase likes count
             if comment.choice:
-                queriedComment.likes+=1
+                await db.execute(
+                    update(models.Comments)
+                    .where(models.Comments.id == comment.comment_id)
+                    .values(likes=models.Comments.likes + 1)
+                )
             await db.commit()
             await db.refresh(queriedComment)
             return sch.VoteResponse(message="New vote added successfully", likes=queriedComment.likes)

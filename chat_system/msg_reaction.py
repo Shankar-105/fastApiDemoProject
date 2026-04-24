@@ -104,3 +104,7 @@ async def react(
     # Send to BOTH sender and receiver
     await manager.send_personal_message(payload,the_msg.sender_id)
     await manager.send_json_to_user(payload,the_msg.receiver_id)
+    return {
+        "status": "ok",
+        "result": payload
+    }

@@ -59,7 +59,10 @@ async def delete_for_everyone(
     )
     if not update_result.rowcount:
         print("Message Not Found")
-        return
+        return {
+            "status": "not_found",
+            "message_id": message_id,
+        }
 
     await db.commit()
     # Notify BOTH users instantly
@@ -71,3 +74,7 @@ async def delete_for_everyone(
     print(f"Sender ID {sender_id} Receiver ID {receiver_id}")
     await manager.send_json_to_user(payload,receiver_id)
     await manager.send_personal_message(payload,sender_id)
+    return {
+        "status": "ok",
+        "result": payload
+    }

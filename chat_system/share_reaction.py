@@ -113,3 +113,7 @@ async def react_to_shared_post(
     # Send to BOTH users
     await manager.send_personal_message(payload,shared.from_user_id)
     await manager.send_json_to_user(payload,shared.to_user_id)
+    return {
+        "status": "ok",
+        "result": payload
+    }

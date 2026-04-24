@@ -28,7 +28,11 @@ async def reply_msg(
         original_msg = result.scalars().first()
         if not original_msg:
              print("cannot reply to a deleted message")
-             return
+             return {
+                 "status": "not_found",
+                 "reason": "original_message_not_available",
+                 "reply_msg_id": payload.reply_msg_id,
+             }
         msg = models.Message(
                         content=payload.content,
                         sender_id=user_id,
@@ -109,3 +113,8 @@ async def reply_msg(
         }
         await manager.send_personal_message(payload_to_user,user_id)
         print("Response sent to sender")
+        return {
+            "status": "ok",
+            "result": payload_to_user,
+            "receiver_online": receiver_id in manager.active_connections,
+        }

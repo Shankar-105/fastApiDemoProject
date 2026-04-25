@@ -1,6 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect,Depends,Query
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update
 from app.my_utils.socket_manager import manager
 from app.my_utils.time_formatting import format_timestamp
 from datetime import datetime
@@ -41,8 +42,11 @@ async def messageUser(
                 # Try to send (if fails, it's a zombie)
                 await manager.send_json_to_user(reply_payload,payload.to)
                 print("Message sent via WebSocket")
-                msg.is_read = True
-                msg.read_at=datetime.utcnow()
+                await db.execute(
+                    update(models.Message)
+                    .where(models.Message.id == msg.id, models.Message.is_read == False)
+                    .values(is_read=True, read_at=datetime.utcnow())
+                )
                 await db.commit()
                 print(f"Message {msg.id} marked as READ")
             except Exception as e:

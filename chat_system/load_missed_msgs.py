@@ -32,9 +32,9 @@ async def load_missed_content(
                 .values(is_read=True, read_at=claimed_read_at)
             )
             await db.commit()
-            for m in missed_messages:
-                m.is_read = True
-                m.read_at = claimed_read_at
+            read_message_ids = set(message_ids)
+        else:
+            read_message_ids = set()
 
         missed_shares_result = await db.execute(
             select(models.SharedPost).where(
@@ -47,17 +47,18 @@ async def load_missed_content(
         share_ids = [s.id for s in missed_shares]
         
         if share_ids:
-                await db.execute(
-                    update(models.SharedPost)
-                    .where(
-                        models.SharedPost.id.in_(share_ids),
-                        models.SharedPost.is_read == False
-                    )
-                    .values(is_read=True)
+            await db.execute(
+                update(models.SharedPost)
+                .where(
+                    models.SharedPost.id.in_(share_ids),
+                    models.SharedPost.is_read == False
                 )
-                await db.commit()
-                for s in missed_shares:
-                    s.is_read = True
+                .values(is_read=True)
+            )
+            await db.commit()
+            read_share_ids = set(share_ids)
+        else:
+            read_share_ids = set()
 
         missed_content=[]
         for m in missed_messages:
@@ -73,7 +74,7 @@ async def load_missed_content(
                 "is_edited": m.is_edited,
                 "reaction_count": m.reaction_cnt,
                 "reactions": m.reactions,
-                "is_read": m.is_read
+                "is_read": m.id in read_message_ids
             }
             # check whether its a reply message or not
             if m.is_reply_msg:
@@ -121,7 +122,7 @@ async def load_missed_content(
                 "caption_message": s.message,
                 "reactions": s.reactions,
                 "sent_at": format_timestamp(s.created_at),
-                "is_read": s.is_read
+                "is_read": s.id in read_share_ids
             })
         # On every WebSocket connect we also push any notifications the user
         # missed while they were offline.

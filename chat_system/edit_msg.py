@@ -105,8 +105,11 @@ async def edit_message(db:AsyncSession,message_id:int,new_content:str,sender_id:
                             recv_id
                         )
                         print("Message sent via WebSocket")
-                        message.is_read = True
-                        message.read_at=datetime.utcnow()
+                        await db.execute(
+                            update(models.Message)
+                            .where(models.Message.id == message.id, models.Message.is_read == False)
+                            .values(is_read=True, read_at=datetime.utcnow())
+                        )
                         await db.commit()
                         print(f"Message {message.id} marked as READ")
                     except Exception as e:

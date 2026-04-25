@@ -3,9 +3,11 @@ import uuid
 from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy import select
+from fastapi import BackgroundTasks, HTTPException
+from sqlalchemy import select, func
 
 from app import models
+from app.routes import connect
 from app.services.reconciliation_service import reconcile_denormalized_counters
 from chat_system import delete_msg, load_missed_msgs, read_receipt
 
@@ -145,6 +147,68 @@ async def test_delete_for_everyone_is_single_transition(db_session_factory, monk
     assert row.is_deleted_for_everyone is True
     assert send_receiver.await_count == 1
     assert send_sender.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_follow_is_atomic_under_concurrency(db_session_factory):
+    nonce = uuid.uuid4().hex[:8]
+    async with db_session_factory() as db:
+        follower = models.User(
+            username=f"follow_src_{nonce}",
+            password="x",
+            nickname="follower",
+            email=f"follow_src_{nonce}@example.com",
+        )
+        followed = models.User(
+            username=f"follow_dst_{nonce}",
+            password="x",
+            nickname="followed",
+            email=f"follow_dst_{nonce}@example.com",
+        )
+        db.add_all([follower, followed])
+        await db.commit()
+        await db.refresh(follower)
+        await db.refresh(followed)
+        follower_id = follower.id
+        followed_id = followed.id
+
+    async def _follow_once():
+        async with db_session_factory() as db:
+            follower_row = (await db.execute(select(models.User).where(models.User.id == follower_id))).scalars().first()
+            assert follower_row is not None
+            return await connect.follow(
+                followed_id,
+                db=db,
+                currentUser=follower_row,
+                background_tasks=BackgroundTasks(),
+                _=None,
+            )
+
+    results = await asyncio.gather(_follow_once(), _follow_once(), return_exceptions=True)
+    successes = [result for result in results if not isinstance(result, Exception)]
+    failures = [result for result in results if isinstance(result, HTTPException)]
+
+    assert len(successes) == 1
+    assert len(failures) == 1
+    assert failures[0].status_code == 400
+
+    async with db_session_factory() as db:
+        follower_row = (await db.execute(select(models.User).where(models.User.id == follower_id))).scalars().first()
+        followed_row = (await db.execute(select(models.User).where(models.User.id == followed_id))).scalars().first()
+        connection_count = (
+            await db.execute(
+                select(func.count()).select_from(models.connections).where(
+                    models.connections.c.followed_id == followed_id,
+                    models.connections.c.follower_id == follower_id,
+                )
+            )
+        ).scalar_one()
+
+    assert follower_row is not None
+    assert followed_row is not None
+    assert follower_row.following_cnt == 1
+    assert followed_row.followers_cnt == 1
+    assert connection_count == 1
 
 
 @pytest.mark.asyncio

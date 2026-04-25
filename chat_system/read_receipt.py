@@ -21,12 +21,7 @@ async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
         )
         updated_message_ids = update_result.scalars().all()
         if not updated_message_ids:
-            return {
-                "status": "ok",
-                "updated_count": 0,
-                "sender_id": sender_id,
-                "reader_id": reader_id,
-            }
+            return
 
         await db.commit()
         
@@ -41,17 +36,6 @@ async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
             },
             sender_id
         )
-        return {
-            "status": "ok",
-            "updated_count": len(updated_message_ids),
-            "sender_id": sender_id,
-            "reader_id": reader_id,
-            "read_at": str(now),
-        }
         
     except Exception as e:
         print(f"Error in read_receipt: {e}")
-        return {
-            "status": "error",
-            "reason": "read_receipt_failed"
-        }

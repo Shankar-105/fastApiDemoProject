@@ -1,6 +1,6 @@
 import enum
 from app.db import Base
-from sqlalchemy import Column,Integer,String,Boolean,ForeignKey,Table,DateTime,UniqueConstraint,Enum,JSON
+from sqlalchemy import Column,Integer,String,Boolean,ForeignKey,Table,DateTime,UniqueConstraint,Enum
 from sqlalchemy.sql.expression import null,text
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 from sqlalchemy.orm import relationship, backref
@@ -338,25 +338,3 @@ class RefreshToken(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", lazy="selectin")
-
-
-class IdempotencyEvent(Base):
-    """
-    Stores per-user idempotency state for retry-prone websocket write events.
-    """
-    __tablename__ = "idempotency_events"
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    event_type = Column(String, nullable=False)
-    idempotency_key = Column(String, nullable=False)
-    status = Column(String, nullable=False, server_default="processing")
-    response_payload = Column(JSON, nullable=True)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    user = relationship("User", lazy="selectin")
-
-    __table_args__ = (
-        UniqueConstraint("user_id", "event_type", "idempotency_key", name="uq_idempotency_user_event_key"),
-    )

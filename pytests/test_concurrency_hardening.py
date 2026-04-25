@@ -5,9 +5,12 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import select, func
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm.exc import StaleDataError
 
 from app import models
 from app.routes import connect
+from app.services.concurrency_service import run_with_transient_retry
 from app.services.reconciliation_service import reconcile_denormalized_counters
 from chat_system import delete_msg, load_missed_msgs, read_receipt
 
@@ -293,3 +296,51 @@ async def test_reconciliation_repairs_counter_drift(db_session_factory):
     assert post_row.dis_likes == 1
     assert msg_row.reaction_cnt == 1
     assert share_row.reaction_cnt == 1
+
+
+@pytest.mark.asyncio
+async def test_user_versioning_rejects_stale_update(db_session_factory):
+    nonce = uuid.uuid4().hex[:8]
+    async with db_session_factory() as db:
+        user = models.User(
+            username=f"ver_{nonce}",
+            password="x",
+            nickname="versioned",
+            email=f"ver_{nonce}@example.com",
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        user_id = user.id
+
+    async with db_session_factory() as first_db, db_session_factory() as second_db:
+        first_user = (await first_db.execute(select(models.User).where(models.User.id == user_id))).scalars().first()
+        second_user = (await second_db.execute(select(models.User).where(models.User.id == user_id))).scalars().first()
+        assert first_user is not None
+        assert second_user is not None
+
+        first_user.nickname = "first"
+        await first_db.commit()
+
+        second_user.nickname = "second"
+        with pytest.raises(StaleDataError):
+            await second_db.commit()
+
+
+@pytest.mark.asyncio
+async def test_transient_retry_retries_once_and_returns_value():
+    state = {"calls": 0}
+
+    class FakeOrig:
+        sqlstate = "40001"
+
+    async def operation():
+        state["calls"] += 1
+        if state["calls"] == 1:
+            raise OperationalError("update users", {}, FakeOrig())
+        return "ok"
+
+    result = await run_with_transient_retry(operation, attempts=3, base_delay=0, max_delay=0)
+
+    assert result == "ok"
+    assert state["calls"] == 2

@@ -157,6 +157,7 @@ class User(Base):
         last_seen_at=Column(DateTime(timezone=True), nullable=True)
         followers_cnt=Column(Integer,default=0,server_default="0",nullable=False)
         following_cnt=Column(Integer,default=0,server_default="0",nullable=False)
+        version_id=Column(Integer,nullable=False,default=1,server_default=text("1"))
         # added relationship between the posts table and the users table so that
         # when you actually need all the posts of a user there's no need from now on 
         # to go check the posts table and query it for Posts.user_id==currentUser.id
@@ -185,6 +186,8 @@ class User(Base):
         sent_posts = relationship("SharedPost", foreign_keys=[SharedPost.from_user_id],back_populates="from_user", lazy="selectin")
         received_posts = relationship("SharedPost", foreign_keys=[SharedPost.to_user_id],back_populates="to_user", lazy="selectin")
         shared_post_reactions = relationship("SharedPostReaction", back_populates="user", lazy="selectin")
+
+        __mapper_args__ = {"version_id_col": version_id}
 class MessageReplies(Base):
     __tablename__ = "message_replies"
     reply_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)

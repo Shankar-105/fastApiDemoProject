@@ -104,4 +104,3 @@ So even with Gunicorn + multiple Uvicorn workers, end-to-end throughput can stil
 - Current deployed infra is enough to demonstrate real deployment and moderate traffic.
 - It is not sized for heavy sustained load/stress profiles.
 - **_The async backend architecture is still a solid foundation and is expected to scale much higher on stronger infra tiers and better resource separation._**
-

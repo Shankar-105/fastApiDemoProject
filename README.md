@@ -31,9 +31,7 @@ _Want to run the API, test it, or make your own changes? Start with [`docs/SETUP
 
 ## 📖 How to Use the API — Complete Endpoint Reference
 
-_Now that your setup is running, explore every endpoint this API has to offer! Check out [`docs/API_GUIDE.md`](./docs/API_GUIDE.md) for a detailed walkthrough of all **61 REST endpoints** and the **real-time WebSocket chat system**._
-
-> 💡 **Quick Start:** Visit `http://localhost:8000/docs` for the built-in Swagger UI — test endpoints right from your browser!
+_Now that your setup is running, explore every endpoint this API has to offer! Check out [`docs/API_GUIDE.md`](./docs/API_GUIDE.md) for a detailed walkthrough of all **60+ REST endpoints** and the **real-time WebSocket chat system**._
 
 ---
 
@@ -46,10 +44,6 @@ _Want to know how this project runs in the cloud? Read [`docs/AZURE_DEPLOYMENT.m
 ## 🧪 Testing — Comprehensive Test Suite!
 
 _Ready to verify everything works? Check out [`docs/TESTS.md`](./docs/TESTS.md) for a complete guide on running the test suite._
-
-**Quick Test Run:**
-- 🐳 **Inside Docker** (Recommended): `docker compose exec api pytest pytests/ -v`
-- 💻 **Locally**: Install dependencies and run `pytest pytests/ -v`
 
 _All tests use a separate test database—your dev data stays safe! 🛡️_
 

@@ -63,7 +63,8 @@ async def removeProfilePicture(db:AsyncSession=Depends(db.getDb),currentUser:mod
         return locked_user, profilePic
 
     currentUser, old_profile_pic = await run_with_transient_retry(lambda: _remove_picture(), db=db)
-    await delete_blob("profilepics", old_profile_pic)
+    if old_profile_pic:
+        await delete_blob("profilepics", old_profile_pic)
     # profile changed - bust the cached profile for this user
     await delete_cache(f"user_profile:{currentUser.id}")
     return sch.SuccessResponse(message="Profile picture removed successfully")
@@ -139,6 +140,7 @@ async def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_pict
 
     async def _update_profile():
         locked_user = await lock_user_row(db, user_id=currentUser.id)
+        previous_profile_picture = locked_user.profile_picture
         uploaded_blob_name = None
         if username:
             dupResult=await db.execute(select(models.User).where(models.User.username == username,models.User.id !=locked_user.id))
@@ -172,6 +174,8 @@ async def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_pict
                     await delete_blob("profilepics", uploaded_blob_name)
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Profile was updated concurrently")
             await db.refresh(locked_user)
+            if previous_profile_picture and previous_profile_picture != locked_user.profile_picture:
+                await delete_blob("profilepics", previous_profile_picture)
             await delete_cache(f"user_profile:{locked_user.id}")
         else:
             await db.rollback()

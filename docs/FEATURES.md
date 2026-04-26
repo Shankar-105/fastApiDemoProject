@@ -9,6 +9,7 @@
 | Section | What It Covers |
 |---------|---------------|
 | [Async & Non-Blocking Architecture](#-async--non-blocking-architecture) | Event-loop design, thread-pool offloading, async DB & cache |
+| [Concurrency Hardening](#-concurrency-hardening) | 5 production-safe techniques that prevent race conditions and stale writes |
 | [Authentication & Security](#-authentication--security) | JWT with expiry verification, bcrypt, token blacklist, logout, OTP |
 | [Refresh Token Rotation](#-refresh-token-rotation) | Opaque refresh tokens, family-based revocation, silent re-auth |
 | [Rate Limiting](#-rate-limiting) | IP-based & user-based throttling, configurable per endpoint |
@@ -32,8 +33,6 @@
 | [API Documentation](#-api-documentation) | Swagger UI, ReDoc, Pydantic schemas |
 | [Testing](#-testing) | Pytest, isolated test DB, 50+ integration tests |
 | [Observability and Load Testing](#-observability-and-load-testing) | OpenTelemetry, Prometheus, Grafana, and k6 traffic simulation |
-| [Human-Readable Timestamps](#-human-readable-timestamps) | "5 min ago", "Yesterday at 3:45 PM" formatting |
-
 ---
 
 ## ⚡ Async & Non-Blocking Architecture
@@ -49,6 +48,25 @@ The entire backend is built on an **async-first** philosophy — from the first 
 - **Zero sync bottlenecks** — even utility functions like OTP generation, cache invalidation, and expired OTP cleanup are fully async.
 
 > **What this means in practice:** The server can handle hundreds of simultaneous REST requests, WebSocket connections, file uploads, and database queries — all on a single worker process — without any request waiting on another.
+
+---
+
+## 🧱 Concurrency Hardening
+
+Built for real traffic, not like a simple crud app. I hardened critical write paths with a layered strategy that keeps data correct even under high concurrent request load.
+
+- ⚡ **Atomic SQL Updates** — counters use database-side math (`col = col + 1`, floor-safe decrements) not lanaguage level arthimetic, to prevent ambigous updates.
+- 🛡️ **Conflict-Safe Inserts** — `ON CONFLICT DO NOTHING` protects follow/vote/save/reaction flows from duplicate-race errors.
+- 🔍 **Optimistic Locking** — `version_id_col` detects stale writes and prevents silent overwrite of profile/auth changes.
+- 🔒 **Pessimistic Locking** — `SELECT ... FOR UPDATE` serializes short critical sections when read-validate-write must be deterministic.
+- 🔁 **Transient Retry** — bounded retry with jitter recovers from PostgreSQL deadlock/serialization aborts (`40P01`, `40001`) without hiding real business errors.
+
+### Why this makes the app better
+
+- ✅ More consistent counters and state transitions under heavy load
+- ✅ Safer profile/auth updates across multi-device sessions
+- ✅ Fewer race-condition bugs in chat edit/delete/reply and read-state flows
+- ✅ Better resilience during contention spikes
 
 ---
 
@@ -422,20 +440,6 @@ A production-grade 1-on-1 chat system running over a single persistent WebSocket
 - **k6 load scripts** — smoke, load, and stress scenarios are included under `loadtests/` for repeatable performance validation.
 - **Route-aware checks** — k6 scripts validate endpoint reachability with expected status handling for protected and heavy routes.
 - **Performance bottleneck discovery** — setup is designed to reveal latency tail growth, timeout behavior, and transport-level failures (EOF/connect timeout) under pressure.
-
----
-
-## 🕐 Human-Readable Timestamps
-
-- **Smart time formatting** throughout the chat system — not raw ISO strings:
-  - `"Just now"` — less than 1 minute ago
-  - `"5m ago"` — less than 1 hour ago
-  - `"2h ago"` — less than 1 day ago
-  - `"Today at 3:45 PM"` — same day
-  - `"Yesterday at 3:45 PM"` — previous day
-  - `"Monday at 4:00 PM"` — same week
-  - `"19-11-2025 04:00 PM"` — older than a week
-- **Timezone-aware** — handles both naive and offset-aware datetime objects, normalizing everything to UTC for consistent comparison
 
 ---
 

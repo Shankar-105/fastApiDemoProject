@@ -99,6 +99,15 @@ At high concurrency this causes:
 
 So even with Gunicorn + multiple Uvicorn workers, end-to-end throughput can still collapse when infra saturates first.
 
+
+## 🚀 What a Strong Azure Setup Would Change
+
+This is not a measured benchmark, just a practical estimatation. Right now the app is already doing about `66 req/s` on the limited Azure setup, and that is the infra talking, not the code. 💡
+
+If the app got a much stronger Azure setup like a bigger VM, a stronger Postgres tier, and Redis on a dedicated machine or managed service, enough storage and network headroom for media + chat traffic, then `500+ req/s` is a reasonable target to expect 😌🚀.
+
+So in short: current infra = about `66 req/s`, better infra = easily a few hundred requests per second more, with much lower latency and fewer failures. ✨
+
 ## ✅ Honest Conclusion
 
 - Current deployed infra is enough to demonstrate real deployment and moderate traffic.

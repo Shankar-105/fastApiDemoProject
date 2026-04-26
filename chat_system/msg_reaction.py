@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException ,Depends
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update, func
 from app.my_utils.socket_manager import manager
 from datetime import datetime
 from typing import List
@@ -69,13 +69,21 @@ async def react(
         isNewRecord=True
         new_reaction=models.MessageReaction(message_id=reaction.message_id,user_id=user_id,reaction=reaction.reaction)
         db.add(new_reaction)
-        the_msg.reaction_cnt+=1
+        await db.execute(
+            update(models.Message)
+            .where(models.Message.id == reaction.message_id)
+            .values(reaction_cnt=models.Message.reaction_cnt + 1)
+        )
     # the msg reaction already exists in that tbale but the
     # user has again sent the same reaction well then remove it 
     elif msg and msg.reaction == reaction.reaction:
         isNewRecord=False
         await db.delete(msg)
-        the_msg.reaction_cnt-=1
+        await db.execute(
+            update(models.Message)
+            .where(models.Message.id == reaction.message_id)
+            .values(reaction_cnt=func.greatest(models.Message.reaction_cnt - 1, 0))
+        )
     # msg exists and the new reation isnt the old one
     # well then he sent a brand new reaciton just change it
     else:
@@ -83,6 +91,7 @@ async def react(
         msg.reaction=reaction.reaction
     # any changes commit thehm off
     await db.commit()
+    await db.refresh(the_msg)
     
     # payload
     payload = {

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect,Depends,Query
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from app.my_utils.socket_manager import manager
 from datetime import datetime
 from app.my_utils.time_formatting import format_timestamp
@@ -23,7 +23,7 @@ async def reply_msg(
                 models.Message.id == payload.reply_msg_id,
                 models.Message.is_deleted_for_everyone == False,
                 ~models.Message.id.in_(subq)
-            )
+            ).with_for_update()
         )
         original_msg = result.scalars().first()
         if not original_msg:
@@ -38,7 +38,7 @@ async def reply_msg(
                         media_url=payload.media_url
                     )
         db.add(msg)
-        await db.commit()
+        await db.flush()
         await db.refresh(msg)
         reply_link = models.MessageReplies(
             reply_id=msg.id,
@@ -49,10 +49,6 @@ async def reply_msg(
         print("added to db")
         # Check if receiver is in active_connections
         receiver_id = msg.receiver_id
-        orig_result = await db.execute(
-            select(models.Message).where(models.Message.id == payload.reply_msg_id)
-        )
-        original_msg = orig_result.scalars().first()
         if receiver_id in manager.active_connections:
             try:
                 reply_message_payload={
@@ -79,8 +75,11 @@ async def reply_msg(
                     receiver_id
                 )
                 print("Message sent via WebSocket")
-                msg.is_read = True
-                msg.read_at=datetime.utcnow()
+                await db.execute(
+                    update(models.Message)
+                    .where(models.Message.id == msg.id, models.Message.is_read == False)
+                    .values(is_read=True, read_at=datetime.utcnow())
+                )
                 await db.commit()
                 print(f"Message {msg.id} marked as READ")
             except Exception as e:

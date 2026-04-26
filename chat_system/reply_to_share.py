@@ -1,7 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect,Depends,Query
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from app.my_utils.socket_manager import manager
 from datetime import datetime
 from app.my_utils.time_formatting import format_timestamp
@@ -72,8 +72,11 @@ async def reply_share(
     if payload.to in manager.active_connections:
         try:
             await manager.send_json_to_user(reply_payload,payload.to)
-            reply_msg.is_read = True
-            reply_msg.read_at = datetime.utcnow()
+            await db.execute(
+                update(models.Message)
+                .where(models.Message.id == reply_msg.id, models.Message.is_read == False)
+                .values(is_read=True, read_at=datetime.utcnow())
+            )
             await db.commit()
         except:
             manager.disconnect(payload.to)

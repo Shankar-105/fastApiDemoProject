@@ -4,12 +4,15 @@ import app.schemas as sch
 from typing import List
 from app import models,db,oauth2
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,and_,distinct,func,case,update
+from sqlalchemy import select,and_,distinct,func,case
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 import os
 import asyncio
 from fastapi import UploadFile,File
 from app.services.redis_service import delete_cache
 from app.services.blob_service import upload_blob, delete_blob, get_blob_url
+from app.services.concurrency_service import lock_user_row, run_with_transient_retry
 
 router=APIRouter(
     tags=['me']
@@ -45,12 +48,23 @@ async def myProfilePicture(db:AsyncSession=Depends(db.getDb),currentUser:models.
     )
 @router.delete("/me/profilepic/delete",status_code=status.HTTP_200_OK, response_model=sch.SuccessResponse)
 async def removeProfilePicture(db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    profilePic=currentUser.profile_picture
-    if not profilePic:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="No profile picture to remove")
-    await delete_blob("profilepics", profilePic)
-    currentUser.profile_picture=None
-    await db.commit()
+    async def _remove_picture():
+        locked_user = await lock_user_row(db, user_id=currentUser.id)
+        profilePic = locked_user.profile_picture
+        if not profilePic:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="No profile picture to remove")
+        locked_user.profile_picture = None
+        try:
+            await db.commit()
+        except StaleDataError:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Profile was updated concurrently")
+        return locked_user, profilePic
+
+    currentUser, old_profile_pic = await run_with_transient_retry(lambda: _remove_picture(), db=db)
+    if old_profile_pic:
+        await delete_blob("profilepics", old_profile_pic)
     # profile changed - bust the cached profile for this user
     await delete_cache(f"user_profile:{currentUser.id}")
     return sch.SuccessResponse(message="Profile picture removed successfully")
@@ -109,30 +123,65 @@ async def getAllPosts(limit:int=Query(10, ge=1, le=100),
 # so made everything to be passed via Form only
 @router.patch("/me/updateInfo",status_code=status.HTTP_200_OK, response_model=sch.UserProfileResponse)
 async def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_picture:UploadFile=File(None),db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    # to store updates the user does
-    updates={}
-    if username:
-        dupResult=await db.execute(select(models.User).where(models.User.username == username,models.User.id !=currentUser.id))
-        if dupResult.scalars().first():
-            raise HTTPException(status_code=400, detail="Username already taken")
-        updates["username"] = username
-    if bio:
-        updates['bio']=bio
-    if profile_picture:
-        allowedFileTypes=['image/jpeg','image/png','image/gif']
-        if profile_picture.content_type not in allowedFileTypes:
-            raise HTTPException(status_code=400,detail="only jpeg,png,gif files allowed")
-        blob_name=f"{currentUser.username}_{profile_picture.filename}"
-        content_bytes = await profile_picture.read()
-        await upload_blob("profilepics", blob_name, content_bytes, profile_picture.content_type)
-        updates['profile_picture']=blob_name
-        # if any updates update them
-    if updates:
-        await db.execute(update(models.User).where(models.User.id==currentUser.id).values(**updates))
-        await db.commit()
-        await db.refresh(currentUser)
-        # profile changed - bust the cached profile for this user
-        await delete_cache(f"user_profile:{currentUser.id}")
+    if not any([username, bio, profile_picture]):
+        posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))
+        posts_count = posts_count_result.scalar()
+        return sch.UserProfileResponse(
+            id=currentUser.id,
+            username=currentUser.username,
+            nickname=currentUser.nickname,
+            bio=currentUser.bio,
+            profile_picture=currentUser.profile_picture,
+            posts_count=posts_count,
+            followers_count=currentUser.followers_cnt,
+            following_count=currentUser.following_cnt,
+            created_at=currentUser.created_at
+        )
+
+    async def _update_profile():
+        locked_user = await lock_user_row(db, user_id=currentUser.id)
+        previous_profile_picture = locked_user.profile_picture
+        uploaded_blob_name = None
+        if username:
+            dupResult=await db.execute(select(models.User).where(models.User.username == username,models.User.id !=locked_user.id))
+            if dupResult.scalars().first():
+                await db.rollback()
+                raise HTTPException(status_code=400, detail="Username already taken")
+            locked_user.username = username
+        if bio:
+            locked_user.bio = bio
+        if profile_picture:
+            allowedFileTypes=['image/jpeg','image/png','image/gif']
+            if profile_picture.content_type not in allowedFileTypes:
+                await db.rollback()
+                raise HTTPException(status_code=400,detail="only jpeg,png,gif files allowed")
+            blob_name=f"{locked_user.username}_{profile_picture.filename}"
+            content_bytes = await profile_picture.read()
+            await upload_blob("profilepics", blob_name, content_bytes, profile_picture.content_type)
+            uploaded_blob_name = blob_name
+            locked_user.profile_picture=blob_name
+        if username or bio or profile_picture:
+            try:
+                await db.commit()
+            except IntegrityError:
+                await db.rollback()
+                if uploaded_blob_name:
+                    await delete_blob("profilepics", uploaded_blob_name)
+                raise HTTPException(status_code=400, detail="Username already taken")
+            except StaleDataError:
+                await db.rollback()
+                if uploaded_blob_name:
+                    await delete_blob("profilepics", uploaded_blob_name)
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Profile was updated concurrently")
+            await db.refresh(locked_user)
+            if previous_profile_picture and previous_profile_picture != locked_user.profile_picture:
+                await delete_blob("profilepics", previous_profile_picture)
+            await delete_cache(f"user_profile:{locked_user.id}")
+        else:
+            await db.rollback()
+        return locked_user
+
+    currentUser = await run_with_transient_retry(lambda: _update_profile(), db=db)
     
     # Count posts for response
     posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))

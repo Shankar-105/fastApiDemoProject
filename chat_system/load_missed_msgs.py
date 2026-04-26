@@ -11,45 +11,54 @@ async def load_missed_content(
     user_id: int,
     db: AsyncSession=Depends(db.getDb)
 ):
+        claimed_read_at = datetime.utcnow()
         missed_result = await db.execute(
             select(models.Message).where(
                 models.Message.is_deleted_for_everyone==False,
                 models.Message.receiver_id == user_id,
                 models.Message.is_read == False
-            ).order_by(models.Message.created_at.asc())
+            ).order_by(models.Message.created_at.asc()).with_for_update(skip_locked=True)
         )
         missed_messages = missed_result.scalars().all()
+        message_ids = [m.id for m in missed_messages]
 
-        if missed_messages:
+        if message_ids:
             await db.execute(
                 update(models.Message)
                 .where(
-                    models.Message.is_deleted_for_everyone==False,
-                    models.Message.receiver_id == user_id,
+                    models.Message.id.in_(message_ids),
                     models.Message.is_read == False
                 )
-                .values(is_read=True, read_at=datetime.utcnow())
+                .values(is_read=True, read_at=claimed_read_at)
             )
             await db.commit()
+            read_message_ids = set(message_ids)
+        else:
+            read_message_ids = set()
 
         missed_shares_result = await db.execute(
             select(models.SharedPost).where(
                 models.SharedPost.to_user_id == user_id,
-                models.SharedPost.is_read == False
-            ).order_by(models.SharedPost.created_at.asc())
+                models.SharedPost.is_read == False,
+                models.SharedPost.is_deleted_for_everyone == False
+            ).order_by(models.SharedPost.created_at.asc()).with_for_update(skip_locked=True)
         )
         missed_shares = missed_shares_result.scalars().all()
+        share_ids = [s.id for s in missed_shares]
         
-        if missed_shares:
-                await db.execute(
-                    update(models.SharedPost)
-                    .where(
-                        models.SharedPost.to_user_id == user_id,
-                        models.SharedPost.is_read == False
-                    )
-                    .values(is_read=True)
+        if share_ids:
+            await db.execute(
+                update(models.SharedPost)
+                .where(
+                    models.SharedPost.id.in_(share_ids),
+                    models.SharedPost.is_read == False
                 )
-                await db.commit()
+                .values(is_read=True)
+            )
+            await db.commit()
+            read_share_ids = set(share_ids)
+        else:
+            read_share_ids = set()
 
         missed_content=[]
         for m in missed_messages:
@@ -65,7 +74,7 @@ async def load_missed_content(
                 "is_edited": m.is_edited,
                 "reaction_count": m.reaction_cnt,
                 "reactions": m.reactions,
-                "is_read": m.is_read
+                "is_read": m.id in read_message_ids
             }
             # check whether its a reply message or not
             if m.is_reply_msg:
@@ -113,7 +122,7 @@ async def load_missed_content(
                 "caption_message": s.message,
                 "reactions": s.reactions,
                 "sent_at": format_timestamp(s.created_at),
-                "is_read": s.is_read
+                "is_read": s.id in read_share_ids
             })
         # On every WebSocket connect we also push any notifications the user
         # missed while they were offline.

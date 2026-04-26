@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 import app.services.redis_service as redis_service
 import app.services.otp_service as otp_service
 import app.services.email_service as email_service
+from sqlalchemy.orm.exc import StaleDataError
+from app.services.concurrency_service import lock_user_row, run_with_transient_retry
 from app.rate_limiter import login_limiter, forgot_password_limiter, reset_password_limiter, refresh_limiter
 
 router=APIRouter(tags=['Authentication'])
@@ -113,42 +115,44 @@ async def reset_password(payload: sch.ResetPasswordSchema, db: AsyncSession = De
             detail="Invalid or expired OTP."
         )
 
-    # Find user and update password
-    result = await db.execute(select(models.User).where(models.User.email == payload.email))
-    user = result.scalars().first()
-    if not user:
-        # This should ideally not happen if OTP was validated correctly
-        # but as a safeguard.
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found."
-        )
+    async def _reset_password():
+        user = await lock_user_row(db, email=payload.email)
+        hashed_password = await utils.hashPassword(payload.new_password)
+        user.password = hashed_password
+        try:
+            await db.commit()
+        except StaleDataError:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Password was updated concurrently")
+        return user
 
-    # Hash the new password and update the user record
-    hashed_password = await utils.hashPassword(payload.new_password)
-    user.password = hashed_password
-    await db.commit()
+    await run_with_transient_retry(lambda: _reset_password(), db=db)
 
     return {"message": "Password has been reset successfully."}
 
 
 @router.post("/verify-email", status_code=status.HTTP_200_OK)
 async def verify_email(payload: sch.VerifyEmailRequest, db: AsyncSession = Depends(db.getDb)):
-    result = await db.execute(select(models.User).where(models.User.email == payload.email))
-    user = result.scalars().first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    async def _verify_email():
+        user = await lock_user_row(db, email=payload.email)
+        if user.email_verified:
+            await db.rollback()
+            return {"message": "Email already verified"}
 
-    if user.email_verified:
-        return {"message": "Email already verified"}
+        ok = await otp_service.checkOtp(db, payload.email, payload.otp)
+        if not ok:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
 
-    ok = await otp_service.checkOtp(db, payload.email, payload.otp)
-    if not ok:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
+        user.email_verified = True
+        try:
+            await db.commit()
+        except StaleDataError:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email verification was updated concurrently")
+        return {"message": "Email verified successfully"}
 
-    user.email_verified = True
-    await db.commit()
-    return {"message": "Email verified successfully"}
+    return await run_with_transient_retry(lambda: _verify_email(), db=db)
 
 
 @router.post("/resend-verification-otp", status_code=status.HTTP_200_OK)

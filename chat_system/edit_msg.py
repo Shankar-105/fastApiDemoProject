@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from app import models
 from fastapi import APIRouter,Depends
 from datetime import datetime
@@ -40,6 +40,18 @@ async def edit_message(db:AsyncSession,message_id:int,new_content:str,sender_id:
     
     if not message:
         return None
+    curr_time = datetime.now(timezone.utc)
+    created_at = message.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    if curr_time - created_at > timedelta(minutes=config.settings.max_edit_time):
+        payload = {
+            "type": "edit_message_denied",
+            "message_id": message_id,
+            "reason": "edit_window_expired"
+        }
+        await manager.send_personal_message(payload, sender_id)
+        return
     # Don't update if content is same
     if message.content.strip() == new_content:
         # No change
@@ -52,12 +64,32 @@ async def edit_message(db:AsyncSession,message_id:int,new_content:str,sender_id:
         await manager.send_json_to_user(payload,recv_id)
         await manager.send_personal_message(payload,sender_id)
         return
-    # Update content and flags
-    message.content = new_content
-    message.is_edited = True
-    message.is_read=False
-    message.read_at=None
-    message.edited_at = datetime.utcnow()
+    edit_window_floor = curr_time - timedelta(minutes=config.settings.max_edit_time)
+    update_result = await db.execute(
+        update(models.Message)
+        .where(
+            models.Message.id == message_id,
+            models.Message.sender_id == sender_id,
+            models.Message.created_at >= edit_window_floor,
+            models.Message.is_deleted_for_everyone == False,
+        )
+        .values(
+            content=new_content,
+            is_edited=True,
+            is_read=False,
+            read_at=None,
+            edited_at=datetime.utcnow(),
+        )
+    )
+    if not update_result.rowcount:
+        payload = {
+            "type": "edit_message_denied",
+            "message_id": message_id,
+            "reason": "edit_window_expired"
+        }
+        await manager.send_personal_message(payload, sender_id)
+        return
+
     await db.commit()
     await db.refresh(message)
     print(message.is_read)
@@ -73,8 +105,11 @@ async def edit_message(db:AsyncSession,message_id:int,new_content:str,sender_id:
                             recv_id
                         )
                         print("Message sent via WebSocket")
-                        message.is_read = True
-                        message.read_at=datetime.utcnow()
+                        await db.execute(
+                            update(models.Message)
+                            .where(models.Message.id == message.id, models.Message.is_read == False)
+                            .values(is_read=True, read_at=datetime.utcnow())
+                        )
                         await db.commit()
                         print(f"Message {message.id} marked as READ")
                     except Exception as e:

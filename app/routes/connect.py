@@ -3,8 +3,8 @@ import app.schemas as sch
 from app import models,oauth2
 from app.db import getDb
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,and_,insert,delete,func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select,and_,delete,update,func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from typing import List
 from app.services.redis_service import delete_cache, delete_cache_pattern
 from app.services.notification_service import create_notification
@@ -12,6 +12,18 @@ from app.models import NotificationType
 from app.rate_limiter import follow_limiter
 
 router=APIRouter(tags=['connections'])
+
+
+async def _adjust_user_counter(db: AsyncSession, user_id: int, column_name: str, delta: int) -> int:
+    column = getattr(models.User, column_name)
+    value = func.greatest(column + delta, 0) if delta < 0 else column + delta
+    result = await db.execute(
+        update(models.User)
+        .where(models.User.id == user_id)
+        .values(**{column_name: value})
+        .returning(column)
+    )
+    return result.scalar_one()
 
 @router.post("/follow/{user_id}",status_code=status.HTTP_201_CREATED, response_model=sch.FollowResponse)
 async def follow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),background_tasks:BackgroundTasks=BackgroundTasks(),_:None=Depends(follow_limiter)):
@@ -21,24 +33,23 @@ async def follow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.U
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="User doesnt exist")
     if userToFollow.id == currentUser.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Cannot follow yourself")
-    # Check if already following via connections table
-    existingConn=await db.execute(
-        select(models.connections).where(
-            and_(models.connections.c.followed_id==user_id, models.connections.c.follower_id==currentUser.id)
-        )
-    )
-    if existingConn.first():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Your already following this user")
     try:
-        # Direct INSERT into the connections association table
-        await db.execute(insert(models.connections).values(followed_id=user_id, follower_id=currentUser.id))
-        # Update counts via a count query for accuracy
-        following_cnt_result = await db.execute(select(func.count()).select_from(models.connections).where(models.connections.c.follower_id==currentUser.id))
-        currentUser.following_cnt = following_cnt_result.scalar()
-        followers_cnt_result = await db.execute(select(func.count()).select_from(models.connections).where(models.connections.c.followed_id==user_id))
-        userToFollow.followers_cnt = followers_cnt_result.scalar()
+        insert_result = await db.execute(
+            pg_insert(models.connections)
+            .values(followed_id=user_id, follower_id=currentUser.id)
+            .on_conflict_do_nothing(index_elements=[models.connections.c.followed_id, models.connections.c.follower_id])
+            .returning(models.connections.c.followed_id)
+        )
+        if not insert_result.first():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Your already following this user")
+
+        currentUser.following_cnt = await _adjust_user_counter(db, currentUser.id, "following_cnt", 1)
+        userToFollow.followers_cnt = await _adjust_user_counter(db, userToFollow.id, "followers_cnt", 1)
         await db.commit()
-    except IntegrityError:
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to follow user")
     # follower/following counts changed on both users - invalidate both profiles
@@ -68,28 +79,24 @@ async def unfollow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models
     userToUnFollow=result.scalars().first()
     if not userToUnFollow:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="User doesnt exist")
-    # Check if actually following via connections table
-    existingConn=await db.execute(
-        select(models.connections).where(
-            and_(models.connections.c.followed_id==user_id, models.connections.c.follower_id==currentUser.id)
-        )
-    )
-    if not existingConn.first():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Not following this user")
     try:
-        # Direct DELETE from the connections association table
-        await db.execute(
-            delete(models.connections).where(
+        delete_result = await db.execute(
+            delete(models.connections)
+            .where(
                 and_(models.connections.c.followed_id==user_id, models.connections.c.follower_id==currentUser.id)
             )
+            .returning(models.connections.c.followed_id)
         )
-        # Update counts
-        following_cnt_result = await db.execute(select(func.count()).select_from(models.connections).where(models.connections.c.follower_id==currentUser.id))
-        currentUser.following_cnt = following_cnt_result.scalar()
-        followers_cnt_result = await db.execute(select(func.count()).select_from(models.connections).where(models.connections.c.followed_id==user_id))
-        userToUnFollow.followers_cnt = followers_cnt_result.scalar()
+        if not delete_result.first():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Not following this user")
+
+        currentUser.following_cnt = await _adjust_user_counter(db, currentUser.id, "following_cnt", -1)
+        userToUnFollow.followers_cnt = await _adjust_user_counter(db, userToUnFollow.id, "followers_cnt", -1)
         await db.commit()
-    except IntegrityError:
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to unfollow user")
     # follower/following counts changed on both users - invalidate both profiles
@@ -108,31 +115,25 @@ async def remove_follower(user_id: int, db: AsyncSession = Depends(getDb), curre
     if not userToRemove:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User doesn't exist")
     
-    # Check if this user is actually following me via connections table
-    existingConn=await db.execute(
-        select(models.connections).where(
-            and_(models.connections.c.followed_id==currentUser.id, models.connections.c.follower_id==user_id)
-        )
-    )
-    if not existingConn.first():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This user is not following you")
-
     try:
-        # Direct DELETE from the connections association table
-        await db.execute(
-            delete(models.connections).where(
+        delete_result = await db.execute(
+            delete(models.connections)
+            .where(
                 and_(models.connections.c.followed_id==currentUser.id, models.connections.c.follower_id==user_id)
             )
+            .returning(models.connections.c.follower_id)
         )
-        
-        # Update counts
-        followers_cnt_result = await db.execute(select(func.count()).select_from(models.connections).where(models.connections.c.followed_id==currentUser.id))
-        currentUser.followers_cnt = followers_cnt_result.scalar()
-        following_cnt_result = await db.execute(select(func.count()).select_from(models.connections).where(models.connections.c.follower_id==user_id))
-        userToRemove.following_cnt = following_cnt_result.scalar()
-        
+        if not delete_result.first():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This user is not following you")
+
+        currentUser.followers_cnt = await _adjust_user_counter(db, currentUser.id, "followers_cnt", -1)
+        userToRemove.following_cnt = await _adjust_user_counter(db, userToRemove.id, "following_cnt", -1)
+
         await db.commit()
-    except IntegrityError:
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to remove follower")
     # follower/following counts changed on both users - invalidate both profiles

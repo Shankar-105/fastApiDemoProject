@@ -1,7 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect,Depends,Query,HTTPException
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from app.my_utils.socket_manager import manager
 import json,asyncio
 from datetime import datetime
@@ -38,18 +38,19 @@ async def delete_share_for_everyone(
     receiver_id: int,
     ):
     print(f"Message ID {share_id} Sender ID {sender_id} Recv ID {receiver_id}")
-    result = await db.execute(
-        select(models.SharedPost).where(
+    update_result = await db.execute(
+        update(models.SharedPost)
+        .where(
             models.SharedPost.id == share_id,
-            models.SharedPost.from_user_id == sender_id
+            models.SharedPost.from_user_id == sender_id,
+            models.SharedPost.is_deleted_for_everyone == False,
         )
+        .values(is_deleted_for_everyone=True)
     )
-    share = result.scalars().first()
-    if not share:
+    if not update_result.rowcount:
         print("Message Not Found")
         return
-    # Mark as deleted for everyone
-    share.is_deleted_for_everyone = True
+
     await db.commit()
     # Notify BOTH users instantly
     payload = {

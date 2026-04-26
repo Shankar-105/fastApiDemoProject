@@ -1,7 +1,7 @@
 # routes/share.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from typing import Optional
 from app.db import getDb
 from app.models import SharedPost, Post, User
@@ -65,7 +65,11 @@ async def share_post(
         try:
             await manager.send_json_to_user(preview,receiver.id)
             # Mark as read immediately if delivered
-            shared.is_read = True
+            await db.execute(
+                update(SharedPost)
+                .where(SharedPost.id == shared.id, SharedPost.is_read == False)
+                .values(is_read=True)
+            )
             await db.commit()
         except:
             pass  # Offline or error → stays unread

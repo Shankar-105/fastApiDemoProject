@@ -31,8 +31,3 @@ async def hashPassword(password: str) -> str:
 async def verifyPassword(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a bcrypt hash — offloaded to a thread pool."""
     return await asyncio.to_thread(_verifyPassword_sync, plain_password, hashed_password)
-
-# optional now --cleans up expired otps from the db
-async def cleanUpExpiredOtps(db:AsyncSession):
-    await db.execute(delete(models.OTP).where(models.OTP.expires_at<datetime.now()))
-    await db.commit()

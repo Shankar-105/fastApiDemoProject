@@ -70,6 +70,24 @@ services: # all the current services
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
     restart: unless-stopped
 
+  celery_beat:
+    build: .
+    command: celery -A app.celery_app beat --loglevel=info
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    volumes:
+      - .:/code
+    environment:
+      - DATABASE_HOST=db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:latest
     command:

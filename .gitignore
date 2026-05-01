@@ -83,3 +83,6 @@ create_db.py
 .vs/
 # ignore azure integration plan (has credentials)
 AZURE_INTEGRATION.md
+
+# avoid celery-beat schedules
+celerybeat-schedule

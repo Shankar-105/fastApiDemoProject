@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab, schedule
 
 from app.config import settings
 
@@ -24,5 +25,13 @@ celery_app.conf.update(
     task_default_max_retries=3,
     result_expires=86400,
 )
+
+celery_app.conf.beat_schedule = {
+    "cleanup-expired-otps": {
+        "task": "app.tasks.otp_cleanup_task.cleanup_expired_otps",
+        "schedule": crontab(minute=0),
+        "options": {"queue": "celery"},
+    },
+}
 
 celery_app.autodiscover_tasks(["app.tasks"])

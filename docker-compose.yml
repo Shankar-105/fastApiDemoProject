@@ -8,13 +8,7 @@ services: # all the current services
       - redis  # Starts Redis first
       - rabbitmq  # Celery broker for background jobs
     volumes:
-    # for dev purposes whenever the code is changed either
-    # while the containers are running or when the containers are stopped 
-    # it reflects any change in code instantly
-    # it only doesnt reflect new 'pip installs' or chanegs in the 'Dockerfile' and these kind of changes
-    # for these you need to do docker compose up --build which just builds the new changes which 
-    # arent tracked by this bind mount below
-      - .:/code 
+      - .:/code
     environment:
       - DATABASE_HOST=db  # here inside the containers the api and the db communincation is via this 'db'
       - REDIS_HOST=redis  # inside Docker, services talk to each other by service name
@@ -22,19 +16,19 @@ services: # all the current services
       - REDIS_DB=0
       - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
-    restart: unless-stopped  # Auto-restart if it crashes no compose up's needed again and again
+    restart: unless-stopped  # Auto-restart if it crashes
 
   db:
-    image: postgres:16-alpine # get the official postgres image from dockerhub
+    image: postgres:16-alpine # official postgres image
     command: ["postgres", "-c", "max_connections=300"]
     environment:
-      - POSTGRES_USER=postgres  
-      - POSTGRES_PASSWORD=iota143  
-      - POSTGRES_DB=fastApi  
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=iota143
+      - POSTGRES_DB=fastApi
     volumes:
-      - postgres_data:/var/lib/postgresql/data  # volumes persist data rather then erasing data on every restart
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"  
+      - "5432:5432"
 
   redis:
     image: redis:7-alpine
@@ -118,7 +112,20 @@ services: # all the current services
       - prometheus
     restart: unless-stopped
 
+  flower:
+    image: mher/flower:2.0.1
+    command: celery --broker=amqp://guest:guest@rabbitmq:5672// --port=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - rabbitmq
+      - celery_worker
+    environment:
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    restart: unless-stopped
+
 volumes:
-  postgres_data:  # named volume for DB data—survives restarts
+  postgres_data:
   prometheus_data:
   grafana_data:

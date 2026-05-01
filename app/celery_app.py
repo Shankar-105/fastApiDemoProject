@@ -1,5 +1,6 @@
 from celery import Celery
 from celery.schedules import crontab, schedule
+from kombu import Exchange, Queue
 
 from app.config import settings
 
@@ -24,7 +25,30 @@ celery_app.conf.update(
     task_default_retry_delay=60,
     task_default_max_retries=3,
     result_expires=86400,
+    task_acks_on_failure_or_timeout=False,
+    worker_disable_rate_limits=False,
+    task_soft_time_limit=600,
+    task_time_limit=900,
 )
+
+celery_app.conf.task_routes = {
+    "app.tasks.*": {"queue": "celery", "routing_key": "celery"},
+}
+
+# Declare dead-letter exchange and queue so RabbitMQ will persist failed tasks
+dead_letter_exchange = Exchange("dead_letter_exchange", type="direct", durable=True)
+dead_letter_queue = Queue(
+    "dead_letter_queue", exchange=dead_letter_exchange, routing_key="dead_letter", durable=True
+)
+
+celery_queue = Queue(
+    "celery",
+    Exchange("celery", type="direct"),
+    routing_key="celery",
+    queue_arguments={"x-dead-letter-exchange": "dead_letter_exchange"},
+)
+
+celery_app.conf.task_queues = (celery_queue, dead_letter_queue)
 
 celery_app.conf.beat_schedule = {
     "cleanup-expired-otps": {

@@ -12,6 +12,7 @@ from app.services import redis_service as _redis_svc   # accessed via module so 
 from app.db import async_engine, sync_engine
 from app.routes import changepassword, posts,users,auth,like,connect,comment,search,me,feed,saved
 from app.routes import notifications
+from app.routes import celery_tasks
 from app.services.redis_service import check_redis_connection
 from app.my_utils.socket_manager import manager
 from chat_system import chat,chat_history,share,delete_msg,delete_shares,edit_msg,msg_info,msg_reaction,share_reaction,media_msg,clear_chat
@@ -187,6 +188,7 @@ app.include_router(feed.router)
 app.include_router(saved.router)
 app.include_router(notifications.router)
 app.include_router(chat.router)
+app.include_router(celery_tasks.router)
 app.include_router(chat_history.router)
 app.include_router(share.router)
 app.include_router(delete_msg.router)

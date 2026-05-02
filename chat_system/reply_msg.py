@@ -3,8 +3,10 @@ from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.my_utils.socket_manager import manager
+from app.services import redis_service
 from datetime import datetime
 from app.my_utils.time_formatting import format_timestamp
+import json
 
 
 async def reply_msg(
@@ -71,6 +73,16 @@ async def reply_msg(
                     "media_type":original_msg.media_type,
                 }
         }
+                # Publish to Redis for cross-process delivery
+                try:
+                    await redis_service.redis_client.publish(
+                        "chat:messages",
+                        json.dumps(reply_message_payload)
+                    )
+                    print("Reply message published to Redis for cross-process delivery")
+                except Exception as e:
+                    print(f"Failed to publish to Redis: {e}")
+                
                 await manager.send_json_to_user(reply_message_payload,
                     receiver_id
                 )

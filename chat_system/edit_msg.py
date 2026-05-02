@@ -6,8 +6,10 @@ from datetime import datetime
 from app.schemas import CanEditResponse
 from app import oauth2,db,config
 from app.my_utils.socket_manager import manager
+from app.services import redis_service
 from datetime import datetime,timedelta,timezone
 from app.my_utils.time_formatting import format_timestamp
+import json
 
 router=APIRouter(tags=['can_edit'])
 
@@ -97,8 +99,19 @@ async def edit_message(db:AsyncSession,message_id:int,new_content:str,sender_id:
         "type":"edit_message",
         "new_content":new_content,
         "message_id": message_id,
-        "is_edited":True
+        "is_edited":True,
+        "receiver_id": recv_id
     }
+    # Publish to Redis for cross-process delivery
+    try:
+        await redis_service.redis_client.publish(
+            "chat:messages",
+            json.dumps(payload)
+        )
+        print("Edit message published to Redis for cross-process delivery")
+    except Exception as e:
+        print(f"Failed to publish to Redis: {e}")
+    
     if recv_id in manager.active_connections:
                     try:
                         await manager.send_json_to_user(payload, 

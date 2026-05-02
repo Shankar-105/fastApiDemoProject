@@ -4,7 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update
 from app.my_utils.socket_manager import manager
 from app.my_utils.time_formatting import format_timestamp
+from app.services import redis_service
 from datetime import datetime
+import json
                
 async def messageUser(
     payload:schemas.MessageSchema,
@@ -35,13 +37,24 @@ async def messageUser(
         "is_reply": False,
         "is_reply_to_share": False,
     }
-        # Check if receiver is in active_connections
+        
+        # Publish to Redis for cross-process delivery
+        try:
+            await redis_service.redis_client.publish(
+                "chat:messages",
+                json.dumps(reply_payload)
+            )
+            print("Message published to Redis for cross-process delivery")
+        except Exception as e:
+            print(f"Failed to publish to Redis: {e}")
+        
+        # Check if receiver is in active_connections (local process)
         receiver_id = msg.receiver_id
         if receiver_id in manager.active_connections:
             try:
                 # Try to send (if fails, it's a zombie)
                 await manager.send_json_to_user(reply_payload,payload.to)
-                print("Message sent via WebSocket")
+                print("Message sent via WebSocket (local process)")
                 await db.execute(
                     update(models.Message)
                     .where(models.Message.id == msg.id, models.Message.is_read == False)

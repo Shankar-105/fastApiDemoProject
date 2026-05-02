@@ -3,7 +3,9 @@ from app import schemas, models, oauth2, db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from app.my_utils.socket_manager import manager
+from app.services import redis_service
 from typing import List
+import json
 
 router = APIRouter(tags=['shared post reactions'])
 
@@ -107,8 +109,19 @@ async def react_to_shared_post(
             "reaction": reaction.reaction if isNewRecord else None,
             "reaction_count":shared.reaction_cnt,
             "reacted_by": user_id
-        }
+        },
+        "receiver_id": shared.to_user_id
     }
+
+    # Publish to Redis for cross-process delivery
+    try:
+        await redis_service.redis_client.publish(
+            "chat:messages",
+            json.dumps(payload)
+        )
+        print("Share reaction published to Redis for cross-process delivery")
+    except Exception as e:
+        print(f"Failed to publish to Redis: {e}")
 
     # Send to BOTH users
     await manager.send_personal_message(payload,shared.from_user_id)

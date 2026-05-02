@@ -3,8 +3,10 @@ from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from app.my_utils.socket_manager import manager
+from app.services import redis_service
 from datetime import datetime
 from typing import List
+import json
 router=APIRouter(tags=['msg reactions'])
 
 
@@ -99,8 +101,19 @@ async def react(
         "message_id": the_msg.id,
         "reaction": reaction.reaction if isNewRecord else None,
         "reaction_count": the_msg.reaction_cnt,
-        "reacted_by": user_id
+        "reacted_by": user_id,
+        "receiver_id": the_msg.receiver_id
     }
+    # Publish to Redis for cross-process delivery
+    try:
+        await redis_service.redis_client.publish(
+            "chat:messages",
+            json.dumps(payload)
+        )
+        print("Reaction published to Redis for cross-process delivery")
+    except Exception as e:
+        print(f"Failed to publish to Redis: {e}")
+    
     # Send to BOTH sender and receiver
     await manager.send_personal_message(payload,the_msg.sender_id)
     await manager.send_json_to_user(payload,the_msg.receiver_id)

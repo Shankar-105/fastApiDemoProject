@@ -3,6 +3,7 @@ from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.my_utils.socket_manager import manager
+from app.services import redis_service
 import json,asyncio
 from datetime import datetime
 
@@ -56,8 +57,20 @@ async def delete_share_for_everyone(
     payload = {
         "type":"share_deleted",
         "share_id": share_id,
-        "is_deleted_for_everyone":True
+        "is_deleted_for_everyone":True,
+        "receiver_id": receiver_id
     }
     print(f"Sender ID {sender_id} Receiver ID {receiver_id}")
+    
+    # Publish to Redis for cross-process delivery
+    try:
+        await redis_service.redis_client.publish(
+            "chat:messages",
+            json.dumps(payload)
+        )
+        print("Share deletion published to Redis for cross-process delivery")
+    except Exception as e:
+        print(f"Failed to publish to Redis: {e}")
+    
     await manager.send_json_to_user(payload,receiver_id)
     await manager.send_personal_message(payload,sender_id)

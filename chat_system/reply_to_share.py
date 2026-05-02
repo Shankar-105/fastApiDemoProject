@@ -3,8 +3,10 @@ from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.my_utils.socket_manager import manager
+from app.services import redis_service
 from datetime import datetime
 from app.my_utils.time_formatting import format_timestamp
+import json
 async def reply_share(
     payload:schemas.ReplyToShareSchema,
     user_id:int,
@@ -67,6 +69,16 @@ async def reply_share(
             "media_url": original_post.media_path  # if exists
         }
     }
+
+    # Publish to Redis for cross-process delivery
+    try:
+        await redis_service.redis_client.publish(
+            "chat:messages",
+            json.dumps(reply_payload)
+        )
+        print("Reply to share message published to Redis for cross-process delivery")
+    except Exception as e:
+        print(f"Failed to publish to Redis: {e}")
 
     # Send to receiver (same logic as before)
     if payload.to in manager.active_connections:

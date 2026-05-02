@@ -1,8 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update
 from app import models, schemas
+from app.services import redis_service
 from datetime import datetime
 from app.my_utils.socket_manager import manager
+import json
 
 async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
     try:
@@ -25,15 +27,28 @@ async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
 
         await db.commit()
         
+        receipt_payload = {
+            "type": "read_receipt",
+            "reader_id": reader_id,
+            "read_at": str(now),
+            "read_count": len(updated_message_ids),
+            "conversation_with": reader_id,
+            "receiver_id": sender_id
+        }
+        
+        # Publish to Redis for cross-process delivery
+        try:
+            await redis_service.redis_client.publish(
+                "chat:messages",
+                json.dumps(receipt_payload)
+            )
+            print("Read receipt published to Redis for cross-process delivery")
+        except Exception as e:
+            print(f"Failed to publish to Redis: {e}")
+        
         # Notify the sender that their messages have been read
         await manager.send_personal_message(
-            {
-                "type": "read_receipt",
-                "reader_id": reader_id,
-                "read_at": str(now),
-                "read_count": len(updated_message_ids),
-                "conversation_with": reader_id
-            },
+            receipt_payload,
             sender_id
         )
         

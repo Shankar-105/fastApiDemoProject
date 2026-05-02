@@ -29,30 +29,37 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 
 models.Base.metadata.create_all(bind=sync_engine)
 
-_listener_task: asyncio.Task | None = None
+_chat_listener_task: asyncio.Task | None = None
 
-async def _notification_listener() -> None:
+
+
+async def _chat_messages_listener() -> None:
+    """Cross-process chat message delivery via Redis Pub/Sub.
+    
+    When a message is published to "chat:messages":
+    1. All worker processes receive it
+    2. Each worker checks its local active_connections
+    3. Only the worker with the target user connected sends the message
+    """
     ps = _redis_svc.redis_client.pubsub()
-    await ps.psubscribe("notifications:*")
+    await ps.subscribe("chat:messages")
     try:
         async for message in ps.listen():
-            if message["type"] != "pmessage":
-                # Redis sends a confirmation message when you subscribe;
-                # ignore everything that isn't an actual published message.
+            if message["type"] != "message":
+                # Ignore subscription confirmation
                 continue
-            channel: str = message["channel"]   # e.g. "notifications:42"
             try:
-                user_id = int(channel.split(":")[1])
                 payload = _json.loads(message["data"])
-                await manager.send_personal_message(payload,user_id)
+                receiver_id = payload.get("receiver_id")
+                if receiver_id is not None:
+                    # Try to deliver to local connected user (if exists on this worker)
+                    await manager.send_personal_message(payload, receiver_id)
             except Exception:
-                # User disconnected between publish and delivery - perfectly normal.
-                # JSON decode error or key error - ignore and keep listening.
+                # JSON decode error, delivery failed, etc. - just keep listening
                 pass
     except asyncio.CancelledError:
-        # Clean unsubscribe before the task is marked as done.
-        await ps.punsubscribe("notifications:*")
-        raise   # re-raise so asyncio records the task as Cancelled, not Failed
+        await ps.unsubscribe("chat:messages")
+        raise
 
 
 # -- Lifespan: replaces the deprecated @app.on_event("startup"/"shutdown") --
@@ -63,20 +70,20 @@ async def _notification_listener() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # -- startup --
-    global _listener_task
+    global _listener_task, _chat_listener_task
     redis_ok = await check_redis_connection()
     if redis_ok:
-        _listener_task = asyncio.create_task(_notification_listener())
+        _chat_listener_task = asyncio.create_task(_chat_messages_listener())
     else:
-        print("Skipping Redis notification listener (Redis unavailable)!")
+        print("Skipping Redis listeners (Redis unavailable)!")
 
     yield   # app is running between these two points
 
     # -- shutdown --
-    if _listener_task:
-        _listener_task.cancel()
+    if _chat_listener_task:
+        _chat_listener_task.cancel()
         try:
-            await _listener_task
+            await _chat_listener_task
         except asyncio.CancelledError:
             pass
 

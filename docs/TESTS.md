@@ -179,6 +179,7 @@ The `pytests/` directory is logically partitioned:
 - **`test_chat.py`**: Uses custom WebSocket testing utilities to simulate real-time chat messages and history retrieval.
 - **`test_schema_validation.py`**: Validates the **JSON structure** of responses. We use this to ensure my recent refactoring didn't break field names (camelCase vs snake_case).
 - **`test_edge_cases.py`**: Covers things like very long strings, special characters, and unauthorized access attempts.
+- **`test_celery_infrastructure.py`**: Lightweight checks for Celery queue configuration, Beat schedule, Flower-adjacent task controls, and DLQ wiring.
 
 ---
 

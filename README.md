@@ -1,22 +1,22 @@
 # 🚀 Social Media Api
 **Modern Social Media Backend + Real-time Chat – Scalable, Fast, and Beginner-Friendly**
 
-A **fully async, non-blocking** social media backend built to handle **thousands of concurrent connections** without breaking a sweat. Powered by FastAPI, asyncpg, Redis, and WebSockets — every route, every query, every cache hit runs on the event loop. Features **refresh token rotation** with family-based revocation, **real-time notifications** via Redis Pub/Sub, **IP & user-based rate limiting**, **Redis caching across 11+ endpoints** with automatic invalidation. CPU-heavy work (bcrypt, JWT) is offloaded to the thread pool so the server never stalls. Production-grade, real-time, and built for scale.
+A **fully async, non-blocking** social media backend built to handle **thousands of concurrent connections** without breaking a sweat. The stack is designed around **_FastAPI, async SQLAlchemy, PostgreSQL, Redis, WebSockets, RabbitMQ, Celery, Prometheus, Grafana, k6, and pytest_** so every layer has a clear job: API requests stay fast, database access stays async, background work stays off the request path, and observability stays visible. Production-grade, real-time, and built for scale.
 
 ---
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.119+-green?logo=fastapi)
-![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0+-yellow?logo=sqlalchemy)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue?logo=postgresql)
-![WebSockets Badge](https://img.shields.io/badge/WebSockets-101010?style=for-the-badge&logo=socket.io&logoColor=white)
-![JWT Badge](https://img.shields.io/badge/JWT-000000?style=for-the-badge&logo=JSON%20web%20tokens&logoColor=white)
-![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=plastic&logo=docker&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-7.0+-red?logo=redis&logoColor=white)
-![Grafana](https://img.shields.io/badge/Grafana-Dashboarding-F46800?logo=grafana&logoColor=white)
-![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus&logoColor=white)
-![k6](https://img.shields.io/badge/k6-Load%20Testing-7D64FF?logo=k6&logoColor=white)
-
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi&logoColor=white)
+![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)
+![Grafana](https://img.shields.io/badge/Grafana-F46800?style=for-the-badge&logo=grafana&logoColor=white)
+![k6](https://img.shields.io/badge/k6-7D64FF?style=for-the-badge&logo=k6&logoColor=white)
+![Celery](https://img.shields.io/badge/Celery-37814A?style=for-the-badge&logo=celery&logoColor=white)
+![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)
+![WebSockets](https://img.shields.io/badge/WebSockets-010101?style=for-the-badge&logo=socket.io&logoColor=white)
 ## 🌟 Features — Everything Inside
 
 _This API packs **a lot**. For the full breakdown of every feature — async architecture, auth, chat, caching, media, DevOps, and more — see [`docs/FEATURES.md`](./docs/FEATURES.md)._ 
@@ -44,20 +44,12 @@ _Want to know how this project runs in the cloud? Read [`docs/AZURE_DEPLOYMENT.m
 ## 🧪 Testing — Comprehensive Test Suite!
 
 _Ready to verify everything works? Check out [`docs/TESTS.md`](./docs/TESTS.md) for a complete guide on running the test suite._
-
 _All tests use a separate test database—your dev data stays safe! 🛡️_
 
 ---
 ## 📸 Benchmark Proof — RPS, P95 Graphs and What They Mean
 
-_[`docs/BENCHMARK.md`](./docs/BENCHMARK.md)_
-
-> Real benchmark evidence from deployed runs, with charts + clear conclusions.
-
-**What you get inside:**
-- 📈 _**smoke/load** behavior snapshots from **Grafana**_,
-- ⏱️ _request rate, p95 latency, and top slow-endpoint patterns_,
-- 🧠 _interpretation of whether limits are coming from **infrastructure saturation or endpoint-level defects**_.
+_Real benchmark evidence from deployed runs, with charts + clear conclusions [`docs/BENCHMARK.md`](./docs/BENCHMARK.md)_.
 
 --- 
 

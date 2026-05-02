@@ -114,7 +114,7 @@ services: # all the current services
 
   flower:
     image: mher/flower:2.0.1
-    command: celery --broker=amqp://guest:guest@rabbitmq:5672// --port=5555
+    command: celery --broker=amqp://guest:guest@rabbitmq:5672// flower --port=5555
     ports:
       - "5555:5555"
     depends_on:

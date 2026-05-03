@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_db: int = 0
     redis_password: str = ""
+    celery_broker_url: str = "amqp://guest:guest@localhost:5672//"
+    celery_result_backend: str = "redis://localhost:6379/1"
     # azure blob storage
     azure_storage_connection_string: str = ""
     azure_storage_account_name: str = ""

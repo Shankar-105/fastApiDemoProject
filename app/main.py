@@ -12,6 +12,7 @@ from app.services import redis_service as _redis_svc   # accessed via module so 
 from app.db import async_engine, sync_engine
 from app.routes import changepassword, posts,users,auth,like,connect,comment,search,me,feed,saved
 from app.routes import notifications
+from app.routes import celery_tasks
 from app.services.redis_service import check_redis_connection
 from app.my_utils.socket_manager import manager
 from chat_system import chat,chat_history,share,delete_msg,delete_shares,edit_msg,msg_info,msg_reaction,share_reaction,media_msg,clear_chat
@@ -28,31 +29,36 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 
 models.Base.metadata.create_all(bind=sync_engine)
 
-_listener_task: asyncio.Task | None = None
+_chat_listener_task: asyncio.Task | None = None
+_notification_listener_task: asyncio.Task | None = None
 
-async def _notification_listener() -> None:
+
+async def _redis_message_listener(channel: str) -> None:
+    """Deliver Redis pub/sub messages to locally connected websocket users."""
     ps = _redis_svc.redis_client.pubsub()
-    await ps.psubscribe("notifications:*")
+    await ps.subscribe(channel)
     try:
         async for message in ps.listen():
-            if message["type"] != "pmessage":
-                # Redis sends a confirmation message when you subscribe;
-                # ignore everything that isn't an actual published message.
+            if message["type"] != "message":
                 continue
-            channel: str = message["channel"]   # e.g. "notifications:42"
             try:
-                user_id = int(channel.split(":")[1])
                 payload = _json.loads(message["data"])
-                await manager.send_personal_message(payload,user_id)
+                receiver_id = payload.get("receiver_id")
+                if receiver_id is not None:
+                    await manager.send_personal_message(payload, receiver_id)
             except Exception:
-                # User disconnected between publish and delivery - perfectly normal.
-                # JSON decode error or key error - ignore and keep listening.
                 pass
     except asyncio.CancelledError:
-        # Clean unsubscribe before the task is marked as done.
-        await ps.punsubscribe("notifications:*")
-        raise   # re-raise so asyncio records the task as Cancelled, not Failed
+        await ps.unsubscribe(channel)
+        raise
 
+
+async def _chat_messages_listener() -> None:
+    return await _redis_message_listener("chat:messages")
+
+
+async def _notification_messages_listener() -> None:
+    return await _redis_message_listener("notifications:messages")
 
 # -- Lifespan: replaces the deprecated @app.on_event("startup"/"shutdown") --
 # asynccontextmanager turns this one function into both startup AND shutdown.
@@ -62,27 +68,32 @@ async def _notification_listener() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # -- startup --
-    global _listener_task
+    global _chat_listener_task, _notification_listener_task
     redis_ok = await check_redis_connection()
     if redis_ok:
-        _listener_task = asyncio.create_task(_notification_listener())
+        _chat_listener_task = asyncio.create_task(_chat_messages_listener())
+        _notification_listener_task = asyncio.create_task(_notification_messages_listener())
     else:
-        print("Skipping Redis notification listener (Redis unavailable)!")
+        print("Skipping Redis listeners (Redis unavailable)!")
 
     yield   # app is running between these two points
 
     # -- shutdown --
-    if _listener_task:
-        _listener_task.cancel()
+    if _chat_listener_task:
+        _chat_listener_task.cancel()
         try:
-            await _listener_task
+            await _chat_listener_task
+        except asyncio.CancelledError:
+            pass
+    if _notification_listener_task:
+        _notification_listener_task.cancel()
+        try:
+            await _notification_listener_task
         except asyncio.CancelledError:
             pass
 
-
 # fastapi instance - lifespan wires up the startup/shutdown hooks above
 app = FastAPI(lifespan=lifespan)
-
 
 def _configure_observability_logger() -> logging.Logger:
     logger = logging.getLogger("observability")
@@ -158,6 +169,8 @@ async def add_trace_id_log(request, call_next):
 app.mount("/profilepics",StaticFiles(directory="profilepics"),name="profilepics")
 app.mount(f"/{config.settings.media_folder}",StaticFiles(directory=f"{config.settings.media_folder}"),name=f"{config.settings.media_folder}")
 app.mount("/chat-media",StaticFiles(directory="chat-media"),name="chat-media")
+app.mount("/favicon", StaticFiles(directory="favicon"), name="favicon")
+# Favicon: prefer file at /favicon/favicon.png,
 
 # when the domain or the port changes
 # browser blocks the api-url(cross origin requests COR's)
@@ -187,6 +200,7 @@ app.include_router(feed.router)
 app.include_router(saved.router)
 app.include_router(notifications.router)
 app.include_router(chat.router)
+app.include_router(celery_tasks.router)
 app.include_router(chat_history.router)
 app.include_router(share.router)
 app.include_router(delete_msg.router)
@@ -204,6 +218,7 @@ def root_home() -> str:
 <!doctype html>
 <html lang=\"en\">
 <head>
+    <link rel="icon" type="image/png" href="/favicon/faviconIco.png" />
     <meta charset=\"utf-8\" />
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
     <title>FastAPI Social Backend</title>
@@ -278,14 +293,14 @@ def root_home() -> str:
 <body>
     <main class=\"card\">
         <h1>FastAPI Social Backend Is Running</h1>
-        <p>This is the API server root page.</p>
+        <p>This is the root page of the API server.</p>
         <p>Use the links below to explore available routes and health status.</p>
         <div class=\"links\">
             <a href=\"/docs\">OpenAPI Docs</a>
             <a href=\"/redoc\">ReDoc</a>
             <a href=\"/health\">Health Check</a>
         </div>
-        <p class=\"hint\">Tip: frontend apps should call API endpoints directly, while this page is only a friendly landing screen.</p>
+        <p class=\"hint\"><b>This Page is only a friendly landing screen so that it doesn't show up a 404 whenever any user is hitting the (root /) endpoint!</b></p>
     </main>
 </body>
 </html>

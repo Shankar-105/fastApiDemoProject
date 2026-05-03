@@ -10,6 +10,7 @@ from app.services.redis_service import delete_cache, delete_cache_pattern
 from app.services.notification_service import create_notification
 from app.models import NotificationType
 from app.rate_limiter import follow_limiter
+from app.tasks.notification_tasks import create_notification_task
 
 router=APIRouter(tags=['connections'])
 
@@ -26,7 +27,7 @@ async def _adjust_user_counter(db: AsyncSession, user_id: int, column_name: str,
     return result.scalar_one()
 
 @router.post("/follow/{user_id}",status_code=status.HTTP_201_CREATED, response_model=sch.FollowResponse)
-async def follow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),background_tasks:BackgroundTasks=BackgroundTasks(),_:None=Depends(follow_limiter)):
+async def follow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),background_tasks=None,_:None=Depends(follow_limiter)):
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     userToFollow=result.scalars().first()
     if not userToFollow:
@@ -62,11 +63,10 @@ async def follow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.U
     await delete_cache_pattern(f"feed:home:{currentUser.id}:*")
     # Notify the followed user that someone started following them.
     # Self-follow is already prevented above, so no extra guard needed here.
-    background_tasks.add_task(
-        create_notification,
+    create_notification_task.delay(
         actor_id=currentUser.id,
         owner_id=userToFollow.id,
-        notif_type=NotificationType.follow,
+        notif_type=NotificationType.follow.value,
         actor_username=currentUser.username,
         entity_id=None,
         entity_type=None,

@@ -3,8 +3,10 @@ from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.my_utils.socket_manager import manager
+from app.services import redis_service
 from datetime import datetime
 from app.my_utils.time_formatting import format_timestamp
+import json
 async def reply_share(
     payload:schemas.ReplyToShareSchema,
     user_id:int,
@@ -68,17 +70,29 @@ async def reply_share(
         }
     }
 
-    # Send to receiver (same logic as before)
-    if payload.to in manager.active_connections:
+
+    sender_payload = dict(reply_payload)
+    sender_payload["receiver_id"] = user_id
+    try:
+        await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
+        await redis_service.redis_client.publish("chat:messages", json.dumps(reply_payload))
+        print("Reply to share message published to Redis for cross-process delivery (receiver+sender)")
+    except Exception as e:
+        print(f"Failed to publish to Redis: {e}")
+        # fallback local send
         try:
-            await manager.send_json_to_user(reply_payload,payload.to)
-            await db.execute(
-                update(models.Message)
-                .where(models.Message.id == reply_msg.id, models.Message.is_read == False)
-                .values(is_read=True, read_at=datetime.utcnow())
-            )
-            await db.commit()
-        except:
+            if payload.to in manager.active_connections:
+                await manager.send_json_to_user(reply_payload, payload.to)
+                await db.execute(
+                    update(models.Message)
+                    .where(models.Message.id == reply_msg.id, models.Message.is_read == False)
+                    .values(is_read=True, read_at=datetime.utcnow())
+                )
+                await db.commit()
+        except Exception:
             manager.disconnect(payload.to)
-    # Send back to sender
-    await manager.send_personal_message(reply_payload,user_id)
+
+        try:
+            await manager.send_personal_message(sender_payload, user_id)
+        except Exception:
+            pass

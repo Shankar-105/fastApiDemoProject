@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.services.notification_service import create_notification
 from app.models import NotificationType
 from app.services.redis_service import delete_cache_pattern
+from app.tasks.notification_tasks import create_notification_task
 
 router=APIRouter(
     tags=['likes']
@@ -15,7 +16,7 @@ router=APIRouter(
 
 @router.post("/vote/on_post",status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
 # get the post user that user wants to vote on with which user he is
-async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),background_tasks:BackgroundTasks=BackgroundTasks()):
+async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # search for the post he wants to vote on against the db 
     # to firstly check whether that particular post is present or not in the db
     result=await db.execute(select(models.Post).where(models.Post.id==post.post_id))
@@ -109,11 +110,10 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
             # Notify the post owner when someone LIKES their post.
             # Only on new likes (not dislikes, not removals, not self-likes).
             if post.choice and currentUser.id != queriedPost.user_id:
-                background_tasks.add_task(
-                    create_notification,
+                create_notification_task.delay(
                     actor_id=currentUser.id,
                     owner_id=queriedPost.user_id,
-                    notif_type=NotificationType.like,
+                    notif_type=NotificationType.like.value,
                     actor_username=currentUser.username,
                     entity_id=post.post_id,
                     entity_type="post",

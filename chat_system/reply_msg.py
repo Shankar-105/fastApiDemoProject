@@ -3,8 +3,10 @@ from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.my_utils.socket_manager import manager
+from app.services import redis_service
 from datetime import datetime
 from app.my_utils.time_formatting import format_timestamp
+import json
 
 
 async def reply_msg(
@@ -71,23 +73,41 @@ async def reply_msg(
                     "media_type":original_msg.media_type,
                 }
         }
-                await manager.send_json_to_user(reply_message_payload,
-                    receiver_id
-                )
-                print("Message sent via WebSocket")
-                await db.execute(
-                    update(models.Message)
-                    .where(models.Message.id == msg.id, models.Message.is_read == False)
-                    .values(is_read=True, read_at=datetime.utcnow())
-                )
-                await db.commit()
-                print(f"Message {msg.id} marked as READ")
+                # Publish to Redis for cross-process delivery; publish both
+                # receiver and sender copies so both users are delivered.
+                # If Redis is unavailable, fall back to local sends.
+                sender_payload = dict(reply_message_payload)
+                sender_payload["receiver_id"] = user_id
+                redis_published = False
+                try:
+                    await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
+                    await redis_service.redis_client.publish("chat:messages", json.dumps(reply_message_payload))
+                    redis_published = True
+                    print("Reply message published to Redis for cross-process delivery (receiver+sender)")
+                except Exception as e:
+                    print(f"Failed to publish to Redis: {e}")
+                    # fallback to local sends for receiver
+                    try:
+                        await manager.send_json_to_user(reply_message_payload, receiver_id)
+                        await db.execute(
+                            update(models.Message)
+                            .where(models.Message.id == msg.id, models.Message.is_read == False)
+                            .values(is_read=True, read_at=datetime.utcnow())
+                        )
+                        await db.commit()
+                    except Exception as e2:
+                        print(f"Local send failed: {e2}")
+                    try:
+                        await manager.send_personal_message(sender_payload, user_id)
+                    except Exception:
+                        pass
             except Exception as e:
                 print(f"Send failed: {e}")
                 manager.disconnect(receiver_id)
         else:
             print("Receiver offline — message saved in DB")
-        # Send response back to sender
+        # Send response back to sender (local response is redundant when Redis worked,
+        # but keep it as a fallback for very small latency-sensitive flows)
         payload_to_user={
             "type": "message",
                 "id": msg.id,
@@ -107,5 +127,10 @@ async def reply_msg(
                     "media_type":original_msg.media_type,
                 }
         }
-        await manager.send_personal_message(payload_to_user,user_id)
-        print("Response sent to sender")
+        # Only send local response to sender if Redis publish failed
+        if not locals().get('redis_published', False):
+            try:
+                await manager.send_personal_message(payload_to_user, user_id)
+                print("Response sent to sender (local fallback)")
+            except Exception:
+                pass

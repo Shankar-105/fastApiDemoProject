@@ -1,9 +1,12 @@
 import json
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from app.db import AsyncSessionLocal
 from app.models import Notification, NotificationType
-from app.services.redis_service import redis_client, delete_cache_pattern
+from app.services import redis_service
+from app.services.redis_service import delete_cache_pattern
+from app.my_utils.socket_manager import manager
 
 # -- Patchable session factory --
 # Mirrors exactly what redis_service.py does with redis_client.
@@ -21,6 +24,9 @@ _NOTIFICATION_TEXT = {
     NotificationType.comment: lambda actor: f"{actor} commented on your post",
     NotificationType.follow:  lambda actor: f"{actor} started following you",
 }
+
+
+_NOTIFICATION_CHANNEL = "notifications:messages"
 
 
 async def create_notification(
@@ -61,32 +67,29 @@ async def create_notification(
         await delete_cache_pattern(f"notifications:{owner_id}:*")
         await delete_cache_pattern(f"notif:unread:{owner_id}")
 
-        # Publish to Redis Pub/Sub
-        # Channel name is unique per user: "notifications:42"
-        # The subscriber started in main.py (step 5) listens on this pattern and
-        # forwards the message to the user's active WebSocket if they are online.
-        # If they are offline, this publish is a no-op - the notification already
-        # lives in the DB and will be delivered on their next WebSocket connection.
-        payload = json.dumps({
+        payload = {
             "type":         "notification",
             "id":           notif.id,
             "actor_id":     actor_id,
             "actor_username": actor_username,
-            "notif_type":   notif_type.value,       # "like" | "comment" | "follow"
+            "notif_type":   notif_type.value,
             "entity_id":    entity_id,
             "entity_type":  entity_type,
             "text":         text,
             "is_read":      False,
             "created_at":   notif.created_at.isoformat() if notif.created_at else None,
-        })
-        try:
-            await redis_client.publish(f"notifications:{owner_id}",payload)
-        except Exception:
-            # Redis is down -> notification is already safely in the DB.
-            # The user will receive it via the missed-notifications delivery on
-            # their next WebSocket connect (step 6). Never crash the background task.
-            pass
+            "receiver_id":  owner_id,
+        }
 
+        try:
+            await redis_service.redis_client.publish(
+                _NOTIFICATION_CHANNEL,
+                json.dumps(payload),
+            )
+        except Exception:
+            # Redis is the cross-worker delivery path; fall back to the local
+            # socket manager only if pub/sub is unavailable.
+            await manager.send_personal_message(payload, owner_id)
 
 # -- REST helper functions --
 # These are called by the notification routes added in step 7.
@@ -108,7 +111,6 @@ async def get_notifications(
     )
     return result.scalars().all()
 
-
 async def get_unread_count(db: AsyncSession, user_id: int) -> int:
     """Return the count of unread notifications - used for the badge number."""
     result = await db.execute(
@@ -117,7 +119,6 @@ async def get_unread_count(db: AsyncSession, user_id: int) -> int:
         .where(Notification.owner_id == user_id, Notification.is_read == False)    # noqa: E712
     )
     return result.scalar() or 0
-
 
 async def mark_all_read(db: AsyncSession, user_id: int) -> None:
     """Bulk-mark every unread notification for a user as read."""

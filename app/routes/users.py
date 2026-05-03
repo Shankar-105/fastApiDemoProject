@@ -12,6 +12,7 @@ from app.rate_limiter import signup_limiter
 from app.services.blob_service import get_blob_url
 import app.services.otp_service as otp_service
 import app.services.email_service as email_service
+from app.tasks.email_tasks import send_verification_email as send_verification_email_task
 router=APIRouter(
     tags=['Users']
 )
@@ -96,13 +97,8 @@ async def createUser(userData:sch.UserSignupRequest=Body(...),db:AsyncSession=De
     # send signup verification OTP
     otp = otp_service.generateOtp()
     await otp_service.saveOtp(db, userData.email, otp, minutes=5)
-    try:
-        await email_service.send_verification_email(to_email=userData.email, otp=otp)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="User created but failed to send verification email"
-        )
+    
+    send_verification_email_task.delay(to_email=userData.email, otp=otp)
 
     # Invalidate the all_users cache because a new user was added
     await delete_cache("all_users")

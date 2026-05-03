@@ -26,6 +26,7 @@
 | [Real-Time Chat (WebSockets)](#-real-time-chat-websockets) | Direct messages, media, typing, reactions, read receipts |
 | [Message Controls](#-message-controls) | Reply, edit, delete for me, delete for everyone, clear chat |
 | [Post Sharing into DMs](#-post-sharing-into-dms) | Share posts, react to shares, reply to shares |
+| [Background Jobs (Celery + RabbitMQ)](#-background-jobs-celery--rabbitmq) | Message queues, retries, scheduled cleanup, failure isolation |
 | [Redis Caching & Token Blacklisting](#-redis-caching--token-blacklisting) | Response caching across 11+ endpoints, pattern-based invalidation, secure logout |
 | [Media & File Management](#-media--file-management) | Profile pics, post media, chat media, static serving |
 | [Database & Migrations](#-database--migrations) | PostgreSQL, SQLAlchemy 2.0, Alembic, async sessions |
@@ -131,13 +132,32 @@ Real-time notification system with persistent storage and live delivery.
 
 - **Notification types:** `like`, `comment`, `follow` — generated automatically when a user interacts with your content
 - **Persistent storage** — all notifications saved in a dedicated `notifications` table with `owner_id`, `actor_id`, `type`, `entity_id`, `entity_type`, `text`, `is_read`, and `created_at`
-- **Real-time delivery** — notifications are published to a Redis Pub/Sub channel; if the target user has an active WebSocket connection, the notification is pushed instantly
+- **Real-time delivery** — if the target user has an active WebSocket connection, the notification is pushed instantly through the connection manager
 - **REST endpoints:**
   - `GET /me/notifications` — paginated notification list (cached 20s in Redis)
   - `GET /me/notifications/unread-count` — unread badge count (cached 20s)
   - `PATCH /me/notifications/read` — mark all as read (invalidates caches)
 - **Automatic cache invalidation** — creating a new notification clears the target user's notification caches so they see fresh data on next request
 - **No self-notifications** — liking your own post or following yourself doesn't generate a notification
+
+---
+
+## 🚚 Background Jobs (Celery + RabbitMQ)
+
+The app now pushes slow or repeatable work into a queue instead of doing it in the request path.
+
+- **Task queue architecture** — FastAPI submits work with `.delay()`, RabbitMQ stores the message, and Celery workers execute it later.
+- **RabbitMQ broker** — durable AMQP broker that keeps tasks safe until a worker is ready.
+- **Celery workers** — long-running background processes that send emails, clean up OTPs, and persist notifications.
+- **Celery Beat** — scheduler for periodic jobs such as hourly OTP cleanup.
+- **Flower monitoring** — web dashboard at port `5555` for active tasks, failures, worker health, and queue inspection.
+- **Result backend** — Redis DB 1 keeps task state and results so the app can query status later.
+- **Automatic retries** — tasks use exponential backoff when transient errors happen.
+- **Dead-letter queue** — tasks that exhaust retries can be isolated for later inspection instead of vanishing.
+- **Operational visibility** — task IDs, worker state, and queue depth can be tracked from both Flower and the API.
+- **Failure isolation** — background work no longer blocks signups, logins, or comment creation when a downstream service is slow.
+- **Use cases** — OTP emails, verification emails, notification persistence, and hourly maintenance jobs.
+- **Safer request handling** — HTTP responses return immediately while background work continues independently.
 
 ---
 

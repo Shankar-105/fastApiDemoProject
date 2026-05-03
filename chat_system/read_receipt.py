@@ -1,8 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update
 from app import models, schemas
+from app.services import redis_service
 from datetime import datetime
 from app.my_utils.socket_manager import manager
+import json
 
 async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
     try:
@@ -25,17 +27,33 @@ async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
 
         await db.commit()
         
-        # Notify the sender that their messages have been read
-        await manager.send_personal_message(
-            {
-                "type": "read_receipt",
-                "reader_id": reader_id,
-                "read_at": str(now),
-                "read_count": len(updated_message_ids),
-                "conversation_with": reader_id
-            },
-            sender_id
-        )
+        receipt_payload = {
+            "type": "read_receipt",
+            "reader_id": reader_id,
+            "read_at": str(now),
+            "read_count": len(updated_message_ids),
+            "conversation_with": reader_id,
+            "receiver_id": sender_id
+        }
+        
+        sender_payload = dict(receipt_payload)
+        sender_payload["receiver_id"] = sender_id
+        try:
+            await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
+            await redis_service.redis_client.publish("chat:messages", json.dumps(receipt_payload))
+            print("Read receipt published to Redis for cross-process delivery (receiver+sender)")
+        except Exception as e:
+            print(f"Failed to publish to Redis: {e}")
+            try:
+                await manager.send_personal_message(sender_payload, sender_id)
+            except Exception:
+                pass
+        else:
+            # Also send locally so tests and local feedback receive immediate delivery
+            try:
+                await manager.send_personal_message(sender_payload, sender_id)
+            except Exception:
+                pass
         
     except Exception as e:
         print(f"Error in read_receipt: {e}")

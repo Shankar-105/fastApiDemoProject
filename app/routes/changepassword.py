@@ -7,6 +7,7 @@ from app.my_utils import utils
 from sqlalchemy.orm.exc import StaleDataError
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
 from app.rate_limiter import change_password_limiter, reset_password_auth_limiter
+from app.tasks.email_tasks import send_otp_email as send_otp_email_task
 
 router = APIRouter(tags=["changepassword"])
 
@@ -16,12 +17,8 @@ async def change_password(db: AsyncSession = Depends(db.getDb),currentUser:model
     otp=otp_service.generateOtp()
     # save this otp in the db using the saveOtp method in the otp_sevice file 
     await otp_service.saveOtp(db,currentUser.email,otp)
-    # after storing it in the db Send email using the method in email file
-    try:
-       await email_service.send_otp_email(currentUser.email,otp) 
-    except:
-        # if any probelm their raise an exception
-        raise HTTPException(status_code=500, detail="Email send failed") 
+    # Submit email task to Celery (fire-and-forget)
+    send_otp_email_task.delay(to_email=currentUser.email, otp=otp)
     return schemas.SuccessResponse(message="OTP sent to your email! Check inbox")
 
 async def verifyOtp(db:AsyncSession,otp:str,currentUser:models.User):

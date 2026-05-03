@@ -14,6 +14,8 @@ import app.services.email_service as email_service
 from sqlalchemy.orm.exc import StaleDataError
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
 from app.rate_limiter import login_limiter, forgot_password_limiter, reset_password_limiter, refresh_limiter
+from app.tasks.email_tasks import send_otp_email as send_otp_email_task
+from app.tasks.email_tasks import send_verification_email as send_verification_email_task
 
 router=APIRouter(tags=['Authentication'])
 
@@ -95,16 +97,10 @@ async def forgot_password(payload: sch.ForgotPasswordSchema, db: AsyncSession = 
     otp = otp_service.generateOtp()
     await otp_service.saveOtp(db, payload.email, otp, minutes=5)
 
-    # Send OTP email
-    try:
-        await email_service.send_otp_email(to_email=payload.email, otp=otp)
-        return {"message": "An OTP has been sent to your email."}
-    except Exception as e:
-        print(e) # for debugging
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="There was an error sending the email."
-        )
+    # Submit email task to Celery (fire-and-forget)
+    send_otp_email_task.delay(to_email=payload.email, otp=otp)
+    
+    return {"message": "An OTP has been sent to your email."}
 
 @router.post("/reset-password", status_code=status.HTTP_200_OK)
 async def reset_password(payload: sch.ResetPasswordSchema, db: AsyncSession = Depends(db.getDb), _: None = Depends(reset_password_limiter)):
@@ -167,13 +163,9 @@ async def resend_verification_otp(payload: sch.ResendVerificationOtpRequest, db:
 
     otp = otp_service.generateOtp()
     await otp_service.saveOtp(db, payload.email, otp, minutes=5)
-    try:
-        await email_service.send_verification_email(to_email=payload.email, otp=otp)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="There was an error sending the email."
-        )
+    
+    send_verification_email_task.delay(to_email=payload.email, otp=otp)
+    
     return {"message": "Verification OTP sent to your email."}
 
 

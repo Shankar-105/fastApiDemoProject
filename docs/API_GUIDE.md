@@ -1463,32 +1463,35 @@ curl -X POST http://localhost:8000/forgot-password \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /upload-media` |
+| **Endpoint** | `POST /media/send` |
 | **Auth** | 🔐 Bearer Token |
 | **Content-Type** | `multipart/form-data` |
-| **Description** | Upload an image, video, or audio file for use in chat messages. Returns a `media_url` to include when sending a message via WebSocket. |
+| **Description** | Upload an image, video, or audio file for use in chat messages. The endpoint persists a chat `Message` and publishes it (so recipients receive it immediately). Returns a `media_url` plus the created `message_id`. |
 
 **Form Fields:**
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `file` | file | ✅ | Image, video, or audio file |
+| `to` | int | ✅ | Recipient user ID — message is delivered to this user |
 
 **cURL Example:**
 ```bash
-curl -X POST http://localhost:8000/upload-media \
+curl -X POST http://localhost:8000/media/send \
   -H "Authorization: Bearer <token>" \
-  -F "file=@/path/to/image.jpg"
+  -F "file=@/path/to/image.jpg" \
+  -F "to=2"
 ```
 
 **Response — `200 OK`:**
 ```json
 {
-  "media_url": "/images/a1b2c3d4.jpg",
-  "type": "image"
+  "media_url": "/chat-media/images/a1b2c3d4.jpg",
+  "type": "image",
+  "message_id": 123
 }
 ```
 
-> 💡 Use the returned `media_url` and `type` when sending media messages over WebSocket.
+> 💡 Use the returned `media_url`, `type`, and `message_id` when sending or referencing media messages over WebSocket (the server already publishes the message; sending an extra WebSocket message is optional).
 
 ---
 

@@ -46,6 +46,33 @@ otp_service.generateOtp = _fixed_otp
 email_service.send_otp_email = _noop_send
 email_service.send_verification_email = _noop_send
 
+# Run Celery tasks eagerly in tests to avoid needing a running broker.
+from app.celery_app import celery_app
+celery_app.conf.task_always_eager = True
+celery_app.conf.task_eager_propagates = True
+
+# Replace actual Celery task objects with no-op tasks to avoid asyncio.run
+# being executed inside the test event loop (which raises RuntimeError).
+import app.tasks.email_tasks as _email_tasks
+
+class _NoopCeleryTask:
+    def delay(self, *args, **kwargs):
+        return None
+    def apply_async(self, *args, **kwargs):
+        return None
+
+_email_tasks.send_otp_email = _NoopCeleryTask()
+_email_tasks.send_verification_email = _NoopCeleryTask()
+# Also override any module-level imports that bound these task objects at import time
+import app.routes.users as _routes_users
+import app.routes.auth as _routes_auth
+import app.routes.connect as _routes_connect
+import app.tasks.notification_tasks as _notification_tasks
+_routes_users.send_verification_email_task = _NoopCeleryTask()
+_routes_auth.send_verification_email_task = _NoopCeleryTask()
+_routes_connect.create_notification_task = _NoopCeleryTask()
+_notification_tasks.create_notification_task = _NoopCeleryTask()
+
 # Speed up auth-heavy tests by replacing bcrypt with deterministic test doubles.
 async def _fast_hash_password(raw: str) -> str:
     return f"test-hash::{raw}"
@@ -121,8 +148,8 @@ TEST_ASYNC_URL = (
 )
 
 # Debug output to verify detection (helpful for troubleshooting)
-print(f"🔍 Test DB Host detected: {TEST_DATABASE_HOST}")
-print(f"🔗 Test DB URL: postgresql://***:***@{TEST_DATABASE_HOST}/{TEST_DB_NAME}")
+print(f"[TEST] DB Host detected: {TEST_DATABASE_HOST}")
+print(f"[TEST] DB URL: postgresql://***:***@{TEST_DATABASE_HOST}/{TEST_DB_NAME}")
 
 # CREATE TEST DATABASE IF IT DOESN'T EXIST
 
@@ -150,19 +177,19 @@ def create_test_database_if_not_exists():
             exists = result.scalar() is not None
             
             if not exists:
-                print(f"📦 Creating test database: {TEST_DB_NAME}")
+                print(f"[CREATE] Creating test database: {TEST_DB_NAME}")
                 conn.execute(text(f'CREATE DATABASE "{TEST_DB_NAME}"'))
-                print(f"✅ Test database created successfully!")
+                print(f"[SUCCESS] Test database created successfully!")
             else:
-                print(f"✅ Test database already exists: {TEST_DB_NAME}")
+                print(f"[SUCCESS] Test database already exists: {TEST_DB_NAME}")
     except ProgrammingError as e:
         if "already exists" in str(e).lower():
-            print(f"✅ Test database already exists: {TEST_DB_NAME}")
+            print(f"[SUCCESS] Test database already exists: {TEST_DB_NAME}")
         else:
-            print(f"⚠️  Programming Error: {e}")
+            print(f"[ERROR] Programming Error: {e}")
             raise
     except Exception as e:
-        print(f"⚠️  Error checking/creating test database: {e}")
+        print(f"[ERROR] Error checking/creating test database: {e}")
         raise
     finally:
         default_engine.dispose()
@@ -196,14 +223,14 @@ notification_service._session_factory = TestingAsyncSessionLocal
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
     # Setup: Drop and recreate tables for a clean start (sync — runs before event loop)
-    print("🗑️  Dropping all existing tables...")
+    print("[SETUP] Dropping all existing tables...")
     Base.metadata.drop_all(bind=sync_test_engine)
-    print("🏗️  Creating all tables...")
+    print("[SETUP] Creating all tables...")
     Base.metadata.create_all(bind=sync_test_engine)
-    print("✅ Test database setup complete!")
+    print("[SUCCESS] Test database setup complete!")
     yield
     # Teardown: Delete the test database after all tests are finished
-    print(f"\n🧹 Cleaning up test database: {TEST_DB_NAME}...")
+    print(f"\n[TEARDOWN] Cleaning up test database: {TEST_DB_NAME}...")
     # First, dispose engines to close all active connections
     asyncio.run(async_test_engine.dispose())
     asyncio.run(app_db.async_engine.dispose())
@@ -223,9 +250,9 @@ def setup_test_db():
             except Exception:
                 # Fallback for older PostgreSQL versions
                 conn.execute(text(f'DROP DATABASE IF EXISTS "{TEST_DB_NAME}"'))
-            print(f"✅ Test database '{TEST_DB_NAME}' deleted successfully!")
+            print(f"[SUCCESS] Test database '{TEST_DB_NAME}' deleted successfully!")
     except Exception as e:
-        print(f"⚠️  Error deleting test database: {e}")
+        print(f"[ERROR] Error deleting test database: {e}")
     finally:
         cleanup_engine.dispose()
 

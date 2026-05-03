@@ -169,6 +169,8 @@ async def add_trace_id_log(request, call_next):
 app.mount("/profilepics",StaticFiles(directory="profilepics"),name="profilepics")
 app.mount(f"/{config.settings.media_folder}",StaticFiles(directory=f"{config.settings.media_folder}"),name=f"{config.settings.media_folder}")
 app.mount("/chat-media",StaticFiles(directory="chat-media"),name="chat-media")
+app.mount("/favicon", StaticFiles(directory="favicon"), name="favicon")
+# Favicon: prefer file at /favicon/favicon.png,
 
 # when the domain or the port changes
 # browser blocks the api-url(cross origin requests COR's)
@@ -216,6 +218,7 @@ def root_home() -> str:
 <!doctype html>
 <html lang=\"en\">
 <head>
+    <link rel="icon" type="image/png" href="/favicon/faviconIco.png" />
     <meta charset=\"utf-8\" />
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
     <title>FastAPI Social Backend</title>
@@ -290,14 +293,14 @@ def root_home() -> str:
 <body>
     <main class=\"card\">
         <h1>FastAPI Social Backend Is Running</h1>
-        <p>This is the API server root page.</p>
+        <p>This is the root page of the API server.</p>
         <p>Use the links below to explore available routes and health status.</p>
         <div class=\"links\">
             <a href=\"/docs\">OpenAPI Docs</a>
             <a href=\"/redoc\">ReDoc</a>
             <a href=\"/health\">Health Check</a>
         </div>
-        <p class=\"hint\">Tip: frontend apps should call API endpoints directly, while this page is only a friendly landing screen.</p>
+        <p class=\"hint\"><b>This Page is only a friendly landing screen so that it doesn't show up a 404 whenever any user is hitting the (root /) endpoint!</b></p>
     </main>
 </body>
 </html>

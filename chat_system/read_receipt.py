@@ -48,6 +48,12 @@ async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
                 await manager.send_personal_message(sender_payload, sender_id)
             except Exception:
                 pass
+        else:
+            # Also send locally so tests and local feedback receive immediate delivery
+            try:
+                await manager.send_personal_message(sender_payload, sender_id)
+            except Exception:
+                pass
         
     except Exception as e:
         print(f"Error in read_receipt: {e}")

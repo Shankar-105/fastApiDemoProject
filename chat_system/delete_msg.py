@@ -89,3 +89,13 @@ async def delete_for_everyone(
             await manager.send_personal_message(sender_payload, sender_id)
         except Exception:
             pass
+    else:
+        # Also send locally so tests and local feedback receive immediate delivery
+        try:
+            await manager.send_json_to_user(payload, receiver_id)
+        except Exception:
+            manager.disconnect(receiver_id)
+        try:
+            await manager.send_personal_message(sender_payload, sender_id)
+        except Exception:
+            pass

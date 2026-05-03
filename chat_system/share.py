@@ -9,6 +9,8 @@ from app.schemas import SharePostRequest, SharedPostDetailResponse
 from app.oauth2 import getCurrentUser
 from app.my_utils.socket_manager import manager  # your WebSocket ConnectionManager
 from app.my_utils.time_formatting import format_timestamp
+from app.services import redis_service
+import json
 
 
 router = APIRouter(tags=["Share Post"])
@@ -54,23 +56,38 @@ async def share_post(
         "sender_id": me.id,
         "receiver_id": receiver.id,
         "title": (post.title or "")[:60] + ("..." if post.title and len(post.title) > 60 else ""),
-        "media_type": post.media_type,          
-        "media_url": post.media_path,       
-        "owner_nickname": post.user.nickname,
-        "sender_nickname": me.nickname,
-        "message": payload.message or f"{me.nickname} shared a post with you!",
-        "sent_at": format_timestamp(shared.created_at),
+        "media_type": post.media_type,
+        "media_url": post.media_path,
     }
+
     if receiver.id in manager.active_connections:
         try:
-            await manager.send_json_to_user(preview,receiver.id)
-            # Mark as read immediately if delivered
+            await manager.send_json_to_user(preview, receiver.id)
             await db.execute(
                 update(SharedPost)
                 .where(SharedPost.id == shared.id, SharedPost.is_read == False)
                 .values(is_read=True)
             )
             await db.commit()
-        except:
+        except Exception:
             pass  # Offline or error → stays unread
+
+    # Publish to Redis for cross-process delivery (publish receiver + sender copies).
+    sender_payload = dict(preview)
+    sender_payload["receiver_id"] = me.id
+    try:
+        await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
+        await redis_service.redis_client.publish("chat:messages", json.dumps(preview))
+        print("Share published to Redis for cross-process delivery (receiver+sender)")
+    except Exception as e:
+        print(f"Failed to publish to Redis: {e}")
+        try:
+            await manager.send_json_to_user(preview, receiver.id)
+        except Exception:
+            manager.disconnect(receiver.id)
+        try:
+            await manager.send_personal_message(sender_payload, me.id)
+        except Exception:
+            pass
+
     return shared

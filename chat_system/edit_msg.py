@@ -102,32 +102,30 @@ async def edit_message(db:AsyncSession,message_id:int,new_content:str,sender_id:
         "is_edited":True,
         "receiver_id": recv_id
     }
-    # Publish to Redis for cross-process delivery
+    sender_payload = dict(payload)
+    sender_payload["receiver_id"] = sender_id
     try:
-        await redis_service.redis_client.publish(
-            "chat:messages",
-            json.dumps(payload)
-        )
-        print("Edit message published to Redis for cross-process delivery")
+        await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
+        await redis_service.redis_client.publish("chat:messages", json.dumps(payload))
+        print("Edit message published to Redis for cross-process delivery (receiver+sender)")
     except Exception as e:
         print(f"Failed to publish to Redis: {e}")
-    
-    if recv_id in manager.active_connections:
-                    try:
-                        await manager.send_json_to_user(payload, 
-                            recv_id
-                        )
-                        print("Message sent via WebSocket")
-                        await db.execute(
-                            update(models.Message)
-                            .where(models.Message.id == message.id, models.Message.is_read == False)
-                            .values(is_read=True, read_at=datetime.utcnow())
-                        )
-                        await db.commit()
-                        print(f"Message {message.id} marked as READ")
-                    except Exception as e:
-                        print(f"Send failed: {e}")
-                        manager.disconnect(recv_id)
-    else:
-            print("Receiver offline — message saved in DB")
-    await manager.send_personal_message(payload,sender_id)
+        # Fallback to local sends
+        try:
+            if recv_id in manager.active_connections:
+                await manager.send_json_to_user(payload, recv_id)
+                await db.execute(
+                    update(models.Message)
+                    .where(models.Message.id == message.id, models.Message.is_read == False)
+                    .values(is_read=True, read_at=datetime.utcnow())
+                )
+                await db.commit()
+            else:
+                print("Receiver offline — message saved in DB")
+        except Exception as e2:
+            print(f"Local send failed: {e2}")
+
+        try:
+            await manager.send_personal_message(sender_payload, sender_id)
+        except Exception:
+            pass

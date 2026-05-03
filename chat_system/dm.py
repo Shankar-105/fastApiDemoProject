@@ -38,39 +38,35 @@ async def messageUser(
         "is_reply_to_share": False,
     }
         
-        # Publish to Redis for cross-process delivery
+        # Publish to Redis for cross-process delivery. Also publish a copy intended
+        # for the sender so both users get delivered via Redis regardless of
+        # which worker they're connected to. If Redis is unavailable, fall back
+        # to local sends.
+        sender_payload = dict(reply_payload)
+        sender_payload["receiver_id"] = user_id
         try:
-            await redis_service.redis_client.publish(
-                "chat:messages",
-                json.dumps(reply_payload)
-            )
-            print("Message published to Redis for cross-process delivery")
+            await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
+            await redis_service.redis_client.publish("chat:messages", json.dumps(reply_payload))
+            print("Message published to Redis for cross-process delivery (receiver+sender)")
         except Exception as e:
             print(f"Failed to publish to Redis: {e}")
-        
-        # Check if receiver is in active_connections (local process)
-        receiver_id = msg.receiver_id
-        if receiver_id in manager.active_connections:
+            # Best-effort local delivery when Redis is down
             try:
-                # Try to send (if fails, it's a zombie)
-                await manager.send_json_to_user(reply_payload,payload.to)
-                print("Message sent via WebSocket (local process)")
-                await db.execute(
-                    update(models.Message)
-                    .where(models.Message.id == msg.id, models.Message.is_read == False)
-                    .values(is_read=True, read_at=datetime.utcnow())
-                )
-                await db.commit()
-                print(f"Message {msg.id} marked as READ")
-            except Exception as e:
-                # Send failed → zombie socket → remove
-                print(f"Send failed: {e}")
-                manager.disconnect(receiver_id)
-                # TODO: Later, send push notification here
-        else:
-            # Offline → don't send, just save in DB
-            print("Receiver offline — message saved in DB")
-            # TODO: Later, send push notification here
-        # Send response back to sender
-        await manager.send_personal_message(reply_payload,user_id)
-        print("Response sent to sender")
+                receiver_id = msg.receiver_id
+                if receiver_id in manager.active_connections:
+                    await manager.send_json_to_user(reply_payload, payload.to)
+                    await db.execute(
+                        update(models.Message)
+                        .where(models.Message.id == msg.id, models.Message.is_read == False)
+                        .values(is_read=True, read_at=datetime.utcnow())
+                    )
+                    await db.commit()
+                else:
+                    print("Receiver offline — message saved in DB")
+            except Exception as e2:
+                print(f"Local send failed: {e2}")
+
+            try:
+                await manager.send_personal_message(sender_payload, user_id)
+            except Exception:
+                pass

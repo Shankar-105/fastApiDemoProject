@@ -36,21 +36,18 @@ async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
             "receiver_id": sender_id
         }
         
-        # Publish to Redis for cross-process delivery
+        sender_payload = dict(receipt_payload)
+        sender_payload["receiver_id"] = sender_id
         try:
-            await redis_service.redis_client.publish(
-                "chat:messages",
-                json.dumps(receipt_payload)
-            )
-            print("Read receipt published to Redis for cross-process delivery")
+            await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
+            await redis_service.redis_client.publish("chat:messages", json.dumps(receipt_payload))
+            print("Read receipt published to Redis for cross-process delivery (receiver+sender)")
         except Exception as e:
             print(f"Failed to publish to Redis: {e}")
-        
-        # Notify the sender that their messages have been read
-        await manager.send_personal_message(
-            receipt_payload,
-            sender_id
-        )
+            try:
+                await manager.send_personal_message(sender_payload, sender_id)
+            except Exception:
+                pass
         
     except Exception as e:
         print(f"Error in read_receipt: {e}")

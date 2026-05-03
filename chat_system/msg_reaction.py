@@ -104,16 +104,20 @@ async def react(
         "reacted_by": user_id,
         "receiver_id": the_msg.receiver_id
     }
-    # Publish to Redis for cross-process delivery
+    sender_payload = dict(payload)
+    sender_payload["receiver_id"] = the_msg.sender_id
     try:
-        await redis_service.redis_client.publish(
-            "chat:messages",
-            json.dumps(payload)
-        )
-        print("Reaction published to Redis for cross-process delivery")
+        await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
+        await redis_service.redis_client.publish("chat:messages", json.dumps(payload))
+        print("Reaction published to Redis for cross-process delivery (receiver+sender)")
     except Exception as e:
         print(f"Failed to publish to Redis: {e}")
-    
-    # Send to BOTH sender and receiver
-    await manager.send_personal_message(payload,the_msg.sender_id)
-    await manager.send_json_to_user(payload,the_msg.receiver_id)
+        # Fallback local sends
+        try:
+            await manager.send_personal_message(sender_payload, the_msg.sender_id)
+        except Exception:
+            pass
+        try:
+            await manager.send_json_to_user(payload, the_msg.receiver_id)
+        except Exception:
+            manager.disconnect(the_msg.receiver_id)

@@ -113,16 +113,20 @@ async def react_to_shared_post(
         "receiver_id": shared.to_user_id
     }
 
-    # Publish to Redis for cross-process delivery
+    sender_payload = dict(payload)
+    sender_payload["receiver_id"] = shared.from_user_id
     try:
-        await redis_service.redis_client.publish(
-            "chat:messages",
-            json.dumps(payload)
-        )
-        print("Share reaction published to Redis for cross-process delivery")
+        await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
+        await redis_service.redis_client.publish("chat:messages", json.dumps(payload))
+        print("Share reaction published to Redis for cross-process delivery (receiver+sender)")
     except Exception as e:
         print(f"Failed to publish to Redis: {e}")
-
-    # Send to BOTH users
-    await manager.send_personal_message(payload,shared.from_user_id)
-    await manager.send_json_to_user(payload,shared.to_user_id)
+        # Fallback to local sends
+        try:
+            await manager.send_personal_message(sender_payload, shared.from_user_id)
+        except Exception:
+            pass
+        try:
+            await manager.send_json_to_user(payload, shared.to_user_id)
+        except Exception:
+            manager.disconnect(shared.to_user_id)

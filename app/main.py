@@ -30,37 +30,35 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 models.Base.metadata.create_all(bind=sync_engine)
 
 _chat_listener_task: asyncio.Task | None = None
+_notification_listener_task: asyncio.Task | None = None
 
 
-
-async def _chat_messages_listener() -> None:
-    """Cross-process chat message delivery via Redis Pub/Sub.
-    
-    When a message is published to "chat:messages":
-    1. All worker processes receive it
-    2. Each worker checks its local active_connections
-    3. Only the worker with the target user connected sends the message
-    """
+async def _redis_message_listener(channel: str) -> None:
+    """Deliver Redis pub/sub messages to locally connected websocket users."""
     ps = _redis_svc.redis_client.pubsub()
-    await ps.subscribe("chat:messages")
+    await ps.subscribe(channel)
     try:
         async for message in ps.listen():
             if message["type"] != "message":
-                # Ignore subscription confirmation
                 continue
             try:
                 payload = _json.loads(message["data"])
                 receiver_id = payload.get("receiver_id")
                 if receiver_id is not None:
-                    # Try to deliver to local connected user (if exists on this worker)
                     await manager.send_personal_message(payload, receiver_id)
             except Exception:
-                # JSON decode error, delivery failed, etc. - just keep listening
                 pass
     except asyncio.CancelledError:
-        await ps.unsubscribe("chat:messages")
+        await ps.unsubscribe(channel)
         raise
 
+
+async def _chat_messages_listener() -> None:
+    return await _redis_message_listener("chat:messages")
+
+
+async def _notification_messages_listener() -> None:
+    return await _redis_message_listener("notifications:messages")
 
 # -- Lifespan: replaces the deprecated @app.on_event("startup"/"shutdown") --
 # asynccontextmanager turns this one function into both startup AND shutdown.
@@ -70,10 +68,11 @@ async def _chat_messages_listener() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # -- startup --
-    global _listener_task, _chat_listener_task
+    global _chat_listener_task, _notification_listener_task
     redis_ok = await check_redis_connection()
     if redis_ok:
         _chat_listener_task = asyncio.create_task(_chat_messages_listener())
+        _notification_listener_task = asyncio.create_task(_notification_messages_listener())
     else:
         print("Skipping Redis listeners (Redis unavailable)!")
 
@@ -86,11 +85,15 @@ async def lifespan(app: FastAPI):
             await _chat_listener_task
         except asyncio.CancelledError:
             pass
-
+    if _notification_listener_task:
+        _notification_listener_task.cancel()
+        try:
+            await _notification_listener_task
+        except asyncio.CancelledError:
+            pass
 
 # fastapi instance - lifespan wires up the startup/shutdown hooks above
 app = FastAPI(lifespan=lifespan)
-
 
 def _configure_observability_logger() -> logging.Logger:
     logger = logging.getLogger("observability")

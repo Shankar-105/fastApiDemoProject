@@ -72,15 +72,20 @@ async def delete_for_everyone(
     }
     print(f"Sender ID {sender_id} Receiver ID {receiver_id}")
     
-    # Publish to Redis for cross-process delivery
+    sender_payload = dict(payload)
+    sender_payload["receiver_id"] = sender_id
     try:
-        await redis_service.redis_client.publish(
-            "chat:messages",
-            json.dumps(payload)
-        )
-        print("Delete message published to Redis for cross-process delivery")
+        await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
+        await redis_service.redis_client.publish("chat:messages", json.dumps(payload))
+        print("Delete message published to Redis for cross-process delivery (receiver+sender)")
     except Exception as e:
         print(f"Failed to publish to Redis: {e}")
-    
-    await manager.send_json_to_user(payload,receiver_id)
-    await manager.send_personal_message(payload,sender_id)
+        # Fallback to local sends
+        try:
+            await manager.send_json_to_user(payload, receiver_id)
+        except Exception:
+            manager.disconnect(receiver_id)
+        try:
+            await manager.send_personal_message(sender_payload, sender_id)
+        except Exception:
+            pass

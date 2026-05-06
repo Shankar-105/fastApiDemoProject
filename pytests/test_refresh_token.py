@@ -10,6 +10,9 @@ Covers:
   - Password change revokes all refresh tokens
 """
 import pytest
+from sqlalchemy import select
+
+from app import models
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -87,6 +90,31 @@ async def test_refresh_chain_works(client, create_test_user):
         resp = await client.post("/refresh", json={"refresh_token": current_refresh})
         assert resp.status_code == 200
         current_refresh = resp.json()["refreshToken"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_refresh_tokens_are_hashed_at_rest(client, create_test_user, db_session_factory):
+    login_resp = await client.post("/login", data={
+        "username": create_test_user["username"],
+        "password": create_test_user["password"],
+    })
+    assert login_resp.status_code == 202
+    body = login_resp.json()
+    refresh_token = body["refreshToken"]
+    user_id = body["id"]
+
+    async with db_session_factory() as db:
+        token_row = (
+            await db.execute(
+                select(models.RefreshToken)
+                .where(models.RefreshToken.user_id == user_id)
+                .order_by(models.RefreshToken.id.desc())
+            )
+        ).scalars().first()
+
+    assert token_row is not None
+    assert token_row.token != refresh_token
+    assert len(token_row.token) == 64
 
 
 @pytest.mark.asyncio(loop_scope="session")

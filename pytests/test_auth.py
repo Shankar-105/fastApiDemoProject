@@ -1,3 +1,8 @@
+from sqlalchemy import select
+
+from app import models
+
+
 async def test_login_success(client, create_test_user):
     data = {
         "username": "testuser",
@@ -16,7 +21,7 @@ async def test_login_wrong_password(client, create_test_user):
     assert resp.status_code == 401
 
 
-async def test_login_unverified_email_blocked(client):
+async def test_login_unverified_email_blocked(client, db_session_factory):
     payload = {
         "username": "unverified_user",
         "password": "testpassword",
@@ -28,6 +33,13 @@ async def test_login_unverified_email_blocked(client):
 
     login = await client.post("/login", data={"username": payload["username"], "password": payload["password"]})
     assert login.status_code == 403
+
+    async with db_session_factory() as db:
+        otp_row = (await db.execute(select(models.OTP).where(models.OTP.email == payload["email"]))).scalars().first()
+
+    assert otp_row is not None
+    assert otp_row.otp != "123456"
+    assert len(otp_row.otp) == 64
 
 
 async def test_verify_email_then_login_works(client):

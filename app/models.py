@@ -1,6 +1,6 @@
 import enum
 from app.db import Base
-from sqlalchemy import Column,Integer,String,Boolean,ForeignKey,Table,DateTime,UniqueConstraint,Enum
+from sqlalchemy import Column,Integer,String,Boolean,ForeignKey,Table,DateTime,UniqueConstraint,Enum,Index,CheckConstraint
 from sqlalchemy.sql.expression import null,text
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 from sqlalchemy.orm import relationship, backref
@@ -17,7 +17,9 @@ class NotificationType(str, enum.Enum):
 connections = Table(
     'connections', Base.metadata,
     Column('followed_id',Integer,ForeignKey('users.id',ondelete="CASCADE"),primary_key=True),
-    Column('follower_id',Integer,ForeignKey('users.id',ondelete="CASCADE"),primary_key=True)
+    Column('follower_id',Integer,ForeignKey('users.id',ondelete="CASCADE"),primary_key=True),
+    CheckConstraint("followed_id <> follower_id", name="ck_connections_no_self_follow"),
+    Index("ix_connections_follower_followed", "follower_id", "followed_id"),
 )
 
 class SharedPostReplies(Base):
@@ -29,19 +31,20 @@ class SharedPostReplies(Base):
     # Relationships
     reply_message = relationship("Message", foreign_keys=[reply_msg_id],backref=backref("replies_to_share", lazy="selectin"), lazy="selectin")
     shared_post = relationship("SharedPost", foreign_keys=[shared_post_id],backref=backref("replies", lazy="selectin"), lazy="selectin")
+    __table_args__ = (Index("ix_shared_post_replies_shared_post_id", "shared_post_id"),)
 
 class SharedPost(Base):
     __tablename__ = "shared_posts"
 
     id = Column(Integer,primary_key=True)
-    post_id = Column(Integer,ForeignKey("posts.id", ondelete="CASCADE"))
-    from_user_id = Column(Integer,ForeignKey("users.id", ondelete="CASCADE"))
-    to_user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    post_id = Column(Integer,ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    from_user_id = Column(Integer,ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    to_user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     message = Column(String, nullable=True)  # Optional caption when sharing
-    created_at = Column(DateTime, default=datetime.utcnow)
-    is_read=Column(Boolean,default=False,server_default="false")
-    is_deleted_for_everyone = Column(Boolean, default=False, server_default='false')
-    reaction_cnt=Column(Integer,default=0,server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    is_read=Column(Boolean,default=False,server_default="false",nullable=False)
+    is_deleted_for_everyone = Column(Boolean, default=False, server_default='false', nullable=False)
+    reaction_cnt=Column(Integer,default=0,server_default="0",nullable=False)
     # Relationships
     post = relationship("Post",back_populates="shared_posts", lazy="selectin")
     from_user = relationship("User", foreign_keys=[from_user_id],back_populates="sent_posts", lazy="selectin")
@@ -52,6 +55,30 @@ class SharedPost(Base):
         cascade="all, delete-orphan",
         lazy="selectin"
     )
+    __table_args__ = (
+        CheckConstraint("reaction_cnt >= 0", name="ck_shared_posts_reaction_cnt_nonnegative"),
+        Index(
+            "ix_shared_posts_from_to_created",
+            "from_user_id",
+            "to_user_id",
+            "created_at",
+            postgresql_where=text("is_deleted_for_everyone = false"),
+        ),
+        Index(
+            "ix_shared_posts_to_from_created",
+            "to_user_id",
+            "from_user_id",
+            "created_at",
+            postgresql_where=text("is_deleted_for_everyone = false"),
+        ),
+        Index(
+            "ix_shared_posts_unread_inbox",
+            "to_user_id",
+            "created_at",
+            postgresql_where=text("is_read = false AND is_deleted_for_everyone = false"),
+        ),
+        Index("ix_shared_posts_post_id", "post_id"),
+    )
 
 # models.py
 class DeletedMessage(Base):
@@ -61,15 +88,18 @@ class DeletedMessage(Base):
     message_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
     deleted_at = Column(DateTime, default=datetime.utcnow)
     # Unique: one user can't delete same msg twice
-    __table_args__ = (UniqueConstraint('user_id', 'message_id',name='uq_user_deleted_msg'),)
+    __table_args__ = (
+        UniqueConstraint('user_id', 'message_id',name='uq_user_deleted_msg'),
+        Index("ix_deleted_messages_message_id", "message_id"),
+    )
 
 # models.py
 class DeletedSharedPost(Base):
     __tablename__ = "deleted_shared_posts"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
-    shared_post_id = Column(Integer, ForeignKey("shared_posts.id", ondelete="CASCADE"))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    shared_post_id = Column(Integer, ForeignKey("shared_posts.id", ondelete="CASCADE"), nullable=False)
     deleted_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
@@ -77,26 +107,33 @@ class DeletedSharedPost(Base):
     user = relationship("User", lazy="selectin")
     # which post has been deleted
     shared_post = relationship("SharedPost", lazy="selectin")
+    __table_args__ = (
+        UniqueConstraint("user_id", "shared_post_id", name="uq_user_deleted_shared_post"),
+        Index("ix_deleted_shared_posts_shared_post_id", "shared_post_id"),
+    )
 
 class OTP(Base):
     __tablename__ = "otps"
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True)  # Only 1 per email
+    email = Column(String, unique=True, index=True, nullable=False)  # Only 1 per email
     otp = Column(String, nullable=False)
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=func.now())
+    __table_args__ = (Index("ix_otps_expires_at", "expires_at"),)
 
 class Votes(Base):
     __tablename__='votes'
     post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     action=Column(Boolean,nullable=False)
+    __table_args__ = (Index("ix_votes_user_action_post", "user_id", "action", "post_id"),)
 
 class CommentVotes(Base):
     __tablename__='comment_votes'
     comment_id=Column(Integer,ForeignKey("comments.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     like=Column(Boolean,nullable=False)
+    __table_args__ = (Index("ix_comment_votes_user_comment", "user_id", "comment_id"),)
 
 class Comments(Base):
     __tablename__='comments'
@@ -104,8 +141,13 @@ class Comments(Base):
     post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),nullable=False)
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     comment_content=Column(String,nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     likes=Column(Integer,default=0,server_default=text("0"),nullable=False)
+    __table_args__ = (
+        CheckConstraint("likes >= 0", name="ck_comments_likes_nonnegative"),
+        Index("ix_comments_post_created", "post_id", "created_at"),
+        Index("ix_comments_user_post", "user_id", "post_id"),
+    )
 class Post(Base):
     __tablename__='posts'
     id=Column(Integer,primary_key=True,nullable=False)
@@ -118,11 +160,21 @@ class Post(Base):
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     likes=Column(Integer,default=0,server_default="0",nullable=False)
     dis_likes=Column(Integer,default=0,server_default="0",nullable=False)
-    views=Column(Integer,default=0,server_default=text("0"))
-    comments_cnt=Column(Integer,default=0,server_default=text("0"))
+    views=Column(Integer,default=0,server_default=text("0"),nullable=False)
+    comments_cnt=Column(Integer,default=0,server_default=text("0"),nullable=False)
     hashtags=Column(String,nullable=True)
 
     shared_posts = relationship("SharedPost",back_populates="post", lazy="selectin")
+    __table_args__ = (
+        CheckConstraint("likes >= 0", name="ck_posts_likes_nonnegative"),
+        CheckConstraint("dis_likes >= 0", name="ck_posts_dislikes_nonnegative"),
+        CheckConstraint("views >= 0", name="ck_posts_views_nonnegative"),
+        CheckConstraint("comments_cnt >= 0", name="ck_posts_comments_cnt_nonnegative"),
+        CheckConstraint("(media_type IS NULL) OR (media_type IN ('image', 'video'))", name="ck_posts_media_type_valid"),
+        Index("ix_posts_user_created", "user_id", "created_at"),
+        Index("ix_posts_created_at", "created_at"),
+        Index("ix_posts_likes_created", "likes", "created_at"),
+    )
 
 
 class SavedPost(Base):
@@ -136,13 +188,20 @@ class SavedPost(Base):
     user = relationship("User", backref=backref("saved_posts", lazy="selectin"), lazy="selectin")
     post = relationship("Post", lazy="selectin")
 
-    __table_args__ = (UniqueConstraint("user_id", "post_id", name="uq_saved_user_post"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "post_id", name="uq_saved_user_post"),
+        Index("ix_saved_posts_user_created", "user_id", "created_at"),
+    )
 
 class PostView(Base):
     __tablename__ = "post_views"
     post_id = Column(Integer, ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id",ondelete="CASCADE"),primary_key=True)
     viewed_at = Column(DateTime,default=datetime.utcnow)
+    __table_args__ = (
+        Index("ix_post_views_user_id", "user_id"),
+        Index("ix_post_views_viewed_at", "viewed_at"),
+    )
 class User(Base):
         __tablename__='users'
         id=Column(Integer,primary_key=True,nullable=False)
@@ -187,6 +246,16 @@ class User(Base):
         received_posts = relationship("SharedPost", foreign_keys=[SharedPost.to_user_id],back_populates="to_user", lazy="selectin")
         shared_post_reactions = relationship("SharedPostReaction", back_populates="user", lazy="selectin")
 
+        __table_args__ = (
+        CheckConstraint("followers_cnt >= 0", name="ck_users_followers_cnt_nonnegative"),
+        CheckConstraint("following_cnt >= 0", name="ck_users_following_cnt_nonnegative"),
+        Index(
+            "ux_users_email_lower",
+            func.lower(email),
+            unique=True,
+            postgresql_where=email.isnot(None),
+        ),
+    )
         __mapper_args__ = {"version_id_col": version_id}
 class MessageReplies(Base):
     __tablename__ = "message_replies"
@@ -195,6 +264,7 @@ class MessageReplies(Base):
     # Relationships (optional, for easier querying)
     reply_msg = relationship("Message", foreign_keys=[reply_id], lazy="selectin")
     original_msg = relationship("Message", foreign_keys=[original_id], lazy="selectin")
+    __table_args__ = (Index("ix_message_replies_original_id", "original_id"),)
 class Message(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True, index=True)
@@ -203,15 +273,15 @@ class Message(Base):
     content = Column(String, nullable=False)
     sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     receiver_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    created_at = Column(DateTime(timezone=True),server_default=func.now())
-    is_read = Column(Boolean,default=False)
-    is_deleted_for_everyone = Column(Boolean, default=False, server_default='false')
-    is_edited=Column(Boolean,default=False,server_default="false")
+    created_at = Column(DateTime(timezone=True),server_default=func.now(),nullable=False)
+    is_read = Column(Boolean,default=False,server_default="false",nullable=False)
+    is_deleted_for_everyone = Column(Boolean, default=False, server_default='false',nullable=False)
+    is_edited=Column(Boolean,default=False,server_default="false",nullable=False)
     edited_at=Column(DateTime,nullable=True)
     read_at = Column(DateTime(timezone=True),nullable=True)
-    reaction_cnt=Column(Integer,default=0,server_default="0")
-    is_reply_msg = Column(Boolean,default=False)
-    is_reply_to_share = Column(Boolean,default=False,server_default="false")
+    reaction_cnt=Column(Integer,default=0,server_default="0",nullable=False)
+    is_reply_msg = Column(Boolean,default=False,server_default="false",nullable=False)
+    is_reply_to_share = Column(Boolean,default=False,server_default="false",nullable=False)
     # optional relationships for later maybe useful
     # when you do a Obj.sender where Obj is the object of class Message
     # it returns which user has sent that message and the same for Obj.recceiver
@@ -264,6 +334,30 @@ class Message(Base):
         uselist=False,           # One message replies to exactly one shared post
         viewonly=True
     )
+    __table_args__ = (
+        CheckConstraint("reaction_cnt >= 0", name="ck_messages_reaction_cnt_nonnegative"),
+        CheckConstraint("(media_type IS NULL) OR (media_type IN ('false', 'image', 'video', 'audio'))", name="ck_messages_media_type_valid"),
+        Index(
+            "ix_messages_sender_receiver_created",
+            "sender_id",
+            "receiver_id",
+            "created_at",
+            postgresql_where=text("is_deleted_for_everyone = false"),
+        ),
+        Index(
+            "ix_messages_receiver_sender_created",
+            "receiver_id",
+            "sender_id",
+            "created_at",
+            postgresql_where=text("is_deleted_for_everyone = false"),
+        ),
+        Index(
+            "ix_messages_unread_receiver_created",
+            "receiver_id",
+            "created_at",
+            postgresql_where=text("is_read = false AND is_deleted_for_everyone = false"),
+        ),
+    )
 # separate message reaction table to track who reacted to teh msg
 class MessageReaction(Base):
     __tablename__ = "message_reactions"
@@ -274,7 +368,10 @@ class MessageReaction(Base):
     reaction = Column(String,nullable=False)  # ex: "❤️", "😂"
     # get the user reacted
     user = relationship("User", backref=backref("message_reactions", lazy="selectin"), lazy="selectin")
-    __table_args__ = (UniqueConstraint('message_id', 'user_id', name='unique_user_reaction'),)
+    __table_args__ = (
+        UniqueConstraint('message_id', 'user_id', name='unique_user_reaction'),
+        Index("ix_message_reactions_user_id", "user_id"),
+    )
 
 class SharedPostReaction(Base):
     __tablename__ = "shared_post_reactions"
@@ -286,7 +383,10 @@ class SharedPostReaction(Base):
 
     # Relationships
     user = relationship("User", back_populates="shared_post_reactions", lazy="selectin")
-    __table_args__ = (UniqueConstraint('shared_post_id', 'user_id', name='unique_shared_post_reaction'),)
+    __table_args__ = (
+        UniqueConstraint('shared_post_id', 'user_id', name='unique_shared_post_reaction'),
+        Index("ix_shared_post_reactions_user_id", "user_id"),
+    )
 
 
 class Notification(Base):
@@ -313,12 +413,23 @@ class Notification(Base):
     entity_type = Column(String,  nullable=True)   # "post" | "comment" | NULL
     text        = Column(String,  nullable=False)
     is_read     = Column(Boolean, default=False, server_default="false", nullable=False)
-    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # who receives this notification
     owner = relationship("User", foreign_keys=[owner_id], backref=backref("notifications", lazy="selectin"), lazy="selectin")
     # who triggered this notification (we need their username + profile pic for the client)
     actor = relationship("User", foreign_keys=[actor_id], lazy="selectin")
+    __table_args__ = (
+        CheckConstraint("(entity_type IS NULL) OR (entity_type IN ('post', 'comment'))", name="ck_notifications_entity_type_valid"),
+        Index("ix_notifications_owner_created", "owner_id", "created_at"),
+        Index("ix_notifications_actor_id", "actor_id"),
+        Index(
+            "ix_notifications_unread_owner_created",
+            "owner_id",
+            "created_at",
+            postgresql_where=text("is_read = false"),
+        ),
+    )
 
 
 class RefreshToken(Base):
@@ -338,6 +449,10 @@ class RefreshToken(Base):
     family_id  = Column(String, nullable=False, index=True)
     revoked    = Column(Boolean, default=False, server_default="false", nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user = relationship("User", lazy="selectin")
+    __table_args__ = (
+        Index("ix_refresh_tokens_user_revoked", "user_id", "revoked"),
+        Index("ix_refresh_tokens_expires_at", "expires_at"),
+    )

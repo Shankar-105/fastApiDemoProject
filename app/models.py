@@ -174,6 +174,13 @@ class Post(Base):
         Index("ix_posts_user_created", "user_id", "created_at"),
         Index("ix_posts_created_at", "created_at"),
         Index("ix_posts_likes_created", "likes", "created_at"),
+        Index(
+            "ix_posts_hashtags_trgm",
+            "hashtags",
+            postgresql_using="gin",
+            postgresql_ops={"hashtags": "gin_trgm_ops"},
+            postgresql_where=text("hashtags IS NOT NULL"),
+        ),
     )
 
 
@@ -249,6 +256,12 @@ class User(Base):
         __table_args__ = (
         CheckConstraint("followers_cnt >= 0", name="ck_users_followers_cnt_nonnegative"),
         CheckConstraint("following_cnt >= 0", name="ck_users_following_cnt_nonnegative"),
+        Index(
+            "ix_users_username_trgm",
+            "username",
+            postgresql_using="gin",
+            postgresql_ops={"username": "gin_trgm_ops"},
+        ),
         Index(
             "ux_users_email_lower",
             func.lower(email),

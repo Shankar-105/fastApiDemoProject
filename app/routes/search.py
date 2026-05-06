@@ -1,8 +1,7 @@
-from fastapi import HTTPException,status,Body,APIRouter,Depends,Request,Query
-from app import models,db,schemas as sch,oauth2,config
+from fastapi import HTTPException,status,APIRouter,Depends
+from app import models,db,schemas as sch,oauth2
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func
-from typing import Annotated
 from app.services.blob_service import get_blob_url
 router=APIRouter(tags=['search'])
 
@@ -11,13 +10,16 @@ async def search(searchParams: sch.SearchRequest = Depends(), db: AsyncSession =
     if searchParams.q and searchParams.q.startswith("#"):
         # Hashtag search - search for posts
         hashtag = searchParams.q.lstrip("#")
-        base_query=select(models.Post).where(models.Post.hashtags.ilike(f"%{hashtag}%"))
+        hashtag_filter = models.Post.hashtags.ilike(f"%{hashtag}%")
+        hashtag_rank = func.similarity(func.coalesce(models.Post.hashtags, ""), hashtag)
+        base_query=select(models.Post).where(models.Post.hashtags.isnot(None), hashtag_filter)
         if searchParams.orderBy == "likes":
-            base_query=base_query.order_by(models.Post.likes.desc())
-        base_query=base_query.order_by(models.Post.created_at.asc())
-        
+            base_query=base_query.order_by(models.Post.likes.desc(), hashtag_rank.desc(), models.Post.created_at.desc())
+        else:
+            base_query=base_query.order_by(hashtag_rank.desc(), models.Post.created_at.desc())
+
         # Count total
-        count_query=select(func.count()).select_from(models.Post).where(models.Post.hashtags.ilike(f"%{hashtag}%"))
+        count_query=select(func.count()).select_from(models.Post).where(models.Post.hashtags.isnot(None), hashtag_filter)
         totalResult=await db.execute(count_query)
         total=totalResult.scalar()
         
@@ -45,15 +47,17 @@ async def search(searchParams: sch.SearchRequest = Depends(), db: AsyncSession =
         )
     elif searchParams.q:
         # Username search - search for users
+        user_filter = models.User.username.ilike(f"%{searchParams.q}%")
         usersResult=await db.execute(
             select(models.User)
-            .where(models.User.username.ilike(f"%{searchParams.q}%"))
+            .where(user_filter)
+            .order_by(func.similarity(models.User.username, searchParams.q).desc(), models.User.username.asc())
             .offset(searchParams.offset)
             .limit(searchParams.limit)
         )
         resUsers=usersResult.scalars().all()
-        
-        countResult=await db.execute(select(func.count()).select_from(models.User).where(models.User.username.ilike(f"%{searchParams.q}%")))
+
+        countResult=await db.execute(select(func.count()).select_from(models.User).where(user_filter))
         total=countResult.scalar()
         
         # Build proper response for users

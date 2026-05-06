@@ -1,30 +1,17 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter,BackgroundTasks
+from fastapi import status,HTTPException,Depends,APIRouter
 import app.schemas as sch
 from app import models,oauth2
 from app.db import getDb
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,and_,delete,update,func
+from sqlalchemy import select,and_,delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from typing import List
 from app.services.redis_service import delete_cache, delete_cache_pattern
-from app.services.notification_service import create_notification
 from app.models import NotificationType
 from app.rate_limiter import follow_limiter
 from app.tasks.notification_tasks import create_notification_task
 
 router=APIRouter(tags=['connections'])
-
-
-async def _adjust_user_counter(db: AsyncSession, user_id: int, column_name: str, delta: int) -> int:
-    column = getattr(models.User, column_name)
-    value = func.greatest(column + delta, 0) if delta < 0 else column + delta
-    result = await db.execute(
-        update(models.User)
-        .where(models.User.id == user_id)
-        .values(**{column_name: value})
-        .returning(column)
-    )
-    return result.scalar_one()
 
 @router.post("/follow/{user_id}",status_code=status.HTTP_201_CREATED, response_model=sch.FollowResponse)
 async def follow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),background_tasks=None,_:None=Depends(follow_limiter)):
@@ -44,9 +31,9 @@ async def follow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.U
         if not insert_result.first():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Your already following this user")
 
-        currentUser.following_cnt = await _adjust_user_counter(db, currentUser.id, "following_cnt", 1)
-        userToFollow.followers_cnt = await _adjust_user_counter(db, userToFollow.id, "followers_cnt", 1)
         await db.commit()
+        await db.refresh(currentUser)
+        await db.refresh(userToFollow)
     except HTTPException:
         await db.rollback()
         raise
@@ -90,9 +77,9 @@ async def unfollow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models
         if not delete_result.first():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Not following this user")
 
-        currentUser.following_cnt = await _adjust_user_counter(db, currentUser.id, "following_cnt", -1)
-        userToUnFollow.followers_cnt = await _adjust_user_counter(db, userToUnFollow.id, "followers_cnt", -1)
         await db.commit()
+        await db.refresh(currentUser)
+        await db.refresh(userToUnFollow)
     except HTTPException:
         await db.rollback()
         raise
@@ -126,10 +113,9 @@ async def remove_follower(user_id: int, db: AsyncSession = Depends(getDb), curre
         if not delete_result.first():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This user is not following you")
 
-        currentUser.followers_cnt = await _adjust_user_counter(db, currentUser.id, "followers_cnt", -1)
-        userToRemove.following_cnt = await _adjust_user_counter(db, userToRemove.id, "following_cnt", -1)
-
         await db.commit()
+        await db.refresh(currentUser)
+        await db.refresh(userToRemove)
     except HTTPException:
         await db.rollback()
         raise

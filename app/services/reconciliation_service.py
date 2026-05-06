@@ -8,6 +8,32 @@ async def reconcile_denormalized_counters(db: AsyncSession) -> dict[str, int]:
     """Repair denormalized counters from source-of-truth tables."""
     repaired: dict[str, int] = {}
 
+    following_count = (
+        select(func.count())
+        .select_from(models.connections)
+        .where(models.connections.c.follower_id == models.User.id)
+        .scalar_subquery()
+    )
+    following_result = await db.execute(
+        update(models.User)
+        .where(models.User.following_cnt != following_count)
+        .values(following_cnt=following_count)
+    )
+    repaired["user_following_cnt"] = following_result.rowcount or 0
+
+    followers_count = (
+        select(func.count())
+        .select_from(models.connections)
+        .where(models.connections.c.followed_id == models.User.id)
+        .scalar_subquery()
+    )
+    followers_result = await db.execute(
+        update(models.User)
+        .where(models.User.followers_cnt != followers_count)
+        .values(followers_cnt=followers_count)
+    )
+    repaired["user_followers_cnt"] = followers_result.rowcount or 0
+
     msg_reaction_count = (
         select(func.count(models.MessageReaction.id))
         .where(models.MessageReaction.message_id == models.Message.id)
@@ -31,6 +57,18 @@ async def reconcile_denormalized_counters(db: AsyncSession) -> dict[str, int]:
         .values(reaction_cnt=shared_reaction_count)
     )
     repaired["shared_post_reaction_cnt"] = shared_result.rowcount or 0
+
+    comment_like_count = (
+        select(func.count(models.CommentVotes.user_id))
+        .where(models.CommentVotes.comment_id == models.Comments.id, models.CommentVotes.like == True)
+        .scalar_subquery()
+    )
+    comment_like_result = await db.execute(
+        update(models.Comments)
+        .where(models.Comments.likes != comment_like_count)
+        .values(likes=comment_like_count)
+    )
+    repaired["comment_likes"] = comment_like_result.rowcount or 0
 
     post_comment_count = (
         select(func.count(models.Comments.id))

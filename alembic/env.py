@@ -8,7 +8,9 @@ from alembic import context
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-config.set_main_option('sqlalchemy.url',SYNC_SQL_ALCHEMY_URL)
+configured_url = config.get_main_option("sqlalchemy.url")
+if not configured_url or configured_url == "driver://user:pass@localhost/dbname":
+    config.set_main_option("sqlalchemy.url", SYNC_SQL_ALCHEMY_URL)
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:

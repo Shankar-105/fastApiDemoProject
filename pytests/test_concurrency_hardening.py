@@ -222,15 +222,21 @@ async def test_reconciliation_repairs_counter_drift(db_session_factory):
             password="x",
             nickname="u1",
             email="rc_u1@example.com",
+            followers_cnt=33,
+            following_cnt=44,
         )
         u2 = models.User(
             username="rc_u2",
             password="x",
             nickname="u2",
             email="rc_u2@example.com",
+            followers_cnt=55,
+            following_cnt=66,
         )
         db.add_all([u1, u2])
         await db.flush()
+        u1_id = u1.id
+        u2_id = u2.id
 
         post = models.Post(
             title="t",
@@ -243,6 +249,7 @@ async def test_reconciliation_repairs_counter_drift(db_session_factory):
         )
         db.add(post)
         await db.flush()
+        post_id = post.id
 
         msg = models.Message(
             content="hi",
@@ -254,21 +261,31 @@ async def test_reconciliation_repairs_counter_drift(db_session_factory):
         )
         db.add(msg)
         await db.flush()
+        msg_id = msg.id
 
         share = models.SharedPost(post_id=post.id, from_user_id=u1.id, to_user_id=u2.id, reaction_cnt=7)
         db.add(share)
         await db.flush()
+        share_id = share.id
+
+        comment = models.Comments(post_id=post.id, user_id=u1.id, comment_content="one", likes=12)
+        db.add(comment)
+        await db.flush()
+        comment_id = comment.id
 
         db.add_all(
             [
-                models.Comments(post_id=post.id, user_id=u1.id, comment_content="one"),
                 models.PostView(post_id=post.id, user_id=u1.id),
                 models.PostView(post_id=post.id, user_id=u2.id),
                 models.Votes(post_id=post.id, user_id=u1.id, action=True),
                 models.Votes(post_id=post.id, user_id=u2.id, action=False),
+                models.CommentVotes(comment_id=comment.id, user_id=u2.id, like=True),
                 models.MessageReaction(message_id=msg.id, user_id=u1.id, reaction="🔥"),
                 models.SharedPostReaction(shared_post_id=share.id, user_id=u2.id, reaction="❤️"),
             ]
+        )
+        await db.execute(
+            models.connections.insert().values(followed_id=u2.id, follower_id=u1.id)
         )
         await db.commit()
 
@@ -277,25 +294,37 @@ async def test_reconciliation_repairs_counter_drift(db_session_factory):
 
     assert repaired["message_reaction_cnt"] >= 1
     assert repaired["shared_post_reaction_cnt"] >= 1
+    assert repaired["user_following_cnt"] >= 1
+    assert repaired["user_followers_cnt"] >= 1
+    assert repaired["comment_likes"] >= 1
     assert repaired["post_comments_cnt"] >= 1
     assert repaired["post_views"] >= 1
     assert repaired["post_likes"] >= 1
     assert repaired["post_dislikes"] >= 1
 
     async with db_session_factory() as db:
-        post_row = (await db.execute(select(models.Post).where(models.Post.title == "t"))).scalars().first()
-        msg_row = (await db.execute(select(models.Message).where(models.Message.content == "hi"))).scalars().first()
-        share_row = (await db.execute(select(models.SharedPost).where(models.SharedPost.id == share.id))).scalars().first()
+        post_row = (await db.execute(select(models.Post).where(models.Post.id == post_id))).scalars().first()
+        comment_row = (await db.execute(select(models.Comments).where(models.Comments.id == comment_id))).scalars().first()
+        msg_row = (await db.execute(select(models.Message).where(models.Message.id == msg_id))).scalars().first()
+        share_row = (await db.execute(select(models.SharedPost).where(models.SharedPost.id == share_id))).scalars().first()
+        u1_row = (await db.execute(select(models.User).where(models.User.id == u1_id))).scalars().first()
+        u2_row = (await db.execute(select(models.User).where(models.User.id == u2_id))).scalars().first()
 
     assert post_row is not None
+    assert comment_row is not None
     assert msg_row is not None
     assert share_row is not None
+    assert u1_row is not None
+    assert u2_row is not None
     assert post_row.comments_cnt == 1
     assert post_row.views == 2
     assert post_row.likes == 1
     assert post_row.dis_likes == 1
+    assert comment_row.likes == 1
     assert msg_row.reaction_cnt == 1
     assert share_row.reaction_cnt == 1
+    assert u1_row.following_cnt == 1
+    assert u2_row.followers_cnt == 1
 
 
 @pytest.mark.asyncio

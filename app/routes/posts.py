@@ -6,7 +6,7 @@ from app import models,oauth2
 from app.db import getDb
 from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,and_,update
+from sqlalchemy import select,and_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import os,uuid
 import asyncio
@@ -34,14 +34,10 @@ async def getPost(postId:int,db:AsyncSession=Depends(getDb),currentUser:models.U
         pg_insert(models.PostView)
         .values(post_id=postId, user_id=currentUser.id)
         .on_conflict_do_nothing(index_elements=[models.PostView.post_id, models.PostView.user_id])
+        .returning(models.PostView.post_id)
     )
     insert_result = await db.execute(insert_view_stmt)
-    if insert_result.rowcount and insert_result.rowcount > 0:
-        await db.execute(
-            update(models.Post)
-            .where(models.Post.id == postId)
-            .values(views=models.Post.views + 1)
-        )
+    if insert_result.scalar_one_or_none() is not None:
         await db.commit()
         await db.refresh(reqPost)  # Refresh to get updated post data
     

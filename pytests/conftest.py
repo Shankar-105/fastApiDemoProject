@@ -2,6 +2,9 @@ import pytest
 import pytest_asyncio
 import asyncio
 import os, sys
+from pathlib import Path
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.exc import ProgrammingError
@@ -15,7 +18,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 # after setting the PYTHONPATH then import any other folders in project dir
 from app.main import app
 import app.main as app_main
-from app.models import Base
 from app.db import getDb
 from app import db as app_db
 from app.config import settings
@@ -146,6 +148,8 @@ TEST_ASYNC_URL = (
     f"postgresql+asyncpg://{settings.database_user}:{settings.database_password}"
     f"@{TEST_DATABASE_HOST}/{TEST_DB_NAME}"
 )
+ALEMBIC_INI_PATH = Path(__file__).resolve().parents[1] / "alembic.ini"
+ALEMBIC_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "alembic"
 
 # Debug output to verify detection (helpful for troubleshooting)
 print(f"[TEST] DB Host detected: {TEST_DATABASE_HOST}")
@@ -219,14 +223,23 @@ TestingAsyncSessionLocal = async_sessionmaker(
 # production DB which doesn't have the test users, causing FK violations and other errors.
 notification_service._session_factory = TestingAsyncSessionLocal
 
+
+def run_test_migrations() -> None:
+    alembic_cfg = Config(str(ALEMBIC_INI_PATH))
+    alembic_cfg.set_main_option("script_location", str(ALEMBIC_SCRIPT_PATH))
+    alembic_cfg.set_main_option("sqlalchemy.url", TEST_SYNC_URL)
+    command.upgrade(alembic_cfg, "head")
+
 # pytest fixtures very helpful
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
     # Setup: Drop and recreate tables for a clean start (sync — runs before event loop)
-    print("[SETUP] Dropping all existing tables...")
-    Base.metadata.drop_all(bind=sync_test_engine)
-    print("[SETUP] Creating all tables...")
-    Base.metadata.create_all(bind=sync_test_engine)
+    print("[SETUP] Resetting test schema...")
+    with sync_test_engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+    print("[SETUP] Running Alembic migrations...")
+    run_test_migrations()
     print("[SUCCESS] Test database setup complete!")
     yield
     # Teardown: Delete the test database after all tests are finished

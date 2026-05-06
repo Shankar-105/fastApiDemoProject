@@ -1,7 +1,7 @@
 import enum
 from app.db import Base
-from sqlalchemy import Column,Integer,String,Boolean,ForeignKey,Table,DateTime,UniqueConstraint,Enum,Index,CheckConstraint
-from sqlalchemy.sql.expression import null,text
+from sqlalchemy import Column,Integer,String,Boolean,ForeignKey,Table,DateTime,UniqueConstraint,Enum,Index,CheckConstraint, text as sa_text
+from sqlalchemy.sql.expression import null
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 from sqlalchemy.orm import relationship, backref
 from datetime import datetime
@@ -62,20 +62,20 @@ class SharedPost(Base):
             "from_user_id",
             "to_user_id",
             "created_at",
-            postgresql_where=text("is_deleted_for_everyone = false"),
+            postgresql_where=sa_text("is_deleted_for_everyone = false"),
         ),
         Index(
             "ix_shared_posts_to_from_created",
             "to_user_id",
             "from_user_id",
             "created_at",
-            postgresql_where=text("is_deleted_for_everyone = false"),
+            postgresql_where=sa_text("is_deleted_for_everyone = false"),
         ),
         Index(
             "ix_shared_posts_unread_inbox",
             "to_user_id",
             "created_at",
-            postgresql_where=text("is_read = false AND is_deleted_for_everyone = false"),
+            postgresql_where=sa_text("is_read = false AND is_deleted_for_everyone = false"),
         ),
         Index("ix_shared_posts_post_id", "post_id"),
     )
@@ -142,7 +142,7 @@ class Comments(Base):
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     comment_content=Column(String,nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    likes=Column(Integer,default=0,server_default=text("0"),nullable=False)
+    likes=Column(Integer,default=0,server_default=sa_text("0"),nullable=False)
     __table_args__ = (
         CheckConstraint("likes >= 0", name="ck_comments_likes_nonnegative"),
         Index("ix_comments_post_created", "post_id", "created_at"),
@@ -156,12 +156,12 @@ class Post(Base):
     title=Column(String,nullable=False)
     content=Column(String,nullable=False)
     enable_comments=Column(Boolean,server_default="TRUE",nullable=False)
-    created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
+    created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=sa_text('now()'))
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     likes=Column(Integer,default=0,server_default="0",nullable=False)
     dis_likes=Column(Integer,default=0,server_default="0",nullable=False)
-    views=Column(Integer,default=0,server_default=text("0"),nullable=False)
-    comments_cnt=Column(Integer,default=0,server_default=text("0"),nullable=False)
+    views=Column(Integer,default=0,server_default=sa_text("0"),nullable=False)
+    comments_cnt=Column(Integer,default=0,server_default=sa_text("0"),nullable=False)
     hashtags=Column(String,nullable=True)
 
     shared_posts = relationship("SharedPost",back_populates="post", lazy="selectin")
@@ -179,7 +179,7 @@ class Post(Base):
             "hashtags",
             postgresql_using="gin",
             postgresql_ops={"hashtags": "gin_trgm_ops"},
-            postgresql_where=text("hashtags IS NOT NULL"),
+            postgresql_where=sa_text("hashtags IS NOT NULL"),
         ),
     )
 
@@ -219,11 +219,11 @@ class User(Base):
         email=Column(String,nullable=True)
         email_verified=Column(Boolean, default=False, server_default="false", nullable=False)
         profile_picture=Column(String,nullable=True)
-        created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
+        created_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=sa_text('now()'))
         last_seen_at=Column(DateTime(timezone=True), nullable=True)
         followers_cnt=Column(Integer,default=0,server_default="0",nullable=False)
         following_cnt=Column(Integer,default=0,server_default="0",nullable=False)
-        version_id=Column(Integer,nullable=False,default=1,server_default=text("1"))
+        version_id=Column(Integer,nullable=False,default=1,server_default=sa_text("1"))
         # added relationship between the posts table and the users table so that
         # when you actually need all the posts of a user there's no need from now on 
         # to go check the posts table and query it for Posts.user_id==currentUser.id
@@ -355,20 +355,20 @@ class Message(Base):
             "sender_id",
             "receiver_id",
             "created_at",
-            postgresql_where=text("is_deleted_for_everyone = false"),
+            postgresql_where=sa_text("is_deleted_for_everyone = false"),
         ),
         Index(
             "ix_messages_receiver_sender_created",
             "receiver_id",
             "sender_id",
             "created_at",
-            postgresql_where=text("is_deleted_for_everyone = false"),
+            postgresql_where=sa_text("is_deleted_for_everyone = false"),
         ),
         Index(
             "ix_messages_unread_receiver_created",
             "receiver_id",
             "created_at",
-            postgresql_where=text("is_read = false AND is_deleted_for_everyone = false"),
+            postgresql_where=sa_text("is_read = false AND is_deleted_for_everyone = false"),
         ),
     )
 # separate message reaction table to track who reacted to teh msg
@@ -440,7 +440,7 @@ class Notification(Base):
             "ix_notifications_unread_owner_created",
             "owner_id",
             "created_at",
-            postgresql_where=text("is_read = false"),
+            postgresql_where=sa_text("is_read = false"),
         ),
     )
 

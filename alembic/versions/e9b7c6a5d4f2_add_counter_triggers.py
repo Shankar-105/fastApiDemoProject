@@ -64,18 +64,18 @@ def upgrade() -> None:
         RETURNS trigger AS $$
         BEGIN
             IF TG_OP = 'INSERT' THEN
-                IF NEW.like THEN
+                IF NEW."like" THEN
                     UPDATE comments SET likes = likes + 1 WHERE id = NEW.comment_id;
                 END IF;
             ELSIF TG_OP = 'DELETE' THEN
-                IF OLD.like THEN
+                IF OLD."like" THEN
                     UPDATE comments SET likes = GREATEST(likes - 1, 0) WHERE id = OLD.comment_id;
                 END IF;
-            ELSIF TG_OP = 'UPDATE' AND OLD.like IS DISTINCT FROM NEW.like THEN
-                IF OLD.like THEN
+            ELSIF TG_OP = 'UPDATE' AND OLD."like" IS DISTINCT FROM NEW."like" THEN
+                IF OLD."like" THEN
                     UPDATE comments SET likes = GREATEST(likes - 1, 0) WHERE id = OLD.comment_id;
                 END IF;
-                IF NEW.like THEN
+                IF NEW."like" THEN
                     UPDATE comments SET likes = likes + 1 WHERE id = NEW.comment_id;
                 END IF;
             END IF;
@@ -85,7 +85,7 @@ def upgrade() -> None:
 
         DROP TRIGGER IF EXISTS comment_votes_sync_comment_counts ON comment_votes;
         CREATE TRIGGER comment_votes_sync_comment_counts
-        AFTER INSERT OR UPDATE OF like OR DELETE ON comment_votes
+        AFTER INSERT OR UPDATE OF "like" OR DELETE ON comment_votes
         FOR EACH ROW EXECUTE FUNCTION trg_sync_comment_vote_counts();
         """
     )

@@ -139,7 +139,7 @@ TEST_DB_NAME = f"{settings.database_name}_test".lower()
 
 # Sync URL (psycopg2 — for creating/dropping the test DB and table management)
 TEST_SYNC_URL = (
-    f"postgresql://{settings.database_user}:{settings.database_password}"
+    f"postgresql+psycopg://{settings.database_user}:{settings.database_password}"
     f"@{TEST_DATABASE_HOST}/{TEST_DB_NAME}"
 )
 
@@ -153,7 +153,7 @@ ALEMBIC_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "alembic"
 
 # Debug output to verify detection (helpful for troubleshooting)
 print(f"[TEST] DB Host detected: {TEST_DATABASE_HOST}")
-print(f"[TEST] DB URL: postgresql://***:***@{TEST_DATABASE_HOST}/{TEST_DB_NAME}")
+print(f"[TEST] DB URL: postgresql+psycopg://***:***@{TEST_DATABASE_HOST}/{TEST_DB_NAME}")
 
 # CREATE TEST DATABASE IF IT DOESN'T EXIST
 
@@ -165,7 +165,7 @@ def create_test_database_if_not_exists():
     """
     # Connect to default 'postgres' database to allow DB creation
     default_db_url = (
-        f"postgresql://{settings.database_user}:{settings.database_password}"
+        f"postgresql+psycopg://{settings.database_user}:{settings.database_password}"
         f"@{TEST_DATABASE_HOST}/postgres"
     )
     
@@ -251,7 +251,7 @@ def setup_test_db():
     sync_test_engine.dispose()
     # Connect to the default 'postgres' database to perform the drop
     cleanup_db_url = (
-        f"postgresql://{settings.database_user}:{settings.database_password}"
+        f"postgresql+psycopg://{settings.database_user}:{settings.database_password}"
         f"@{TEST_DATABASE_HOST}/postgres"
     )
     cleanup_engine = create_engine(cleanup_db_url, isolation_level="AUTOCOMMIT")

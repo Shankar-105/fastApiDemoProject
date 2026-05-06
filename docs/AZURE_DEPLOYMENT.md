@@ -12,22 +12,21 @@ The app is deployed on an Azure Linux virtual machine in Central India and is pu
 
 ### 1. Azure Linux VM
 
-- VM name: `fastapi-social-vm`
 - Size: `Standard_B2ats_v2`
 - OS: Ubuntu 22.04
-- OS disk: `StandardSSD_LRS` E4 (30 GB class, migrated from `Premium_LRS` P4 in 23rd Apr 2026)
 - Purpose: runs the FastAPI application, Gunicorn/Uvicorn workers, and Nginx
+- **Update 1:**
+  - **OS Disk Changed** `StandardSSD_LRS` E4 (30 GB class, migrated from `Premium_LRS` P4 in 23rd Apr 2026)
+- **Update 2:** 
+  - **OS Disk Changed:** May 4, 2026 — Migrated from `StandardSSD_LRS` to `Standard_LRS` (HDD) — 30 GB for cost optimization
 
 ### 2. Azure Database for PostgreSQL
 
-- Server name: `fastapi-social-db`
 - Tier: Flexible Server, `B1ms`
-- Database name: `fastapi_db`
 - Purpose: stores users, posts, comments, messages, refresh tokens, notifications, and all core app data
 
 ### 3. Azure Blob Storage
 
-- Storage account: `fastsocialmedia`
 - Containers used:
   - `profilepics`
   - `posts-media`
@@ -39,11 +38,19 @@ The app is deployed on an Azure Linux virtual machine in Central India and is pu
 - Redis runs on the same Ubuntu VM
 - Purpose: caching, rate limiting, token blacklisting, and real-time notification delivery support
 
+### 5. RabbitMQ + Celery on the VM
+
+- RabbitMQ runs on the same Ubuntu VM and acts as the Celery broker
+- Celery worker runs as a separate systemd service and executes background jobs
+- Celery Beat runs as a separate systemd service and keeps scheduled jobs alive
+- Purpose: email tasks, notification jobs, and periodic cleanup must keep working after a code deploy without relying on the web process
+
 ## Deployment Stack ✅
 
 - Nginx handles HTTPS termination and reverse proxying
 - Gunicorn runs the FastAPI app with Uvicorn workers
 - systemd keeps the app service alive and restarts it automatically
+- systemd also keeps Redis, RabbitMQ, Celery worker, and Celery Beat alive on the VM
 - GitHub Actions handles CI/CD and deploys the latest code to the VM after a successful pipeline run
 
 ## Why This Felt Like a Big Win
@@ -56,22 +63,6 @@ Seeing the app live on Azure felt like a real milestone for me as a student devl
 - HTTPS is enabled for secure browser access
 - Deployments can be repeated without manual rebuild steps
 
-## Why I Like This Setup
-
-The backend is built to support real users, not just local testing. The Azure deployment gives the project a proper production environment with:
-
-- a public URL
-- managed database storage
-- persistent file storage
-- automated deployment
-- a Linux server stack that is closer to real-world hosting
-
 ## For Frontend Contributors ✨
 
 If you want to build a frontend on top of this API, start with the endpoint reference in [API_GUIDE.md](./API_GUIDE.md). It covers the REST routes, authentication flow, media handling, and WebSocket chat behavior.
-
-## Re-Deployment Flow
-
-When the backend changes, the deployment pipeline updates the VM by pulling the latest code, reinstalling dependencies if needed, running migrations, and restarting the service.
-
-That means the VM always stays aligned with the code on the main branch, which makes the whole setup feel clean and reliable. ✅

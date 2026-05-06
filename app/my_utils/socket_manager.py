@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 from fastapi.websockets import WebSocketState
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, union
 from app import models
 
 class ConnectionManager:
@@ -71,30 +71,20 @@ class ConnectionManager:
         return seen_at
 
     async def _peer_ids(self, db: AsyncSession, user_id: int) -> set[int]:
-        peers: set[int] = set()
+        peer_union = union(
+            select(models.Message.receiver_id.label("peer_id")).where(models.Message.sender_id == user_id),
+            select(models.Message.sender_id.label("peer_id")).where(models.Message.receiver_id == user_id),
+            select(models.SharedPost.to_user_id.label("peer_id")).where(models.SharedPost.from_user_id == user_id),
+            select(models.SharedPost.from_user_id.label("peer_id")).where(models.SharedPost.to_user_id == user_id),
+        ).subquery()
 
-        sent_to = await db.execute(
-            select(models.Message.receiver_id).where(models.Message.sender_id == user_id)
+        result = await db.execute(
+            select(peer_union.c.peer_id).where(
+                peer_union.c.peer_id.is_not(None),
+                peer_union.c.peer_id != user_id,
+            )
         )
-        peers.update(row[0] for row in sent_to.all())
-
-        received_from = await db.execute(
-            select(models.Message.sender_id).where(models.Message.receiver_id == user_id)
-        )
-        peers.update(row[0] for row in received_from.all())
-
-        shared_to = await db.execute(
-            select(models.SharedPost.to_user_id).where(models.SharedPost.from_user_id == user_id)
-        )
-        peers.update(row[0] for row in shared_to.all())
-
-        shared_from = await db.execute(
-            select(models.SharedPost.from_user_id).where(models.SharedPost.to_user_id == user_id)
-        )
-        peers.update(row[0] for row in shared_from.all())
-
-        peers.discard(user_id)
-        return peers
+        return set(result.scalars().all())
 
     async def broadcast_presence_update(
         self,

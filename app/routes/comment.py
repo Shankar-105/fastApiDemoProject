@@ -127,17 +127,30 @@ async def getAllPosts(post_id:int,
     total=countResult.scalar()
     # only fetch the first 'limit' comments after skipping the first 'offset' comments
     # and order them by the latest as first
-    commentsResult=await db.execute(select(models.Comments).where(models.Comments.post_id==post_id).offset(offset).limit(limit))
-    paginatedComments=commentsResult.scalars().all()
+    commentsResult=await db.execute(
+        select(
+            models.Comments,
+            models.User.id,
+            models.User.username,
+            models.User.nickname,
+            models.User.profile_picture,
+        )
+        .join(models.User, models.User.id == models.Comments.user_id)
+        .where(models.Comments.post_id==post_id)
+        .order_by(models.Comments.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    paginatedComments=commentsResult.all()
     
     # Build proper response
     commentsResponse = []
-    for comment in paginatedComments:
+    for comment, user_id, username, nickname, profile_picture in paginatedComments:
         user = sch.UserBasicResponse(
-            id=comment.user.id,
-            username=comment.user.username,
-            nickname=comment.user.nickname,
-            profile_pic=comment.user.profile_picture
+            id=user_id,
+            username=username,
+            nickname=nickname,
+            profile_pic=profile_picture
         )
         commentsResponse.append(sch.CommentDetailResponse(
             id=comment.id,

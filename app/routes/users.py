@@ -4,7 +4,6 @@ import app.schemas as sch
 from app import models,db,oauth2
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func
-from sqlalchemy.orm import selectinload
 import app.my_utils.utils as utils
 import os
 from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
@@ -129,26 +128,28 @@ async def get_followers(user_id:int,db:AsyncSession=Depends(db.getDb),currentUse
     if cached:
         return cached
 
-    # explicit selectinload needed for self-referential many-to-many in async
+    follower_link = models.connections.alias("follower_link")
     result=await db.execute(
         select(models.User)
-        .where(models.User.id == user_id)
-        .options(selectinload(models.User.followers))
+        .join(follower_link, follower_link.c.follower_id == models.User.id)
+        .where(follower_link.c.followed_id == user_id)
     )
-    user=result.scalars().first()
-    if not user:
-        raise HTTPException(status_code=404,detail="User not found")
+    followers=result.scalars().all()
+    if not followers:
+        exists_result=await db.execute(select(models.User.id).where(models.User.id == user_id))
+        if not exists_result.first():
+            raise HTTPException(status_code=404,detail="User not found")
     # Build proper response
-    followers = []
-    for follower in user.followers:
-        followers.append(sch.UserBasicResponse(
+    followers_response = []
+    for follower in followers:
+        followers_response.append(sch.UserBasicResponse(
             id=follower.id,
             username=follower.username,
             nickname=follower.nickname,
             profile_pic=follower.profile_picture
         ))
-    await set_cache(cache_key, [f.model_dump(mode="json") for f in followers], ttl=120)
-    return followers
+    await set_cache(cache_key, [f.model_dump(mode="json") for f in followers_response], ttl=120)
+    return followers_response
 
 @router.get("/users/{user_id}/following",status_code=status.HTTP_200_OK, response_model=List[sch.UserBasicResponse])
 async def get_following(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
@@ -158,26 +159,28 @@ async def get_following(user_id:int,db:AsyncSession=Depends(db.getDb),currentUse
     if cached:
         return cached
 
-    # explicit selectinload needed for self-referential many-to-many in async
+    following_link = models.connections.alias("following_link")
     result=await db.execute(
         select(models.User)
-        .where(models.User.id == user_id)
-        .options(selectinload(models.User.following))
+        .join(following_link, following_link.c.followed_id == models.User.id)
+        .where(following_link.c.follower_id == user_id)
     )
-    user=result.scalars().first()
-    if not user:
-        raise HTTPException(status_code=404,detail="User not found")
+    following=result.scalars().all()
+    if not following:
+        exists_result=await db.execute(select(models.User.id).where(models.User.id == user_id))
+        if not exists_result.first():
+            raise HTTPException(status_code=404,detail="User not found")
     # Build proper response
-    following = []
-    for followed_user in user.following:
-        following.append(sch.UserBasicResponse(
+    following_response = []
+    for followed_user in following:
+        following_response.append(sch.UserBasicResponse(
             id=followed_user.id,
             username=followed_user.username,
             nickname=followed_user.nickname,
             profile_pic=followed_user.profile_picture
         ))
-    await set_cache(cache_key, [f.model_dump(mode="json") for f in following], ttl=120)
-    return following
+    await set_cache(cache_key, [f.model_dump(mode="json") for f in following_response], ttl=120)
+    return following_response
 
 @router.get("/users/{user_id}/posts", response_model=sch.PostListResponse)  
 async def getAllPosts(user_id:int,limit:int=Query(10, ge=1, le=100),
@@ -194,24 +197,28 @@ async def getAllPosts(user_id:int,limit:int=Query(10, ge=1, le=100),
     # calculate the total number of posts of the user
     countResult=await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==user_id))
     total=countResult.scalar()
-    # only fetch the first 'limit' posts after skipping the first 'offset' posts
-    # and order them by the latest as first
-    postsResult=await db.execute(select(models.Post).where(models.Post.user_id==user_id).order_by(models.Post.created_at.desc()).offset(offset).limit(limit))
-    paginatedPosts=postsResult.scalars().all()
-
-    # Determine which posts the current user has liked
-    liked_ids: set[int] = set()
-    if paginatedPosts:
-        post_ids = [p.id for p in paginatedPosts]
-        liked_result = await db.execute(
-            select(models.Votes.post_id)
-            .where(models.Votes.user_id == currentUser.id, models.Votes.post_id.in_(post_ids), models.Votes.action == True)
+    is_liked = (
+        select(models.Votes.post_id)
+        .where(
+            models.Votes.user_id == currentUser.id,
+            models.Votes.post_id == models.Post.id,
+            models.Votes.action == True,
         )
-        liked_ids = {row[0] for row in liked_result.all()}
+        .exists()
+        .label("is_liked")
+    )
+    postsResult=await db.execute(
+        select(models.Post, is_liked)
+        .where(models.Post.user_id==user_id)
+        .order_by(models.Post.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    paginatedPosts=postsResult.all()
 
     # Build proper response
     posts = []
-    for post in paginatedPosts:
+    for post, liked in paginatedPosts:
         media_url = None
         if post.media_path:
             media_url = get_blob_url("posts-media", post.media_path)
@@ -222,7 +229,7 @@ async def getAllPosts(user_id:int,limit:int=Query(10, ge=1, le=100),
             media_type=post.media_type,
             likes=post.likes,
             comments_count=post.comments_cnt,
-            is_liked=post.id in liked_ids,
+            is_liked=bool(liked),
             created_at=post.created_at
         ))
     

@@ -79,18 +79,28 @@ async def getAllPosts(limit:int=Query(10, ge=1, le=100),
     # calculate the total number of posts of the currentuser
     countResult=await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))
     total=countResult.scalar()
-    # only fetch the first 'limit' posts after skipping the first 'offset' posts
-    # and order them by the latest as first
-    postsResult=await db.execute(select(models.Post).where(models.Post.user_id==currentUser.id).order_by(models.Post.created_at.desc()).offset(offset).limit(limit))
-    paginatedPosts=postsResult.scalars().all()
-    
-    # Get all post IDs the user has liked
-    votesResult=await db.execute(select(models.Votes.post_id).where(models.Votes.user_id == currentUser.id, models.Votes.action == True))
-    liked_post_ids = {row[0] for row in votesResult.all()}
+    is_liked = (
+        select(models.Votes.post_id)
+        .where(
+            models.Votes.user_id == currentUser.id,
+            models.Votes.post_id == models.Post.id,
+            models.Votes.action == True,
+        )
+        .exists()
+        .label("is_liked")
+    )
+    postsResult=await db.execute(
+        select(models.Post, is_liked)
+        .where(models.Post.user_id==currentUser.id)
+        .order_by(models.Post.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    paginatedPosts=postsResult.all()
     
     # Build proper response
     posts = []
-    for post in paginatedPosts:
+    for post, liked in paginatedPosts:
         media_url = None
         if post.media_path:
             media_url = get_blob_url("posts-media", post.media_path)
@@ -102,7 +112,7 @@ async def getAllPosts(limit:int=Query(10, ge=1, le=100),
             likes=post.likes,
             comments_count=post.comments_cnt,
             created_at=post.created_at,
-            is_liked=post.id in liked_post_ids
+            is_liked=bool(liked)
         ))
     
     pagination = sch.PaginationMetadata(
@@ -204,19 +214,21 @@ async def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_pict
 async def getVotedPosts(db:AsyncSession=Depends(db.getDb),currentUser:models.User =Depends(oauth2.getCurrentUser)):
     # Query voted posts via join
     result=await db.execute(
-        select(models.Post).join(models.Votes, models.Votes.post_id==models.Post.id)
+        select(models.Post.title, models.Post.id, models.User.username)
+        .join(models.Votes, models.Votes.post_id==models.Post.id)
+        .join(models.User, models.User.id==models.Post.user_id)
         .where(models.Votes.user_id==currentUser.id)
     )
-    voted_posts=result.scalars().all()
+    voted_posts=result.all()
     return {
                 f"{currentUser.username} you have voted on posts":
             [
                 {
-                "post title":f"{posts.title}",
-                "post id":f"{posts.id}",
-                "post owner":f"{posts.user.username}"
+                "post title":f"{post_title}",
+                "post id":f"{post_id}",
+                "post owner":f"{post_owner}"
             } 
-                for posts in voted_posts
+                for post_title, post_id, post_owner in voted_posts
         ]
     }
 
@@ -240,64 +252,61 @@ async def voteStatus(db:AsyncSession=Depends(db.getDb),currentUser:models.User =
 async def get_liked_posts(db:AsyncSession = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # Query liked posts
     result=await db.execute(
-        select(models.Post)
+        select(models.Post.id, models.User.username)
         .join(models.Votes, models.Votes.post_id==models.Post.id)
+        .join(models.User, models.User.id==models.Post.user_id)
         .where(and_(models.Votes.user_id==currentUser.id, models.Votes.action==True))
     )
-    liked_posts=result.scalars().all()
+    liked_posts=result.all()
     return {
         f"{currentUser.username} your liked posts includes":
         [
             {
-                "post id":posts.id,
-                "post owner":posts.user.username
+                "post id":post_id,
+                "post owner":post_owner
             }
-            for posts in liked_posts
+            for post_id, post_owner in liked_posts
         ]
     }
 @router.get("/me/dislikedPosts")
 async def get_disliked_posts(db:AsyncSession = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):    # Query disliked posts
     result=await db.execute(
-        select(models.Post)
+        select(models.Post.id, models.User.username)
         .join(models.Votes,models.Votes.post_id==models.Post.id)
+        .join(models.User, models.User.id==models.Post.user_id)
         .where(and_(models.Votes.user_id==currentUser.id, models.Votes.action==False))
     )
-    liked_posts=result.scalars().all()
+    disliked_posts=result.all()
     return {
         f"{currentUser.username} your disliked posts includes":
         [
             {
-                "post id":posts.id,
-                "post owner":posts.user.username
+                "post id":post_id,
+                "post owner":post_owner
             }
-            for posts in liked_posts
+            for post_id, post_owner in disliked_posts
         ]
     }
 
 @router.get("/me/commented-on",status_code=status.HTTP_200_OK)
 async def getCommentedPosts(db:AsyncSession=Depends(db.getDb),currentUser:models.User =Depends(oauth2.getCurrentUser)):
-    # get the current users all commented posts id's ignore duplicates
-    uniqueResult=await db.execute(select(distinct(models.Comments.post_id)).where(models.Comments.user_id==currentUser.id))
-    uniquePostIds=uniqueResult.all()
-    # the 'uniquePostIds' is a list of tuples where each tuple is
-    # of the form (post_id1,) (post_id2,) so we exract the first elem
-    # from each of the tuples in the list
-    post_ids = [row[0] for row in uniquePostIds]
-    # query for the post_ids in the Posts table
     postsResult=await db.execute(
-        select(models.Post)
-        .where(models.Post.id.in_(post_ids))
+        select(models.Post.title, models.Post.id, models.User.username)
+        .join(models.Comments, models.Comments.post_id == models.Post.id)
+        .join(models.User, models.User.id == models.Post.user_id)
+        .where(models.Comments.user_id==currentUser.id)
+        .group_by(models.Post.id, models.Post.title, models.User.username)
     )
-    commented_posts=postsResult.scalars().all()
+    commented_posts=postsResult.all()
     return {
                 f"{currentUser.username} you have commented on posts":
             [
                 {
-                "post title":f"{posts.title}",
-                "post id":f"{posts.id}",
-                "post owner":f"{posts.user.username}"
+                "post title":f"{post_title}",
+                "post id":f"{post_id}",
+                "post owner":f"{post_owner}"
             } 
-                for posts in commented_posts
+                for post_title, post_id, post_owner in commented_posts
         ]
     }
 

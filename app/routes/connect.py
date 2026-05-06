@@ -151,19 +151,23 @@ async def get_followers(user_id:int,db:AsyncSession=Depends(getDb), currentUser:
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Get follower IDs from connections table, then load users
+    follower_link = models.connections.alias("follower_link")
+    current_link = models.connections.alias("current_following_link")
+    is_following = (
+        select(current_link.c.followed_id)
+        .where(
+            current_link.c.follower_id == currentUser.id,
+            current_link.c.followed_id == models.User.id,
+        )
+        .exists()
+        .label("is_following")
+    )
     followerResult = await db.execute(
-        select(models.User).join(
-            models.connections, models.connections.c.follower_id == models.User.id
-        ).where(models.connections.c.followed_id == user_id)
+        select(models.User, is_following)
+        .join(follower_link, follower_link.c.follower_id == models.User.id)
+        .where(follower_link.c.followed_id == user_id)
     )
-    followers = followerResult.scalars().all()
-    
-    # Get current user's following IDs for is_following check
-    followingResult = await db.execute(
-        select(models.connections.c.followed_id).where(models.connections.c.follower_id == currentUser.id)
-    )
-    current_following_ids = {row[0] for row in followingResult.all()}
+    followers = followerResult.all()
     
     return [
         sch.UserBasicResponse(
@@ -171,8 +175,8 @@ async def get_followers(user_id:int,db:AsyncSession=Depends(getDb), currentUser:
             username=f.username,
             nickname=f.nickname,
             profile_pic=f.profile_picture,
-            is_following=(f.id in current_following_ids)
-        ) for f in followers
+            is_following=bool(is_following)
+        ) for f, is_following in followers
     ]
 
 @router.get("/connections/users/{user_id}/following", response_model=List[sch.UserBasicResponse])
@@ -182,19 +186,23 @@ async def get_following(user_id:int,db:AsyncSession=Depends(getDb), currentUser:
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Get following users from connections table
+    following_link = models.connections.alias("following_link")
+    current_link = models.connections.alias("current_following_link")
+    is_following = (
+        select(current_link.c.followed_id)
+        .where(
+            current_link.c.follower_id == currentUser.id,
+            current_link.c.followed_id == models.User.id,
+        )
+        .exists()
+        .label("is_following")
+    )
     followingResult = await db.execute(
-        select(models.User).join(
-            models.connections, models.connections.c.followed_id == models.User.id
-        ).where(models.connections.c.follower_id == user_id)
+        select(models.User, is_following)
+        .join(following_link, following_link.c.followed_id == models.User.id)
+        .where(following_link.c.follower_id == user_id)
     )
-    following = followingResult.scalars().all()
-    
-    # Get current user's following IDs for is_following check
-    currentFollowingResult = await db.execute(
-        select(models.connections.c.followed_id).where(models.connections.c.follower_id == currentUser.id)
-    )
-    current_following_ids = {row[0] for row in currentFollowingResult.all()}
+    following = followingResult.all()
     
     return [
         sch.UserBasicResponse(
@@ -202,6 +210,6 @@ async def get_following(user_id:int,db:AsyncSession=Depends(getDb), currentUser:
             username=f.username,
             nickname=f.nickname,
             profile_pic=f.profile_picture,
-            is_following=(f.id in current_following_ids)
-        ) for f in following
+            is_following=bool(is_following)
+        ) for f, is_following in following
     ]

@@ -4,7 +4,7 @@ import app.schemas as sch
 from app import models,oauth2,config
 from app.db import getDb
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import or_,and_,select
+from sqlalchemy import or_,and_,select,case,func
 from typing import List
 from sqlalchemy.exc import IntegrityError
 from app.my_utils.socket_manager import manager
@@ -130,43 +130,43 @@ async def get_recent_chats(
     db: AsyncSession = Depends(getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser)
 ):
-    all_messages_result = await db.execute(
-        select(models.Message).where(
+    other_user_id = case(
+        (models.Message.sender_id == currentUser.id, models.Message.receiver_id),
+        else_=models.Message.sender_id,
+    ).label("other_user_id")
+    ranked_messages = (
+        select(
+            models.Message.id.label("message_id"),
+            other_user_id,
+            func.row_number()
+            .over(partition_by=other_user_id, order_by=models.Message.created_at.desc())
+            .label("rn"),
+        )
+        .where(
             or_(
                 models.Message.sender_id == currentUser.id,
                 models.Message.receiver_id == currentUser.id
             ),
             models.Message.is_deleted_for_everyone == False
-        ).order_by(models.Message.created_at.desc()).limit(1000)
+        )
+        .subquery()
     )
-    all_messages = all_messages_result.scalars().all()
-    
-    # Process in python to get unique conversations (other_user_id)
-    conversations = {} # other_user_id -> last_message_obj
-    
-    for msg in all_messages:
-        other_id = msg.receiver_id if msg.sender_id == currentUser.id else msg.sender_id
-        if other_id not in conversations:
-            conversations[other_id] = msg
-            
-    # Also fetch users
-    if not conversations:
+
+    recent_result = await db.execute(
+        select(models.Message, models.User)
+        .join(ranked_messages, ranked_messages.c.message_id == models.Message.id)
+        .join(models.User, models.User.id == ranked_messages.c.other_user_id)
+        .where(ranked_messages.c.rn == 1)
+        .order_by(models.Message.created_at.desc())
+    )
+    recent_rows = recent_result.all()
+
+    if not recent_rows:
         return []
-        
-    other_user_ids = list(conversations.keys())
-    users_result = await db.execute(
-        select(models.User).where(models.User.id.in_(other_user_ids))
-    )
-    users = users_result.scalars().all()
-    user_map = {u.id: u for u in users}
-    
+
     # Construct response
     results = []
-    for uid, msg in conversations.items():
-        user = user_map.get(uid)
-        if not user:
-            continue
-            
+    for msg, user in recent_rows:
         results.append({
             "id": user.id,
             "username": user.username,
@@ -182,7 +182,5 @@ async def get_recent_chats(
                 "media_type": msg.media_type
             }
         })
-        
-    results.sort(key=lambda x: conversations[x["id"]].created_at, reverse=True)
-    
+
     return results

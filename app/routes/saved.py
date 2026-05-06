@@ -88,36 +88,81 @@ async def get_saved_posts(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
 ):
+    is_liked = (
+        select(models.Votes.post_id)
+        .where(
+            models.Votes.user_id == current_user.id,
+            models.Votes.post_id == models.Post.id,
+            models.Votes.action == True,
+        )
+        .exists()
+        .label("is_liked")
+    )
     saved_result = await db_session.execute(
-        select(models.SavedPost)
+        select(
+            models.SavedPost.id.label("saved_id"),
+            models.SavedPost.post_id.label("saved_post_id"),
+            models.SavedPost.created_at.label("saved_at"),
+            models.Post.id.label("post_id"),
+            models.Post.title,
+            models.Post.content,
+            models.Post.media_path,
+            models.Post.media_type,
+            models.Post.likes,
+            models.Post.dis_likes,
+            models.Post.views,
+            models.Post.comments_cnt,
+            models.Post.enable_comments,
+            models.Post.hashtags,
+            models.Post.created_at.label("post_created_at"),
+            models.User.id.label("owner_id"),
+            models.User.username.label("owner_username"),
+            models.User.nickname.label("owner_nickname"),
+            models.User.profile_picture.label("owner_profile_picture"),
+            is_liked,
+        )
+        .join(models.Post, models.Post.id == models.SavedPost.post_id)
+        .join(models.User, models.User.id == models.Post.user_id)
         .where(models.SavedPost.user_id == current_user.id)
         .order_by(models.SavedPost.created_at.desc())
     )
-    saved_rows = saved_result.scalars().all()
+    saved_rows = saved_result.all()
 
     if not saved_rows:
         return sch.SavedPostsResponse(saved=[])
 
-    post_ids = [row.post_id for row in saved_rows]
-    likes_result = await db_session.execute(
-        select(models.Votes.post_id).where(
-            models.Votes.user_id == current_user.id,
-            models.Votes.action == True,
-            models.Votes.post_id.in_(post_ids),
-        )
-    )
-    liked_ids = {row[0] for row in likes_result.all()}
-
     payload = []
     for row in saved_rows:
-        if not row.post:
-            continue
+        item = row._mapping
+        media_url = get_blob_url("posts-media", item["media_path"]) if item["media_path"] else None
+        owner = sch.UserBasicResponse(
+            id=item["owner_id"],
+            username=item["owner_username"],
+            nickname=item["owner_nickname"],
+            profile_pic=item["owner_profile_picture"],
+        )
+        post = sch.PostDetailResponse(
+            id=item["post_id"],
+            title=item["title"],
+            content=item["content"],
+            media_url=media_url,
+            media_type=item["media_type"],
+            likes=item["likes"],
+            dislikes=item["dis_likes"],
+            views=item["views"],
+            comments_count=item["comments_cnt"],
+            enable_comments=item["enable_comments"],
+            hashtags=item["hashtags"],
+            created_at=item["post_created_at"],
+            is_liked=bool(item["is_liked"]),
+            owner=owner,
+        )
         payload.append(
             sch.SavedPostItemResponse(
-                id=row.id,
-                post_id=row.post_id,
-                saved_at=row.created_at,
-                post=_build_post_detail(row.post, row.post_id in liked_ids),
+                id=item["saved_id"],
+                post_id=item["saved_post_id"],
+                saved_at=item["saved_at"],
+                post=post,
             )
         )
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException,Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,func,desc
+from sqlalchemy import select,func
 from typing import List
 from app import models, schemas, oauth2 , db
 from app.services.redis_service import get_cache, set_cache, delete_cache
@@ -21,11 +21,20 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
     if cached:
         return cached
 
-    # Get users the current user follows via connections table
-    followingResult = await db.execute(
-        select(models.connections.c.followed_id).where(models.connections.c.follower_id == currentUser.id)
+    followed_users = (
+        select(models.connections.c.followed_id)
+        .where(models.connections.c.follower_id == currentUser.id)
     )
-    followed_users = [row[0] for row in followingResult.all()]
+    is_liked = (
+        select(models.Votes.post_id)
+        .where(
+            models.Votes.post_id == models.Post.id,
+            models.Votes.user_id == currentUser.id,
+            models.Votes.action == True,
+        )
+        .exists()
+        .label("is_liked")
+    )
     
     # Query posts from followed users, recent first
     countResult = await db.execute(
@@ -34,25 +43,26 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
     total=countResult.scalar()
     
     postsResult = await db.execute(
-        select(models.Post).where(models.Post.user_id.in_(followed_users))
+        select(
+            models.Post,
+            models.User.username,
+            models.User.profile_picture,
+            is_liked,
+        )
+        .join(models.User, models.User.id == models.Post.user_id)
+        .where(models.Post.user_id.in_(followed_users))
         .order_by(models.Post.created_at.desc())
         .offset(offset).limit(limit)
     )
-    posts=postsResult.scalars().all()
-    
-    # Get liked post IDs
-    votesResult = await db.execute(
-        select(models.Votes.post_id).where(models.Votes.user_id == currentUser.id, models.Votes.action == True)
-    )
-    liked_post_ids = {row[0] for row in votesResult.all()}
+    rows=postsResult.all()
     
     # Build proper feed response
     user_homeFeed = []
-    for post in posts:
+    for post, owner_username, owner_profile_picture, liked in rows:
         owner = schemas.UserOut(
             id=post.user_id,
-            username=post.user.username,
-            profile_pic=post.user.profile_picture
+            username=owner_username,
+            profile_pic=owner_profile_picture
         )
         # Build the post item with is_liked
         post_item = schemas.PostListItemResponse(
@@ -63,7 +73,7 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
             likes=post.likes,
             comments_count=post.comments_cnt,
             created_at=post.created_at,
-            is_liked=post.id in liked_post_ids
+            is_liked=bool(liked)
         )
         
         user_homeFeed.append(schemas.FeedItemResponse(
@@ -93,21 +103,25 @@ async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
     countResult = await db.execute(select(func.count()).select_from(models.Post))
     total = countResult.scalar()
     
+    is_liked = (
+        select(models.Votes.post_id)
+        .where(
+            models.Votes.post_id == models.Post.id,
+            models.Votes.user_id == currentUser.id,
+            models.Votes.action == True,
+        )
+        .exists()
+        .label("is_liked")
+    )
     postsResult = await db.execute(
-        select(models.Post).order_by(models.Post.created_at.desc())
+        select(models.Post, is_liked).order_by(models.Post.created_at.desc())
         .offset(offset).limit(limit)
     )
-    posts = postsResult.scalars().all()
-    
-    # Get liked post IDs
-    votesResult = await db.execute(
-        select(models.Votes.post_id).where(models.Votes.user_id == currentUser.id, models.Votes.action == True)
-    )
-    liked_post_ids = {row[0] for row in votesResult.all()}
+    rows = postsResult.all()
     
     # helper to format posts specifically for explore (similar to user posts list)
     explore_posts = []
-    for post in posts:
+    for post, liked in rows:
         media_url = None
         if post.media_path:
             media_url = get_blob_url("posts-media", post.media_path)
@@ -120,7 +134,7 @@ async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
             likes=post.likes,
             comments_count=post.comments_cnt,
             created_at=post.created_at,
-            is_liked=post.id in liked_post_ids
+            is_liked=bool(liked)
         ))
 
     pagination = schemas.PaginationMetadata(

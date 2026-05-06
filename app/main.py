@@ -7,6 +7,7 @@ import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from app import models, config
 from app.services import redis_service as _redis_svc   # accessed via module so tests can patch redis_client
 from app.db import async_engine, sync_engine
@@ -25,7 +26,12 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-# creates tables from models.py if the tables doesnt exist
+
+# install the pg_trgm extension before creating the tables
+with sync_engine.begin() as conn:
+    conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+
+# creates all the tables from models.py from scratch
 
 models.Base.metadata.create_all(bind=sync_engine)
 

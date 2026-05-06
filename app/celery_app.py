@@ -56,6 +56,11 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(minute=0),
         "options": {"queue": "celery"},
     },
+    "reconcile-denormalized-counters": {
+        "task": "app.tasks.reconciliation_task.reconcile_denormalized_counters_task",
+        "schedule": crontab(minute=0, hour="*/6"),
+        "options": {"queue": "celery"},
+    },
 }
 
 celery_app.autodiscover_tasks(["app.tasks"])

@@ -1,4 +1,5 @@
 from logging.config import fileConfig
+from pathlib import Path
 from app.models import Base
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -13,7 +14,7 @@ if not configured_url or configured_url == "driver://user:pass@localhost/dbname"
     config.set_main_option("sqlalchemy.url", SYNC_SQL_ALCHEMY_URL)
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-if config.config_file_name is not None:
+if config.config_file_name is not None and Path(config.config_file_name).is_file():
     fileConfig(config.config_file_name)
 
 # add your model's MetaData object here

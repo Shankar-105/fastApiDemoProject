@@ -29,8 +29,8 @@ class SharedPostReplies(Base):
     shared_post_id = Column(Integer, ForeignKey("shared_posts.id", ondelete="CASCADE"), primary_key=True)
 
     # Relationships
-    reply_message = relationship("Message", foreign_keys=[reply_msg_id],backref=backref("replies_to_share", lazy="selectin"), lazy="selectin")
-    shared_post = relationship("SharedPost", foreign_keys=[shared_post_id],backref=backref("replies", lazy="selectin"), lazy="selectin")
+    reply_message = relationship("Message", foreign_keys=[reply_msg_id],backref=backref("replies_to_share"), lazy="select")
+    shared_post = relationship("SharedPost", foreign_keys=[shared_post_id],backref=backref("replies"), lazy="select")
     __table_args__ = (Index("ix_shared_post_replies_shared_post_id", "shared_post_id"),)
 
 class SharedPost(Base):
@@ -46,14 +46,14 @@ class SharedPost(Base):
     is_deleted_for_everyone = Column(Boolean, default=False, server_default='false', nullable=False)
     reaction_cnt=Column(Integer,default=0,server_default="0",nullable=False)
     # Relationships
-    post = relationship("Post",back_populates="shared_posts", lazy="selectin")
-    from_user = relationship("User", foreign_keys=[from_user_id],back_populates="sent_posts", lazy="selectin")
-    to_user = relationship("User", foreign_keys=[to_user_id],back_populates="received_posts", lazy="selectin")
+    post = relationship("Post",back_populates="shared_posts", lazy="select")
+    from_user = relationship("User", foreign_keys=[from_user_id],back_populates="sent_posts", lazy="select")
+    to_user = relationship("User", foreign_keys=[to_user_id],back_populates="received_posts", lazy="select")
     reactions = relationship(
         "SharedPostReaction",
-        backref=backref("shared_post", lazy="selectin"),
+        backref=backref("shared_post"),
         cascade="all, delete-orphan",
-        lazy="selectin"
+        lazy="select"
     )
     __table_args__ = (
         CheckConstraint("reaction_cnt >= 0", name="ck_shared_posts_reaction_cnt_nonnegative"),
@@ -104,9 +104,9 @@ class DeletedSharedPost(Base):
     
     # Relationships
     # which user has deleted
-    user = relationship("User", lazy="selectin")
+    user = relationship("User", lazy="select")
     # which post has been deleted
-    shared_post = relationship("SharedPost", lazy="selectin")
+    shared_post = relationship("SharedPost", lazy="select")
     __table_args__ = (
         UniqueConstraint("user_id", "shared_post_id", name="uq_user_deleted_shared_post"),
         Index("ix_deleted_shared_posts_shared_post_id", "shared_post_id"),
@@ -164,7 +164,7 @@ class Post(Base):
     comments_cnt=Column(Integer,default=0,server_default=sa_text("0"),nullable=False)
     hashtags=Column(String,nullable=True)
 
-    shared_posts = relationship("SharedPost",back_populates="post", lazy="selectin")
+    shared_posts = relationship("SharedPost",back_populates="post", lazy="select")
     __table_args__ = (
         CheckConstraint("likes >= 0", name="ck_posts_likes_nonnegative"),
         CheckConstraint("dis_likes >= 0", name="ck_posts_dislikes_nonnegative"),
@@ -192,8 +192,8 @@ class SavedPost(Base):
     post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    user = relationship("User", backref=backref("saved_posts", lazy="selectin"), lazy="selectin")
-    post = relationship("Post", lazy="selectin")
+    user = relationship("User", backref=backref("saved_posts"), lazy="select")
+    post = relationship("Post", lazy="select")
 
     __table_args__ = (
         UniqueConstraint("user_id", "post_id", name="uq_saved_user_post"),
@@ -230,28 +230,28 @@ class User(Base):
         # inorder to get all posts of a certain user but rather by declaring this relationship
         # you just do the currentUser.posts and sqlAlchemy internally does the joins
         # and retrievs you all of the users posts!
-        posts=relationship('Post',backref=backref('user', lazy='selectin'), lazy='selectin')
+        posts=relationship('Post',backref=backref('user'), lazy='select')
         # a many to many relationship
         followers = relationship(
         'User',
         secondary=connections,  # The middle table
         primaryjoin=(connections.c.followed_id == id),  # "I am the follwed guyy"
         secondaryjoin=(connections.c.follower_id == id),  # "They are my followers"
-        backref=backref('following', lazy='selectin'),  # reverse property
-        lazy='selectin'
+        backref=backref('following'),  # reverse property
+        lazy='select'
     )
         voted_posts = relationship(
         'Post',
         secondary='votes',  # The middle table
         primaryjoin=(Votes.user_id == id),  # User.id links to Votes.user_id
         secondaryjoin=(Votes.post_id == Post.id),  # Votes.post_id links to Post.id
-        backref=backref('voters', lazy='selectin'),  # allows posts to access users who voted on them
-        lazy='selectin'
+        backref=backref('voters'),  # allows posts to access users who voted on them
+        lazy='select'
     )
-        total_comments=relationship('Comments',backref=backref('user', lazy='selectin'), lazy='selectin')
-        sent_posts = relationship("SharedPost", foreign_keys=[SharedPost.from_user_id],back_populates="from_user", lazy="selectin")
-        received_posts = relationship("SharedPost", foreign_keys=[SharedPost.to_user_id],back_populates="to_user", lazy="selectin")
-        shared_post_reactions = relationship("SharedPostReaction", back_populates="user", lazy="selectin")
+        total_comments=relationship('Comments',backref=backref('user'), lazy='select')
+        sent_posts = relationship("SharedPost", foreign_keys=[SharedPost.from_user_id],back_populates="from_user", lazy="select")
+        received_posts = relationship("SharedPost", foreign_keys=[SharedPost.to_user_id],back_populates="to_user", lazy="select")
+        shared_post_reactions = relationship("SharedPostReaction", back_populates="user", lazy="select")
 
         __table_args__ = (
         CheckConstraint("followers_cnt >= 0", name="ck_users_followers_cnt_nonnegative"),
@@ -275,8 +275,8 @@ class MessageReplies(Base):
     reply_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
     original_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
     # Relationships (optional, for easier querying)
-    reply_msg = relationship("Message", foreign_keys=[reply_id], lazy="selectin")
-    original_msg = relationship("Message", foreign_keys=[original_id], lazy="selectin")
+    reply_msg = relationship("Message", foreign_keys=[reply_id], lazy="select")
+    original_msg = relationship("Message", foreign_keys=[original_id], lazy="select")
     __table_args__ = (Index("ix_message_replies_original_id", "original_id"),)
 class Message(Base):
     __tablename__ = "messages"
@@ -301,14 +301,14 @@ class Message(Base):
     # and also when you add a 'backpopulates' or 'backref' with a somename and on
     # User side you do that Object.thatBackrefName on a User object then it returns  
     # a list of all the messages that particular user has sent or received
-    sender = relationship("User", foreign_keys=[sender_id], lazy="selectin")
-    receiver = relationship("User", foreign_keys=[receiver_id], lazy="selectin")
+    sender = relationship("User", foreign_keys=[sender_id], lazy="select")
+    receiver = relationship("User", foreign_keys=[receiver_id], lazy="select")
     # get the hecking list of all reactions on this message
     reactions = relationship(
         "MessageReaction",
-        backref=backref("message", lazy="selectin"),
+        backref=backref("message"),
         cascade="all, delete-orphan",
-        lazy="selectin"
+        lazy="select"
     )
     # get the list of all reacted users on this message
     reacted_users = relationship(
@@ -326,7 +326,7 @@ class Message(Base):
         foreign_keys=[MessageReplies.original_id],
         back_populates="original_msg",
         cascade="all, delete-orphan",
-        lazy="selectin"
+        lazy="select"
     )
     # One message can reply to one
     replies_to = relationship(
@@ -334,7 +334,7 @@ class Message(Base):
         foreign_keys=[MessageReplies.reply_id],
         back_populates="reply_msg",
         uselist=False,  # important: only one parent
-        lazy="selectin"
+        lazy="select"
     )
     # Add this inside class Message (in models.py)
 
@@ -380,7 +380,7 @@ class MessageReaction(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     reaction = Column(String,nullable=False)  # ex: "❤️", "😂"
     # get the user reacted
-    user = relationship("User", backref=backref("message_reactions", lazy="selectin"), lazy="selectin")
+    user = relationship("User", backref=backref("message_reactions"), lazy="select")
     __table_args__ = (
         UniqueConstraint('message_id', 'user_id', name='unique_user_reaction'),
         Index("ix_message_reactions_user_id", "user_id"),
@@ -395,7 +395,7 @@ class SharedPostReaction(Base):
     reaction = Column(String,nullable=False)
 
     # Relationships
-    user = relationship("User", back_populates="shared_post_reactions", lazy="selectin")
+    user = relationship("User", back_populates="shared_post_reactions", lazy="select")
     __table_args__ = (
         UniqueConstraint('shared_post_id', 'user_id', name='unique_shared_post_reaction'),
         Index("ix_shared_post_reactions_user_id", "user_id"),
@@ -429,9 +429,9 @@ class Notification(Base):
     created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # who receives this notification
-    owner = relationship("User", foreign_keys=[owner_id], backref=backref("notifications", lazy="selectin"), lazy="selectin")
+    owner = relationship("User", foreign_keys=[owner_id], backref=backref("notifications"), lazy="select")
     # who triggered this notification (we need their username + profile pic for the client)
-    actor = relationship("User", foreign_keys=[actor_id], lazy="selectin")
+    actor = relationship("User", foreign_keys=[actor_id], lazy="select")
     __table_args__ = (
         CheckConstraint("(entity_type IS NULL) OR (entity_type IN ('post', 'comment'))", name="ck_notifications_entity_type_valid"),
         Index("ix_notifications_owner_created", "owner_id", "created_at"),
@@ -464,7 +464,7 @@ class RefreshToken(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    user = relationship("User", lazy="selectin")
+    user = relationship("User", lazy="select")
     __table_args__ = (
         Index("ix_refresh_tokens_user_revoked", "user_id", "revoked"),
         Index("ix_refresh_tokens_expires_at", "expires_at"),

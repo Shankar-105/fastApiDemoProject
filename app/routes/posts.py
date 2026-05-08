@@ -103,7 +103,6 @@ async def create_post(
     )
     db.add(new_post)
     await db.commit()
-    await db.refresh(new_post)
     
     # Use versioned cache keys instead of global feed:* invalidation (always enabled).
     await increment_cache_version("feed:home")
@@ -111,7 +110,7 @@ async def create_post(
     
     await delete_cache_pattern(f"user:posts:{currentUser.id}:*")
     
-    # Build proper response
+    # Build proper response (no refresh needed)
     media_url = None
     if new_post.media_path:
         media_url = get_blob_url("posts-media", new_post.media_path)

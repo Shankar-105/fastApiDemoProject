@@ -2,6 +2,7 @@ from fastapi import Depends
 from app import schemas, models, oauth2,db,config
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
+from sqlalchemy.orm import selectinload
 from app.my_utils.socket_manager import manager
 from datetime import datetime
 from app.my_utils.time_formatting import format_timestamp
@@ -18,6 +19,7 @@ async def load_missed_content(
                 models.Message.receiver_id == user_id,
                 models.Message.is_read == False
             ).order_by(models.Message.created_at.asc()).with_for_update(skip_locked=True)
+            .options(selectinload(models.Message.reactions))  # Explicitly load reactions
         )
         missed_messages = missed_result.scalars().all()
         message_ids = [m.id for m in missed_messages]

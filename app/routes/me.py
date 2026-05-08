@@ -76,9 +76,8 @@ async def getAllPosts(limit:int=Query(10, ge=1, le=100),
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser)
     ):
-    # calculate the total number of posts of the currentuser
-    countResult=await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))
-    total=countResult.scalar()
+    # P2.2: Fetch only needed columns
+    # P2.3: Use limit+1 instead of COUNT
     is_liked = (
         select(models.Votes.post_id)
         .where(
@@ -90,36 +89,47 @@ async def getAllPosts(limit:int=Query(10, ge=1, le=100),
         .label("is_liked")
     )
     postsResult=await db.execute(
-        select(models.Post, is_liked)
+        select(
+            models.Post.id,
+            models.Post.title,
+            models.Post.media_path,
+            models.Post.media_type,
+            models.Post.likes,
+            models.Post.comments_cnt,
+            models.Post.created_at,
+            is_liked
+        )
         .where(models.Post.user_id==currentUser.id)
         .order_by(models.Post.created_at.desc())
         .offset(offset)
-        .limit(limit)
+        .limit(limit + 1)  # fetch one extra
     )
     paginatedPosts=postsResult.all()
+    has_more = len(paginatedPosts) > limit
+    paginatedPosts = paginatedPosts[:limit]
     
     # Build proper response
     posts = []
-    for post, liked in paginatedPosts:
+    for row in paginatedPosts:
         media_url = None
-        if post.media_path:
-            media_url = get_blob_url("posts-media", post.media_path)
+        if row.media_path:
+            media_url = get_blob_url("posts-media", row.media_path)
         posts.append(sch.PostListItemResponse(
-            id=post.id,
-            title=post.title,
+            id=row.id,
+            title=row.title,
             media_url=media_url,
-            media_type=post.media_type,
-            likes=post.likes,
-            comments_count=post.comments_cnt,
-            created_at=post.created_at,
-            is_liked=bool(liked)
+            media_type=row.media_type,
+            likes=row.likes,
+            comments_count=row.comments_cnt,
+            created_at=row.created_at,
+            is_liked=bool(row.is_liked)
         ))
     
     pagination = sch.PaginationMetadata(
-        total=total,
+        total=None,  # omit expensive count
         limit=limit,
         offset=offset,
-        has_more=(limit+offset)<total
+        has_more=has_more
     )
     
     return sch.PostListResponse(

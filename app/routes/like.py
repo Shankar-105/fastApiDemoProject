@@ -36,22 +36,26 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
                 # Same choice again means remove the vote
                 await db.delete(currentVote)
                 await db.commit()
-                await db.refresh(queriedPost)
+                # Fetch updated counts instead of refreshing entire object
+                count_result = await db.execute(select(models.Post.likes, models.Post.dis_likes).where(models.Post.id==post.post_id))
+                likes, dislikes = count_result.first()
                 await delete_cache_pattern(f"post:{post.post_id}:*")
                 # Use versioned cache keys instead of global feed:* invalidation (always enabled).
                 await increment_cache_version("feed:home")
                 await increment_cache_version("feed:explore")
-                return sch.VoteResponse(message="Vote removed successfully", likes=queriedPost.likes, dislikes=queriedPost.dis_likes)
+                return sch.VoteResponse(message="Vote removed successfully", likes=likes, dislikes=dislikes)
             else:
                 # Switching vote (e.g., like to dislike or vice versa)
                 currentVote.action = post.choice
                 await db.commit()
-                await db.refresh(queriedPost)
+                # Fetch updated counts instead of refreshing entire object
+                count_result = await db.execute(select(models.Post.likes, models.Post.dis_likes).where(models.Post.id==post.post_id))
+                likes, dislikes = count_result.first()
                 await delete_cache_pattern(f"post:{post.post_id}:*")
                 # Use versioned cache keys instead of global feed:* invalidation (always enabled).
                 await increment_cache_version("feed:home")
                 await increment_cache_version("feed:explore")
-                return sch.VoteResponse(message="Vote switched successfully", likes=queriedPost.likes, dislikes=queriedPost.dis_likes)
+                return sch.VoteResponse(message="Vote switched successfully", likes=likes, dislikes=dislikes)
         else:
             # New vote
             newVote = models.Votes(
@@ -61,7 +65,9 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
             )
             db.add(newVote)
             await db.commit()
-            await db.refresh(queriedPost)
+            # Fetch updated counts instead of refreshing entire object
+            count_result = await db.execute(select(models.Post.likes, models.Post.dis_likes).where(models.Post.id==post.post_id))
+            likes, dislikes = count_result.first()
             await delete_cache_pattern(f"post:{post.post_id}:*")
             # Use versioned cache keys instead of global feed:* invalidation (always enabled).
             await increment_cache_version("feed:home")
@@ -77,7 +83,7 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
                     entity_id=post.post_id,
                     entity_type="post",
                 )
-            return sch.VoteResponse(message="New vote added successfully", likes=queriedPost.likes, dislikes=queriedPost.dis_likes)
+            return sch.VoteResponse(message="New vote added successfully", likes=likes, dislikes=dislikes)
     # triggers if any thing goes wrong in db as the logic is solid
     except IntegrityError:
         await db.rollback()
@@ -105,8 +111,10 @@ async def likeAComment(comment:sch.CommentVoteRequest=Body(...),db:AsyncSession=
                 # Same choice again means remove the vote
                 await db.delete(currentVote)
                 await db.commit()
-                await db.refresh(queriedComment)
-                return sch.VoteResponse(message="Vote removed successfully", likes=queriedComment.likes)
+                # Fetch updated count instead of refreshing entire object
+                count_result = await db.execute(select(models.Comments.likes).where(models.Comments.id==comment.comment_id))
+                likes = count_result.scalar()
+                return sch.VoteResponse(message="Vote removed successfully", likes=likes)
         else:
             # New like on a comment
             newVote=models.CommentVotes(
@@ -116,8 +124,10 @@ async def likeAComment(comment:sch.CommentVoteRequest=Body(...),db:AsyncSession=
             )
             db.add(newVote)
             await db.commit()
-            await db.refresh(queriedComment)
-            return sch.VoteResponse(message="New vote added successfully", likes=queriedComment.likes)
+            # Fetch updated count instead of refreshing entire object
+            count_result = await db.execute(select(models.Comments.likes).where(models.Comments.id==comment.comment_id))
+            likes = count_result.scalar()
+            return sch.VoteResponse(message="New vote added successfully", likes=likes)
     # triggers if any thing goes wrong in db as the logic is solid
     except IntegrityError:
         await db.rollback()

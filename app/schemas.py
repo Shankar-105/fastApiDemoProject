@@ -8,7 +8,7 @@ from fastapi import Query
 
 class PaginationMetadata(BaseModel):
     """Reusable pagination metadata"""
-    total: int
+    total: Optional[int] = None
     limit: int
     offset: int
     has_more: bool
@@ -273,7 +273,7 @@ class FeedItemResponse(BaseModel):
 class FeedResponse(BaseModel):
     """Feed response with pagination"""
     feed: List[FeedItemResponse]
-    total: int
+    total: Optional[int] = None
 
 # PASSWORD & OTP SCHEMAS
 

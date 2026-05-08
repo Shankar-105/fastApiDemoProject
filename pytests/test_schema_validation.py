@@ -69,7 +69,8 @@ async def test_pagination_metadata_structure(client, get_token):
     # Verify values
     assert pagination["limit"] == 5
     assert pagination["offset"] == 0
-    assert isinstance(pagination["total"], int)
+    # total may be None to avoid expensive COUNT queries
+    assert pagination["total"] is None or isinstance(pagination["total"], int)
     assert isinstance(pagination["has_more"], bool)
 
 

@@ -22,7 +22,7 @@ async def createComment(comment:sch.CommentCreateRequest=Body(...),db:AsyncSessi
     new_comment =models.Comments(post_id=comment.post_id,user_id=currentUser.id,comment_content=comment.content)
     db.add(new_comment)
     await db.commit()
-    await db.refresh(new_comment)
+    
     # Invalidate cached comments for this post and post detail caches
     await delete_cache_pattern(f"comments:post:{comment.post_id}:*")
     await delete_cache_pattern(f"post:{comment.post_id}:*")
@@ -41,7 +41,7 @@ async def createComment(comment:sch.CommentCreateRequest=Body(...),db:AsyncSessi
             entity_id=comment.post_id,
             entity_type="post",
         )
-    # Build proper response
+    # Build proper response (no refresh needed)
     user = sch.UserBasicResponse(
         id=currentUser.id,
         username=currentUser.username,
@@ -80,11 +80,11 @@ async def editComment(comment_id:int,editInfo:sch.CommentUpdateRequest=Body(...)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"comment with Id {comment_id} not Found")
     commentToBeEdited.comment_content=editInfo.comment_content
     await db.commit()
-    await db.refresh(commentToBeEdited)
+    
     # Invalidate cached comments for this post
     await delete_cache_pattern(f"comments:post:{commentToBeEdited.post_id}:*")
     
-    # Build proper response
+    # Build proper response (no refresh needed)
     user = sch.UserBasicResponse(
         id=currentUser.id,
         username=currentUser.username,
@@ -114,15 +114,16 @@ async def getAllPosts(post_id:int,
     if cached:
         return cached
 
-    # calculate the total number of comments on the post
-    countResult=await db.execute(select(func.count()).select_from(models.Comments).where(models.Comments.post_id==post_id))
-    total=countResult.scalar()
-    # only fetch the first 'limit' comments after skipping the first 'offset' comments
-    # and order them by the latest as first
+    # P2.2: Fetch only needed columns
+    # P2.3: Use limit+1 for has_more check instead of COUNT
     commentsResult=await db.execute(
         select(
-            models.Comments,
-            models.User.id,
+            models.Comments.id,
+            models.Comments.post_id,
+            models.Comments.comment_content,
+            models.Comments.likes,
+            models.Comments.created_at,
+            models.User.id.label("user_id"),
             models.User.username,
             models.User.nickname,
             models.User.profile_picture,
@@ -131,33 +132,35 @@ async def getAllPosts(post_id:int,
         .where(models.Comments.post_id==post_id)
         .order_by(models.Comments.created_at.desc())
         .offset(offset)
-        .limit(limit)
+        .limit(limit + 1)  # fetch one extra
     )
     paginatedComments=commentsResult.all()
+    has_more = len(paginatedComments) > limit
+    paginatedComments = paginatedComments[:limit]
     
     # Build proper response
     commentsResponse = []
-    for comment, user_id, username, nickname, profile_picture in paginatedComments:
+    for row in paginatedComments:
         user = sch.UserBasicResponse(
-            id=user_id,
-            username=username,
-            nickname=nickname,
-            profile_pic=profile_picture
+            id=row.user_id,
+            username=row.username,
+            nickname=row.nickname,
+            profile_pic=row.profile_picture
         )
         commentsResponse.append(sch.CommentDetailResponse(
-            id=comment.id,
-            post_id=comment.post_id,
-            content=comment.comment_content,
-            likes=comment.likes,
-            created_at=comment.created_at,
+            id=row.id,
+            post_id=row.post_id,
+            content=row.comment_content,
+            likes=row.likes,
+            created_at=row.created_at,
             user=user
         ))
     
     pagination = sch.PaginationMetadata(
-        total=total,
+        total=None,  # omit expensive count
         limit=limit,
         offset=offset,
-        has_more=(limit+offset)<total
+        has_more=has_more
     )
     
     result = sch.CommentListResponse(

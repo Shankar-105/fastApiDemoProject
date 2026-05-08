@@ -4,7 +4,7 @@ from app.rate_limiter import create_post_limiter
 from typing import Optional
 from app import models,oauth2
 from app.db import getDb
-from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
+from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern, queue_post_view, increment_cache_version, get_cache_version, build_versioned_feed_cache_key
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -29,17 +29,9 @@ async def getPost(postId:int,db:AsyncSession=Depends(getDb),currentUser:models.U
     reqPost=result.scalars().first()
     if reqPost==None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with id {postId} not found")
-    # Insert view once per user/post and increment views atomically only when inserted.
-    insert_view_stmt = (
-        pg_insert(models.PostView)
-        .values(post_id=postId, user_id=currentUser.id)
-        .on_conflict_do_nothing(index_elements=[models.PostView.post_id, models.PostView.user_id])
-        .returning(models.PostView.post_id)
-    )
-    insert_result = await db.execute(insert_view_stmt)
-    if insert_result.scalar_one_or_none() is not None:
-        await db.commit()
-        await db.refresh(reqPost)  # Refresh to get updated post data
+    
+    # This removes the write from the hot read path and significantly reduces latency.
+    await queue_post_view(postId, currentUser.id)
     
     # Check if liked
     likeResult=await db.execute(select(models.Votes).where(models.Votes.post_id == postId, models.Votes.user_id == currentUser.id, models.Votes.action == True))
@@ -112,8 +104,11 @@ async def create_post(
     db.add(new_post)
     await db.commit()
     await db.refresh(new_post)
-    # Invalidate feed and user posts caches
-    await delete_cache_pattern("feed:*")
+    
+    # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+    await increment_cache_version("feed:home")
+    await increment_cache_version("feed:explore")
+    
     await delete_cache_pattern(f"user:posts:{currentUser.id}:*")
     
     # Build proper response
@@ -157,7 +152,10 @@ async def deletePost(postId:int,db:AsyncSession=Depends(getDb),currentUser:model
     await db.commit()
     # Invalidate caches for this post, feeds, and user posts
     await delete_cache_pattern(f"post:{postId}:*")
-    await delete_cache_pattern("feed:*")
+    
+    # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+    await increment_cache_version("feed:home")
+    await increment_cache_version("feed:explore")
     await delete_cache_pattern(f"user:posts:{currentUser.id}:*")
     await delete_cache_pattern(f"comments:post:{postId}:*")
     return sch.SuccessResponse(message=f"Post {postToDelete.id} deleted successfully")
@@ -184,7 +182,9 @@ async def editPost(postId:int,post:sch.PostUpdateRequest,db:AsyncSession=Depends
     await db.refresh(postToUpdate)
     # Invalidate cached post data and feeds
     await delete_cache_pattern(f"post:{postId}:*")
-    await delete_cache_pattern("feed:*")
+    # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+    await increment_cache_version("feed:home")
+    await increment_cache_version("feed:explore")
     
     # Build proper response
     media_url = None

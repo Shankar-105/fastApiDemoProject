@@ -18,21 +18,19 @@ router=APIRouter(
 
 @router.get("/users/{user_id}/profile",status_code=status.HTTP_200_OK,response_model=sch.UserProfileResponse)
 async def userProfile(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    # Explicitly check if following
-    is_following_query = await db.execute(
-        select(models.connections).where(
-            models.connections.c.follower_id == currentUser.id,
-            models.connections.c.followed_id == user_id
-        )
-    )
-    is_following = is_following_query.first() is not None
-
-    # Check Redis cache first 
+    # Phase A: Check cache FIRST before doing expensive is_following query.
+    # This avoids DB queries on cache hits even for user-specific data.
     cache_key = f"user_profile:{user_id}"
     cached = await get_cache(cache_key)
     if cached:
-        # Cache HIT -> return the cached dict directly (FastAPI serializes it)
-        cached["is_following"] = is_following
+        # Cache HIT -> compute only the user-specific is_following field
+        is_following_query = await db.execute(
+            select(models.connections).where(
+                models.connections.c.follower_id == currentUser.id,
+                models.connections.c.followed_id == user_id
+            )
+        )
+        cached["is_following"] = is_following_query.first() is not None
         return cached
 
     # Cache MISS -> query the database
@@ -40,6 +38,15 @@ async def userProfile(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:
     user=result.scalars().first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="User not found")
+    
+    # Compute is_following only for cache miss
+    is_following_query = await db.execute(
+        select(models.connections).where(
+            models.connections.c.follower_id == currentUser.id,
+            models.connections.c.followed_id == user_id
+        )
+    )
+    is_following = is_following_query.first() is not None
     
     # Count posts via query instead of len(user.posts) for efficiency
     posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==user_id))

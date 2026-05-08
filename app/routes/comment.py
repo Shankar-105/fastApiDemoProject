@@ -1,10 +1,10 @@
 from fastapi import Body,HTTPException,status,APIRouter,Depends,Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_,func
-from app import oauth2,models,db,schemas as sch
+from app import oauth2,models,db,schemas as sch, config
 from app.models import NotificationType
 from app.rate_limiter import comment_limiter
-from app.services.redis_service import get_cache, set_cache, delete_cache_pattern
+from app.services.redis_service import get_cache, set_cache, delete_cache_pattern, increment_cache_version
 from app.tasks.notification_tasks import create_notification_task
 
 router=APIRouter(tags=['comment'])
@@ -26,7 +26,10 @@ async def createComment(comment:sch.CommentCreateRequest=Body(...),db:AsyncSessi
     # Invalidate cached comments for this post and post detail caches
     await delete_cache_pattern(f"comments:post:{comment.post_id}:*")
     await delete_cache_pattern(f"post:{comment.post_id}:*")
-    await delete_cache_pattern("feed:*")
+    
+    # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+    await increment_cache_version("feed:home")
+    await increment_cache_version("feed:explore")
     # Notify the post owner when someone comments on their post.
     # Guard: no self-notification if the post owner comments on their own post.
     if currentUser.id != post.user_id:

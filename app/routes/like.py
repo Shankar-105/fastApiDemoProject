@@ -1,12 +1,12 @@
 from fastapi import status,HTTPException,Depends,Body,APIRouter
 import app.schemas as sch
-from app import models,oauth2
+from app import models,oauth2, config
 from app.db import getDb
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_
 from sqlalchemy.exc import IntegrityError
 from app.models import NotificationType
-from app.services.redis_service import delete_cache_pattern
+from app.services.redis_service import delete_cache_pattern, increment_cache_version
 from app.tasks.notification_tasks import create_notification_task
 
 router=APIRouter(
@@ -38,7 +38,9 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
                 await db.commit()
                 await db.refresh(queriedPost)
                 await delete_cache_pattern(f"post:{post.post_id}:*")
-                await delete_cache_pattern("feed:*")
+                # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+                await increment_cache_version("feed:home")
+                await increment_cache_version("feed:explore")
                 return sch.VoteResponse(message="Vote removed successfully", likes=queriedPost.likes, dislikes=queriedPost.dis_likes)
             else:
                 # Switching vote (e.g., like to dislike or vice versa)
@@ -46,7 +48,9 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
                 await db.commit()
                 await db.refresh(queriedPost)
                 await delete_cache_pattern(f"post:{post.post_id}:*")
-                await delete_cache_pattern("feed:*")
+                # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+                await increment_cache_version("feed:home")
+                await increment_cache_version("feed:explore")
                 return sch.VoteResponse(message="Vote switched successfully", likes=queriedPost.likes, dislikes=queriedPost.dis_likes)
         else:
             # New vote
@@ -59,7 +63,9 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
             await db.commit()
             await db.refresh(queriedPost)
             await delete_cache_pattern(f"post:{post.post_id}:*")
-            await delete_cache_pattern("feed:*")
+            # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+            await increment_cache_version("feed:home")
+            await increment_cache_version("feed:explore")
             # Notify the post owner when someone LIKES their post.
             # Only on new likes (not dislikes, not removals, not self-likes).
             if post.choice and currentUser.id != queriedPost.user_id:

@@ -1,9 +1,6 @@
 # main.py
 import asyncio
 import json as _json
-import logging
-import sys
-import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -19,13 +16,8 @@ from app.my_utils.socket_manager import manager
 from chat_system import chat,chat_history,share,delete_msg,delete_shares,edit_msg,msg_info,msg_reaction,share_reaction,media_msg,clear_chat
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from opentelemetry import trace
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from prometheus_fastapi_instrumentator import Instrumentator
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from app.my_utils.observability import configure_observability
+
 
 # install the pg_trgm extension before creating the tables
 with sync_engine.begin() as conn:
@@ -79,6 +71,7 @@ async def lifespan(app: FastAPI):
     if redis_ok:
         _chat_listener_task = asyncio.create_task(_chat_messages_listener())
         _notification_listener_task = asyncio.create_task(_notification_messages_listener())
+        # Redis listeners started. Post-view flushing is handled by Celery beat.
     else:
         print("Skipping Redis listeners (Redis unavailable)!")
 
@@ -97,73 +90,14 @@ async def lifespan(app: FastAPI):
             await _notification_listener_task
         except asyncio.CancelledError:
             pass
+    # post view flushing is handled by Celery beat; nothing to shut down here.
 
 # fastapi instance - lifespan wires up the startup/shutdown hooks above
 app = FastAPI(lifespan=lifespan)
-
-def _configure_observability_logger() -> logging.Logger:
-    logger = logging.getLogger("observability")
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-
-    if not config.settings.observability_log_enabled:
-        logger.disabled = True
-        return logger
-
-    # Avoid duplicate handlers when uvicorn reload imports the module more than once.
-    if logger.handlers:
-        return logger
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.INFO)
-    handler.setFormatter(
-        logging.Formatter(
-            "\033[96m[OBS]\033[0m %(asctime)s | %(levelname)s | %(message)s",
-            datefmt="%H:%M:%S",
-        )
-    )
-    logger.addHandler(handler)
-    return logger
-
-# Export traces to console so tracing can be validated immediately in dev.
-trace.set_tracer_provider(
-    TracerProvider(resource=Resource.create({SERVICE_NAME: "social-media-api"}))
-)
-if config.settings.otel_console_exporter_enabled:
-    trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
-
-# Traces each incoming FastAPI request/response cycle.
-FastAPIInstrumentor.instrument_app(app)
-SQLAlchemyInstrumentor().instrument(engine=async_engine.sync_engine)
-
-# Exposes Prometheus metrics at /metrics.
-Instrumentator().instrument(app).expose(app, include_in_schema=False)
-
-obs_logger = _configure_observability_logger()
-
-
-@app.middleware("http")
-async def add_trace_id_log(request, call_next):
-    start = time.perf_counter()
-    response = await call_next(request)
-    duration_ms = (time.perf_counter() - start) * 1000
-
-    span = trace.get_current_span()
-    span_ctx = span.get_span_context() if span else None
-    trace_id = (
-        format(span_ctx.trace_id, "032x") if span_ctx and span_ctx.trace_id else "0" * 32
-    )
-
-    obs_logger.info(
-        "method=%s path=%s status=%s duration_ms=%.2f trace_id=%s",
-        request.method,
-        request.url.path,
-        response.status_code,
-        duration_ms,
-        trace_id,
-    )
-    response.headers["X-Trace-Id"] = trace_id
-    return response
+if config.settings.benchmark_mode_enabled:
+    pass
+else:
+    configure_observability(app, async_engine)
 
 # tells the uvicorn to render any images at the new paths while displaying profile pics or etc
 # example : without this mount method suppose you hit the see your profile pic endpoint

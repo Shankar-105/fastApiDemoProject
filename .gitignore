@@ -67,6 +67,7 @@ CONCURRENCY_SERVICE_EXPLANATION.md
 ENDPOINT_CONCURRENCY_AUDIT.md
 CELERY_RABBITMQ_GUIDE.md
 DB_DESIGN.md
+best_practices.md
 # avoid ui-ux-promax agent
 .agent
 

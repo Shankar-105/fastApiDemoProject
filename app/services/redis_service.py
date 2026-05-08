@@ -167,3 +167,70 @@ async def is_blacklisted(token: str) -> bool:
         # If redis is down, we'll allow the token.
         # This is a security trade-off. For higher security, you might want to return True.
         return False
+
+
+# --- Phase A: Cache versioning for targeted invalidations ---
+# Instead of deleting "feed:*" globally (which triggers SCAN loops and cache churn),
+# use versioned keys like "feed:home:{user_id}:v{version}:{offset}:{limit}".
+# When feed changes, increment the version counter, and old keys naturally expire.
+
+async def increment_cache_version(domain: str) -> int:
+    """
+    Increment the cache version for a domain (e.g., 'feed:home', 'feed:explore').
+    Returns the new version number.
+    This enables fast invalidation without SCAN loops.
+    
+    Example: increment_cache_version("feed:home") increments feed:home:version.
+    All cached keys with old version numbers become stale and will miss.
+    """
+    try:
+        version_key = f"{domain}:version"
+        new_version = await redis_client.incr(version_key)
+        return new_version
+    except Exception:
+        return 1  # Default to version 1 if Redis is down
+
+
+async def get_cache_version(domain: str) -> int:
+    """
+    Get the current cache version for a domain.
+    """
+    try:
+        version_key = f"{domain}:version"
+        version = await redis_client.get(version_key)
+        return int(version) if version else 1
+    except Exception:
+        return 1
+
+
+def build_versioned_feed_cache_key(feed_type: str, user_id: int, offset: int, limit: int, version: int) -> str:
+    """
+    Build a versioned feed cache key.
+    feed_type: 'home' or 'explore'
+    version: from get_cache_version()
+    
+    Example: feed:home:123:v5:0:10 (home feed for user 123, version 5, offset 0, limit 10)
+    """
+    return f"feed:{feed_type}:{user_id}:v{version}:{offset}:{limit}"
+
+
+# --- Phase A: Async post view tracking (queue instead of sync insert) ---
+
+async def queue_post_view(post_id: int, user_id: int) -> None:
+    """
+    Queue a post view for async processing instead of inserting synchronously.
+    This decouples the read path from DB writes, reducing latency.
+    
+    The queue is a Redis SET to automatically deduplicate per request.
+    A background task periodically flushes this to the database.
+    """
+    try:
+        # Use a set to avoid duplicate inserts in the same batch window
+        view_queue_key = f"post:views:queue"
+        # Store as "{post_id}:{user_id}" for later parsing
+        await redis_client.sadd(view_queue_key, f"{post_id}:{user_id}")
+        # Do NOT set a short TTL here. The Celery beat task is responsible
+        # for flushing and removing processed members. Keeping no expiry
+        # avoids losing queued views before the periodic flush runs.
+    except Exception:
+        pass  # If Redis is down, silently skip queueing (views just won't be tracked)

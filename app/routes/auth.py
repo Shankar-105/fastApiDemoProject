@@ -62,8 +62,14 @@ async def refresh(payload: sch.RefreshTokenRequest = Body(...), db: AsyncSession
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(token: str = Depends(oauth2.oauth2_scheme), db: AsyncSession = Depends(db.getDb)):
     try:
+        # Decode the token to get the user ID
+        payload = await oauth2.decodeToken(token)
+        user_id = payload.get("userId")
+        
+        # Invalidate user cache (use token as key to match oauth2.py)
+        await redis_service.delete_cache(f"auth:user:{token}")
+        
         # Decode the token to get the expiration time
-        # offloaded to thread pool via oauth2.decodeToken()
         payload = await oauth2.decodeToken(token)
         expire_time = payload.get("expTime")
         if expire_time:
@@ -74,7 +80,6 @@ async def logout(token: str = Depends(oauth2.oauth2_scheme), db: AsyncSession = 
                 await redis_service.add_to_blacklist(token, int(remaining_time))
         # Also revoke all refresh tokens for this user so no
         # device can silently get new access tokens after logout.
-        user_id = payload.get("userId")
         if user_id:
             await token_service.revoke_all_user_tokens(db, user_id)
         return {"message": "Successfully logged out"}

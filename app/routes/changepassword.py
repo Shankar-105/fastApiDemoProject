@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app import models,schemas,db,oauth2
 from app.services import email_service, otp_service, token_service
+from app.services.redis_service import delete_cache
 from app.my_utils import utils
 from sqlalchemy.orm.exc import StaleDataError
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
@@ -29,7 +30,7 @@ async def verifyOtp(db:AsyncSession,otp:str,currentUser:models.User):
     raise HTTPException(status_code=400,detail="Wrong or expired OTP")
 
 @router.post("/reset-password-auth", response_model=schemas.SuccessResponse)
-async def reset_password(request:schemas.PasswordResetRequest=Body(...),db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),_:None=Depends(reset_password_auth_limiter)):
+async def reset_password(request:schemas.PasswordResetRequest=Body(...),db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),token: str = Depends(oauth2.oauth2_scheme),_:None=Depends(reset_password_auth_limiter)):
     async def _reset_password():
         locked_user = await lock_user_row(db, user_id=currentUser.id)
         # first check whether the user entered the correct current password
@@ -47,6 +48,8 @@ async def reset_password(request:schemas.PasswordResetRequest=Body(...),db:Async
             raise HTTPException(status_code=409, detail="Password was updated concurrently")
 
     await run_with_transient_retry(lambda: _reset_password(), db=db)
+    # Invalidate auth cache so current session is terminated
+    await delete_cache(f"auth:user:{token}")
     # Revoke all refresh tokens — forces re-login on every device
     await token_service.revoke_all_user_tokens(db, currentUser.id)
     return schemas.SuccessResponse(message="Password changed successfully! Now login with new one.")

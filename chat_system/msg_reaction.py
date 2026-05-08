@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException ,Depends
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.my_utils.socket_manager import manager
 from app.services import redis_service
 from datetime import datetime
@@ -26,7 +27,9 @@ async def msg_reactions(
   if msg.sender_id != currentUser.id and msg.receiver_id != currentUser.id:
         return
   reactions_result = await db.execute(
-      select(models.MessageReaction).where(models.MessageReaction.message_id == msg_id)
+      select(models.MessageReaction)
+      .options(selectinload(models.MessageReaction.user))
+      .where(models.MessageReaction.message_id == msg_id)
   )
   reactions = reactions_result.scalars().all()
   return [

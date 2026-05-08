@@ -2,6 +2,7 @@ from fastapi import APIRouter,Depends
 from app import schemas, models, oauth2, db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.my_utils.socket_manager import manager
 from app.services import redis_service
 from typing import List
@@ -30,7 +31,9 @@ async def get_shared_post_reactions(
         return
 
     reactions_result = await db.execute(
-        select(models.SharedPostReaction).where(models.SharedPostReaction.shared_post_id == shared_id)
+        select(models.SharedPostReaction)
+        .options(selectinload(models.SharedPostReaction.user))
+        .where(models.SharedPostReaction.shared_post_id == shared_id)
     )
     reactions = reactions_result.scalars().all()
     return [
@@ -90,7 +93,7 @@ async def react_to_shared_post(
         existing.reaction = reaction.reaction
     # commit any change
     await db.commit()
-    await db.refresh(shared)
+    # No refresh needed - expire_on_commit=False keeps object attributes
     
     payload = {
         "type": "reaction_update",

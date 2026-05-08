@@ -7,6 +7,7 @@ from app.db import getDb
 from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern, queue_post_view, increment_cache_version, get_cache_version, build_versioned_feed_cache_key
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import os,uuid
 import asyncio
@@ -25,7 +26,11 @@ async def getPost(postId:int,db:AsyncSession=Depends(getDb),currentUser:models.U
     if cached:
         return cached
 
-    result=await db.execute(select(models.Post).where(models.Post.id==postId))
+    result=await db.execute(
+        select(models.Post)
+        .options(selectinload(models.Post.user))
+        .where(models.Post.id==postId)
+    )
     reqPost=result.scalars().first()
     if reqPost==None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with id {postId} not found")
@@ -162,7 +167,11 @@ async def deletePost(postId:int,db:AsyncSession=Depends(getDb),currentUser:model
 # update a specific post with id -> {id}
 @router.put("/posts/editPost/{postId}", response_model=sch.PostDetailResponse)
 async def editPost(postId:int,post:sch.PostUpdateRequest,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    result=await db.execute(select(models.Post).where(models.Post.id==postId))
+    result=await db.execute(
+        select(models.Post)
+        .options(selectinload(models.Post.user))
+        .where(models.Post.id==postId)
+    )
     postToUpdate=result.scalars().first()
     if not postToUpdate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found")
@@ -175,10 +184,7 @@ async def editPost(postId:int,post:sch.PostUpdateRequest,db:AsyncSession=Depends
         setattr(postToUpdate,key,value)
     # commit those updated changes
     await db.commit()
-    # refresh to qucikly view them below while returing 
-    # if not refreshed below returned postToUpdate will be
-    # sent as {} to the front End
-    await db.refresh(postToUpdate)
+    # No refresh needed - object has updated values and expire_on_commit=False keeps them
     # Invalidate cached post data and feeds
     await delete_cache_pattern(f"post:{postId}:*")
     # Use versioned cache keys instead of global feed:* invalidation (always enabled).

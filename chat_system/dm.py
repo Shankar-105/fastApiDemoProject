@@ -22,7 +22,7 @@ async def messageUser(
     )
         db.add(msg)
         await db.commit()
-        await db.refresh(msg)
+        # No refresh needed - expire_on_commit=False keeps object attributes
         print("added to db")
         
         reply_payload = {

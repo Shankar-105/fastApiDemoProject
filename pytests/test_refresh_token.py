@@ -139,3 +139,32 @@ async def test_logout_revokes_refresh_tokens(client, create_test_user):
     # Try to refresh — should fail because logout revoked all tokens
     resp = await client.post("/refresh", json={"refresh_token": refresh_token})
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_logout_invalidates_cached_access_token(client, create_test_user):
+    """A cached access token must still fail after logout/blacklist."""
+    login_resp = await client.post("/login", data={
+        "username": create_test_user["username"],
+        "password": create_test_user["password"],
+    })
+    body = login_resp.json()
+    access_token = body["accessToken"]
+
+    warmup_resp = await client.get(
+        "/me/profile",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert warmup_resp.status_code == 200
+
+    logout_resp = await client.post(
+        "/logout",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert logout_resp.status_code == 200
+
+    protected_resp = await client.get(
+        "/me/profile",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert protected_resp.status_code == 401

@@ -5,6 +5,7 @@ from app import models,oauth2,config
 from app.db import getDb
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import or_,and_,select,case,func
+from sqlalchemy.orm import selectinload
 from typing import List
 from sqlalchemy.exc import IntegrityError
 from app.my_utils.socket_manager import manager
@@ -26,7 +27,14 @@ async def get_chat_history(
     )
     # now let us use that subquery in NOT EXISTS and simply query off the final messages
     messages_result = await db.execute(
-        select(models.Message).where(
+        select(models.Message)
+        .options(
+            selectinload(models.Message.reactions),
+            selectinload(models.Message.replies_to).selectinload(models.MessageReplies.original_msg).selectinload(models.Message.sender),
+            selectinload(models.Message.reply_to_shared_post).selectinload(models.SharedPost.post),
+            selectinload(models.Message.reply_to_shared_post).selectinload(models.SharedPost.from_user),
+        )
+        .where(
             # 1. Not deleted for everyone
             models.Message.is_deleted_for_everyone == False,
             # 2. Is between these two users
@@ -36,7 +44,8 @@ async def get_chat_history(
             ),
             # 3. Not deleted by THIS user (NOT EXISTS)
             ~models.Message.id.in_(subq)
-        ).order_by(models.Message.created_at.desc())
+        )
+        .order_by(models.Message.created_at.desc())
     )
     messages = messages_result.scalars().all()
     # shared posts
@@ -47,7 +56,13 @@ async def get_chat_history(
         .scalar_subquery()
     )
     shared_result = await db.execute(
-        select(models.SharedPost).where(
+        select(models.SharedPost)
+        .options(
+            selectinload(models.SharedPost.post),
+            selectinload(models.SharedPost.from_user),
+            selectinload(models.SharedPost.reactions),
+        )
+        .where(
             models.SharedPost.is_deleted_for_everyone == False,
             or_(
                 and_(models.SharedPost.from_user_id == currentUser.id, models.SharedPost.to_user_id == friend_id),

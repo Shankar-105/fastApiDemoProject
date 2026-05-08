@@ -2,6 +2,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect,Depends,Query
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
+from sqlalchemy.orm import selectinload
 from app.my_utils.socket_manager import manager
 from app.services import redis_service
 from datetime import datetime
@@ -34,7 +35,7 @@ async def reply_share(
     )
     db.add(reply_msg)
     await db.commit()
-    await db.refresh(reply_msg)
+    # No refresh needed - expire_on_commit=False keeps object attributes
 
     # Link reply message -> shared post
     reply_link = models.SharedPostReplies(
@@ -46,7 +47,9 @@ async def reply_share(
 
     # Load original post details for context
     post_result = await db.execute(
-        select(models.Post).where(models.Post.id == shared_post.post_id)
+        select(models.Post)
+        .options(selectinload(models.Post.user))
+        .where(models.Post.id == shared_post.post_id)
     )
     original_post = post_result.scalars().first()
 

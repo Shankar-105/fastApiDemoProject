@@ -142,7 +142,7 @@ async def getAllPosts(limit:int=Query(10, ge=1, le=100),
 # ambiguity as one of the section is being passed via Form and the other via Body
 # so made everything to be passed via Form only
 @router.patch("/me/updateInfo",status_code=status.HTTP_200_OK, response_model=sch.UserProfileResponse)
-async def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_picture:UploadFile=File(None),db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+async def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_picture:UploadFile=File(None),db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser), token: str = Depends(oauth2.oauth2_scheme)):
     if not any([username, bio, profile_picture]):
         posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))
         posts_count = posts_count_result.scalar()
@@ -202,6 +202,8 @@ async def updateUserInfo(username:str=Form(None),bio:str=Form(None),profile_pict
         return locked_user
 
     currentUser = await run_with_transient_retry(lambda: _update_profile(), db=db)
+    # Invalidate auth cache so next request gets updated user data
+    await delete_cache(f"auth:user:{token}")
     
     # Count posts for response
     posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))

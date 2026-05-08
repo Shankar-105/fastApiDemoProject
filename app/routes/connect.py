@@ -32,8 +32,7 @@ async def follow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.U
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Your already following this user")
 
         await db.commit()
-        await db.refresh(currentUser)
-        await db.refresh(userToFollow)
+        # No refresh needed - expire_on_commit=False keeps object attributes; counts come from DB trigger
     except HTTPException:
         await db.rollback()
         raise
@@ -78,8 +77,7 @@ async def unfollow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Not following this user")
 
         await db.commit()
-        await db.refresh(currentUser)
-        await db.refresh(userToUnFollow)
+        # No refresh needed - expire_on_commit=False keeps object attributes
     except HTTPException:
         await db.rollback()
         raise
@@ -114,8 +112,7 @@ async def remove_follower(user_id: int, db: AsyncSession = Depends(getDb), curre
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This user is not following you")
 
         await db.commit()
-        await db.refresh(currentUser)
-        await db.refresh(userToRemove)
+        # No refresh needed - expire_on_commit=False keeps object attributes
     except HTTPException:
         await db.rollback()
         raise

@@ -1,8 +1,9 @@
-from jose import JWTError,jwt
-from datetime import datetime,timedelta,timezone
+from jose import JWTError, jwt
+from datetime import datetime, timedelta, timezone
 import asyncio
-from app import schemas as sch,models,db
-from fastapi import status,HTTPException,Depends
+import time
+from app import schemas as sch, models, db
+from fastapi import status, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi.security import OAuth2PasswordBearer
@@ -52,40 +53,94 @@ async def decodeToken(token: str) -> dict:
     """Decode a JWT token — offloaded to a thread pool to avoid blocking the event loop."""
     return await asyncio.to_thread(_decodeToken_sync, token)
 
-async def verifyAccesstoken(token:str,credentials_exception,dbs:AsyncSession):
+
+def _build_user_from_cache(cached: dict) -> models.User:
+    user = models.User()
+    for key, value in cached.items():
+        if key == "created_at" and value:
+            try:
+                setattr(user, key, datetime.fromisoformat(value))
+            except Exception:
+                setattr(user, key, None)
+        else:
+            setattr(user, key, value)
+    return user
+
+
+def _build_user_cache_payload(user: models.User) -> dict:
+    return {
+        "id": user.id,
+        "username": user.username,
+        "nickname": user.nickname,
+        "bio": user.bio,
+        "email": user.email,
+        "email_verified": user.email_verified,
+        "profile_picture": user.profile_picture,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "followers_cnt": user.followers_cnt,
+        "following_cnt": user.following_cnt,
+    }
+
+
+def _get_access_token_ttl_seconds(payload: dict) -> int:
+    exp = payload.get("expTime")
+    if exp:
+        return max(0, int(exp - time.time()))
+    return cg.access_token_expire_time * 60
+
+
+async def _validate_access_token(token: str, credentials_exception):
     if await redis_service.is_blacklisted(token):
         raise credentials_exception
+
     try:
-        # decode's the token which returns a dict of the sent user info 
-        # while creating a token (userId,userName) 
-        # offloaded to thread pool via our async decodeToken() wrapper
-        decodedToken=await decodeToken(token)
-        # extract those userId and userName from the returned dict
-        id: int=decodedToken.get("userId")
-        username: str=decodedToken.get("userName")
-        # if they aren't found meaning a malformed jwt token is sent
-        # so we raise an exception
-        if id is None or username is None:
-            raise credentials_exception
-        # if not then we query the db using the async select() pattern
-        result=await dbs.execute(select(models.User).where(models.User.id == id))
-        user=result.scalars().first()
-        # If the user was deleted but the token is still valid, treat as unauthorized
-        if user is None:
-            raise credentials_exception
-        return user
-    # if the token itself is invalid we raise a JWTError
+        payload = await decodeToken(token)
     except JWTError:
         raise credentials_exception
+
+    user_id = payload.get("userId")
+    username = payload.get("userName")
+    if user_id is None or username is None:
+        raise credentials_exception
+
+    return payload
+
+
+async def verifyAccesstoken(token:str,credentials_exception,dbs:AsyncSession):
+    payload = await _validate_access_token(token, credentials_exception)
+    user_id = payload.get("userId")
+
+    result = await dbs.execute(select(models.User).where(models.User.id == user_id))
+    user = result.scalars().first()
+    if user is None:
+        raise credentials_exception
+    return user
 
 # Get current user (for protected routes)
 # in the parentheses the Depends(oauth2_scheme) returns the
 # JWT Token which is stored in the token variable below
 # and sent to the verifyAccesstoken() mtd
-async def getCurrentUser(token: str = Depends(oauth2_scheme),dbs:AsyncSession=Depends(db.getDb)):
+async def getCurrentUser(token: str = Depends(oauth2_scheme), dbs: AsyncSession = Depends(db.getDb)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    return await verifyAccesstoken(token,credentials_exception,dbs)
+    # Validate token first so blacklist / expiry cannot be bypassed by a cache hit.
+    payload = await _validate_access_token(token, credentials_exception)
+
+    # Check Redis cache using the token as key after the token has been validated.
+    cache_key = f"auth:user:{token}"
+    cached = await redis_service.get_cache(cache_key)
+    if cached:
+        return _build_user_from_cache(cached)
+
+    # Not cached - get user from DB, then cache it for the remaining token lifetime.
+    result = await dbs.execute(select(models.User).where(models.User.id == payload.get("userId")))
+    user = result.scalars().first()
+    if user is None:
+        raise credentials_exception
+
+    await redis_service.set_cache(cache_key, _build_user_cache_payload(user), ttl=_get_access_token_ttl_seconds(payload))
+    return user
+

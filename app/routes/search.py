@@ -12,20 +12,18 @@ async def search(searchParams: sch.SearchRequest = Depends(), db: AsyncSession =
         hashtag = searchParams.q.lstrip("#")
         hashtag_filter = models.Post.hashtags.ilike(f"%{hashtag}%")
         hashtag_rank = func.similarity(func.coalesce(models.Post.hashtags, ""), hashtag)
-        base_query=select(models.Post).where(models.Post.hashtags.isnot(None), hashtag_filter)
+        total_count = func.count(models.Post.id).over().label("total_count")
+        base_query=select(models.Post, total_count).where(models.Post.hashtags.isnot(None), hashtag_filter)
         if searchParams.orderBy == "likes":
             base_query=base_query.order_by(models.Post.likes.desc(), hashtag_rank.desc(), models.Post.created_at.desc())
         else:
             base_query=base_query.order_by(hashtag_rank.desc(), models.Post.created_at.desc())
-
-        # Count total
-        count_query=select(func.count()).select_from(models.Post).where(models.Post.hashtags.isnot(None), hashtag_filter)
-        totalResult=await db.execute(count_query)
-        total=totalResult.scalar()
         
         # Fetch paginated results
         postsResult=await db.execute(base_query.offset(searchParams.offset).limit(searchParams.limit))
-        resPosts=postsResult.scalars().all()
+        rows=postsResult.all()
+        resPosts=[row[0] for row in rows]
+        total = int(rows[0][1]) if rows else 0
         
         # Build proper response for posts
         posts = []
@@ -48,17 +46,17 @@ async def search(searchParams: sch.SearchRequest = Depends(), db: AsyncSession =
     elif searchParams.q:
         # Username search - search for users
         user_filter = models.User.username.ilike(f"%{searchParams.q}%")
+        total_count = func.count(models.User.id).over().label("total_count")
         usersResult=await db.execute(
-            select(models.User)
+            select(models.User, total_count)
             .where(user_filter)
             .order_by(func.similarity(models.User.username, searchParams.q).desc(), models.User.username.asc())
             .offset(searchParams.offset)
             .limit(searchParams.limit)
         )
-        resUsers=usersResult.scalars().all()
-
-        countResult=await db.execute(select(func.count()).select_from(models.User).where(user_filter))
-        total=countResult.scalar()
+        rows=usersResult.all()
+        resUsers=[row[0] for row in rows]
+        total = int(rows[0][1]) if rows else 0
         
         # Build proper response for users
         users = []

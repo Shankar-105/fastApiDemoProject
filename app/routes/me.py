@@ -324,13 +324,15 @@ async def getCommentedPosts(db:AsyncSession=Depends(db.getDb),currentUser:models
 
 @router.get("/me/comment-stats",status_code=status.HTTP_200_OK, response_model=sch.CommentStatsResponse)
 async def commentStatus(db:AsyncSession=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
-    # Count total comments by user
-    commentCountResult=await db.execute(select(func.count()).select_from(models.Comments).where(models.Comments.user_id==currentUser.id))
-    comment_count=commentCountResult.scalar()
-    # Count unique posts commented on
-    uniquePostsResult=await db.execute(select(func.count(distinct(models.Comments.post_id))).where(models.Comments.user_id==currentUser.id))
-    uniquePostIds=uniquePostsResult.scalar()
+    # Fetch both aggregates in one query to reduce DB roundtrips.
+    statsResult=await db.execute(
+        select(
+            func.count(models.Comments.id).label("comment_count"),
+            func.count(distinct(models.Comments.post_id)).label("unique_post_count"),
+        ).where(models.Comments.user_id==currentUser.id)
+    )
+    stats = statsResult.first()
     return sch.CommentStatsResponse(
-        total_comments=comment_count,
-        unique_posts_commented=uniquePostIds
+        total_comments=stats.comment_count if stats else 0,
+        unique_posts_commented=stats.unique_post_count if stats else 0
     )

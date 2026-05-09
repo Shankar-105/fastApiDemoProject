@@ -67,7 +67,16 @@ class Settings(BaseSettings):
     # observability toggles
     otel_console_exporter_enabled: bool = False
     # Disables expensive logging/otel,promethus instrumentors during benchmark
-    benchmark_mode_enabled: bool = True   
+    benchmark_mode_enabled: bool = True
+    
+    # Runtime tuning parameters (loaded from .env, used by startup scripts)
+    gunicorn_workers: int = 2
+    gunicorn_timeout: int = 120
+    gunicorn_keepalive: int = 5
+    gunicorn_backlog: int = 2048
+    uvicorn_loop: str = "auto"  # "auto" | "asyncio" | "uvloop"
+    uvicorn_http: str = "httptools"  # "auto" | "httptools" | "h11"
+    uvicorn_timeout_keep_alive: int = 5
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

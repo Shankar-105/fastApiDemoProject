@@ -25,12 +25,16 @@ async def userProfile(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:
     if cached:
         # Cache HIT -> compute only the user-specific is_following field
         is_following_query = await db.execute(
-            select(models.connections).where(
-                models.connections.c.follower_id == currentUser.id,
-                models.connections.c.followed_id == user_id
+            select(
+                select(models.connections.c.followed_id)
+                .where(
+                    models.connections.c.follower_id == currentUser.id,
+                    models.connections.c.followed_id == user_id,
+                )
+                .exists()
             )
         )
-        cached["is_following"] = is_following_query.first() is not None
+        cached["is_following"] = bool(is_following_query.scalar())
         return cached
 
     # Cache MISS -> query the database
@@ -41,12 +45,16 @@ async def userProfile(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:
     
     # Compute is_following only for cache miss
     is_following_query = await db.execute(
-        select(models.connections).where(
-            models.connections.c.follower_id == currentUser.id,
-            models.connections.c.followed_id == user_id
+        select(
+            select(models.connections.c.followed_id)
+            .where(
+                models.connections.c.follower_id == currentUser.id,
+                models.connections.c.followed_id == user_id,
+            )
+            .exists()
         )
     )
-    is_following = is_following_query.first() is not None
+    is_following = bool(is_following_query.scalar())
     
     # Count posts via query instead of len(user.posts) for efficiency
     posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==user_id))
@@ -118,14 +126,19 @@ async def getAllUsers(db:AsyncSession=Depends(db.getDb)):
         return cached   # cache HIT
 
     #  Cache MISS -> hit DB
-    result=await db.execute(select(models.User))
-    allUsers=result.scalars().all()
+    result=await db.execute(
+        select(models.User.id, models.User.username, models.User.created_at)
+    )
+    rows=result.all()
 
     # Build serializable list & cache it for 60 seconds
-    users_data = [sch.UserResponse.model_validate(u).model_dump(mode="json") for u in allUsers]
+    users_data = [
+        sch.UserResponse(id=row.id, username=row.username, created_at=row.created_at).model_dump(mode="json")
+        for row in rows
+    ]
     await set_cache("all_users", users_data, ttl=60)
 
-    return allUsers
+    return [sch.UserResponse(**item) for item in users_data]
 
 @router.get("/users/{user_id}/followers",status_code=status.HTTP_200_OK, response_model=List[sch.UserBasicResponse])
 async def get_followers(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
@@ -201,9 +214,6 @@ async def getAllPosts(user_id:int,limit:int=Query(10, ge=1, le=100),
     if cached:
         return cached
 
-    # calculate the total number of posts of the user
-    countResult=await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==user_id))
-    total=countResult.scalar()
     is_liked = (
         select(models.Votes.post_id)
         .where(
@@ -219,9 +229,11 @@ async def getAllPosts(user_id:int,limit:int=Query(10, ge=1, le=100),
         .where(models.Post.user_id==user_id)
         .order_by(models.Post.created_at.desc())
         .offset(offset)
-        .limit(limit)
+        .limit(limit + 1)
     )
     paginatedPosts=postsResult.all()
+    has_more = len(paginatedPosts) > limit
+    paginatedPosts = paginatedPosts[:limit]
 
     # Build proper response
     posts = []
@@ -241,10 +253,10 @@ async def getAllPosts(user_id:int,limit:int=Query(10, ge=1, le=100),
         ))
     
     pagination = sch.PaginationMetadata(
-        total=total,
+        total=None,
         limit=limit,
         offset=offset,
-        has_more=(limit+offset)<total
+        has_more=has_more
     )
     
     result = sch.PostListResponse(

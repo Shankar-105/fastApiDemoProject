@@ -39,8 +39,18 @@ async def getPost(postId:int,db:AsyncSession=Depends(getDb),currentUser:models.U
     await queue_post_view(postId, currentUser.id)
     
     # Check if liked
-    likeResult=await db.execute(select(models.Votes).where(models.Votes.post_id == postId, models.Votes.user_id == currentUser.id, models.Votes.action == True))
-    is_liked = likeResult.scalars().first() is not None
+    likeResult=await db.execute(
+        select(
+            select(models.Votes.post_id)
+            .where(
+                models.Votes.post_id == postId,
+                models.Votes.user_id == currentUser.id,
+                models.Votes.action == True,
+            )
+            .exists()
+        )
+    )
+    is_liked = bool(likeResult.scalar())
     
     # Build proper response with schema
     media_url = None

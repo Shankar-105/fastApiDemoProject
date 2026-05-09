@@ -80,6 +80,7 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.5.0
 uvicorn==0.37.0
+uvloop==0.22.1; platform_system != "Windows"
 watchdog==6.0.0
 watchfiles==1.1.1
 websockets==15.0.1

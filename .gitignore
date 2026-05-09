@@ -76,10 +76,11 @@ best_practices.md
 
 # ignore deployment artifacts
 deploy.zip
-*.sh
 vm.env
-create_db.py
-
+setup_nginx.sh
+setup_vm_background_services.sh
+startup_prod.sh
+setup_service.sh
 # ignore VS Code, visual studio folders
 .vscode/
 .vs/

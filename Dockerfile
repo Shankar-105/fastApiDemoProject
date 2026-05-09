@@ -18,5 +18,8 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# first run the migrations and then start the server
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+# Make all startup scripts and entrypoint executable
+RUN chmod +x  /code/startup_dev.sh /code/startup_benchmark.sh /code/docker_entrypoint.sh
+
+# Entrypoint: conditionally choose startup script based on BENCHMARK_MODE_ENABLED config
+ENTRYPOINT ["/bin/bash", "/code/docker_entrypoint.sh"]

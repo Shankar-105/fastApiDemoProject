@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import app.services.redis_service as redis_service
 import app.services.otp_service as otp_service
 import app.services.email_service as email_service
+from app.config import settings as cg
 from sqlalchemy.orm.exc import StaleDataError
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
 from app.rate_limiter import login_limiter, forgot_password_limiter, reset_password_limiter, refresh_limiter
@@ -39,6 +40,22 @@ async def loginUser(userCred:OAuth2PasswordRequestForm=Depends(),db:AsyncSession
     # the createAccessToken from oauth2 file which generates an jwt token
     tokenData = {"userId": isUserPresent.id, "userName": isUserPresent.username}
     access_token = await oauth2.createAccessToken(tokenData)
+    await redis_service.set_cache(
+        f"auth:user:{access_token}",
+        {
+            "id": isUserPresent.id,
+            "username": isUserPresent.username,
+            "nickname": isUserPresent.nickname,
+            "bio": isUserPresent.bio,
+            "email": isUserPresent.email,
+            "email_verified": isUserPresent.email_verified,
+            "profile_picture": isUserPresent.profile_picture,
+            "created_at": isUserPresent.created_at.isoformat() if isUserPresent.created_at else None,
+            "followers_cnt": isUserPresent.followers_cnt,
+            "following_cnt": isUserPresent.following_cnt,
+        },
+        ttl=cg.access_token_expire_time * 60,
+    )
     # create a refresh token for this login session (new family)
     refresh_token = await token_service.create_refresh_token(db, isUserPresent.id)
     # return both tokens

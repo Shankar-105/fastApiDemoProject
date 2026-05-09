@@ -169,6 +169,24 @@ async def is_blacklisted(token: str) -> bool:
         return False
 
 
+async def get_auth_cache_and_blacklist(token: str) -> tuple[bool, Optional[Any]]:
+    """
+    Fetch blacklist flag and auth cache in a single Redis roundtrip.
+    Returns (is_blacklisted, cached_user_payload_or_none).
+    """
+    try:
+        blacklist_key = f"blacklist:{token}"
+        auth_key = f"auth:user:{token}"
+        blacklisted_value, cached_value = await redis_client.mget(blacklist_key, auth_key)
+        if blacklisted_value is not None:
+            return True, None
+        if cached_value is None:
+            return False, None
+        return False, json.loads(cached_value)
+    except Exception:
+        return False, None
+
+
 # --- Phase A: Cache versioning for targeted invalidations ---
 # Instead of deleting "feed:*" globally (which triggers SCAN loops and cache churn),
 # use versioned keys like "feed:home:{user_id}:v{version}:{offset}:{limit}".

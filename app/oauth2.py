@@ -2,6 +2,8 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 import asyncio
 import time
+import uuid
+from types import SimpleNamespace
 from app import schemas as sch, models, db
 from fastapi import status, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +31,12 @@ def _createAccessToken_sync(data: dict) -> str:
     """Synchronous JWT encode — runs on a thread pool when called via createAccessToken()."""
     dataCopy=data.copy()
     expireTime=datetime.now(timezone.utc)+timedelta(minutes=EXPIRE_TIME)
-    dataCopy.update({"expTime":int(expireTime.timestamp())})
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    dataCopy.update({
+        "expTime": int(expireTime.timestamp()),
+        "iat": now_ts,
+        "jti": str(uuid.uuid4()),
+    })
     jwtToken=jwt.encode(dataCopy,SECRET_KEY,algorithm=ALGORITHM)
     return jwtToken
 
@@ -55,7 +62,7 @@ async def decodeToken(token: str) -> dict:
 
 
 def _build_user_from_cache(cached: dict) -> models.User:
-    user = models.User()
+    user = SimpleNamespace()
     for key, value in cached.items():
         if key == "created_at" and value:
             try:
@@ -126,14 +133,19 @@ async def getCurrentUser(token: str = Depends(oauth2_scheme), dbs: AsyncSession 
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    # Validate token first so blacklist / expiry cannot be bypassed by a cache hit.
-    payload = await _validate_access_token(token, credentials_exception)
+    # Single Redis roundtrip: check blacklist + token-scoped user cache.
+    blacklisted, cached = await redis_service.get_auth_cache_and_blacklist(token)
+    if blacklisted:
+        raise credentials_exception
 
-    # Check Redis cache using the token as key after the token has been validated.
-    cache_key = f"auth:user:{token}"
-    cached = await redis_service.get_cache(cache_key)
-    if cached:
+    # Cache hit: token was not blacklisted and user snapshot is available.
+    # TTL on auth:user:{token} is bounded by token expiry, so we can skip DB lookup.
+    if cached is not None:
         return _build_user_from_cache(cached)
+
+    # Cache miss: validate JWT claims/signature and then query DB once.
+    cache_key = f"auth:user:{token}"
+    payload = await _validate_access_token(token, credentials_exception)
 
     # Not cached - get user from DB, then cache it for the remaining token lifetime.
     result = await dbs.execute(select(models.User).where(models.User.id == payload.get("userId")))
@@ -143,4 +155,3 @@ async def getCurrentUser(token: str = Depends(oauth2_scheme), dbs: AsyncSession 
 
     await redis_service.set_cache(cache_key, _build_user_cache_payload(user), ttl=_get_access_token_ttl_seconds(payload))
     return user
-

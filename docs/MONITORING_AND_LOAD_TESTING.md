@@ -2,14 +2,9 @@
 
 > This is performance room: generate traffic with k6, inspect metrics in Prometheus, and read live behavior in Grafana.
 
-## ✨ At a Glance
+>You will also see the comparsion of local vs deployed runs in depth
 
-1. run the stack,
-2. run smoke/load/stress traffic,
-3. observe request rate, p95, and failures,
-4. compare local baseline vs deployed behavior.
-
-This guide is for new contributors who open the repo and want to understand:
+This is also a good path way for new contributors who open the repo and want to understand:
 
 1. what observability tools are used here,
 2. how to run the stack,
@@ -100,20 +95,20 @@ For local baseline testing:
 k6 run loadtests/load.js
 ```
 
-> After k6 finishes, **the app sustains roughly ~500 req/sec with near-zero transport failures and 0% request failure** rate on that run, even with a **single Uvicorn process**. That is a strong baseline.
+> After k6 finishes, **the app now (2026-05-09) sustains roughly 1k req/sec with near-zero transport failures and 0% request failure** rate on that run, even with a **single Uvicorn process**. That is a strong baseline.
 
-### ✅ Local run snapshot (real output)
+### ✅ Local run snapshot (real output) as of 2026-05-09
 
 Local `k6 run loadtests/load.js` summary from this project:
 
-1. `http_reqs`: `141339` total (`468.37 req/s`)
-2. `http_req_failed`: `0.00%` (`0 out of 141339`)
-3. `iterations`: `11778`
+1. `http_reqs`: `301188` total (`1004.56 req/s`)
+2. `http_req_failed`: `0.00%` (`0 out of 301188`)
+3. `iterations`: `25097`
 4. `interrupted iterations`: `0`
-5. `p95 latency`: `2.71s` (threshold `p(95)<2500` narrowly crossed)
-6. endpoint checks: `100%` passed (`141339/141339`)
+5. `p95 latency`: `2.18s` (threshold `p(95)<2500` safely passed)
+6. endpoint checks: `100%` passed (`301188/301188`)
 
-> **Confidence signal**: _even with one Uvicorn process in local path, the app handled high throughput with stable success behavior_.
+> _even with one Uvicorn process in the local path, the app now sustains roughly 1k req/s with stable success behavior and no transport failures_.
 
 ### ☁️ Now run the same test against deployed URL
 
@@ -131,61 +126,41 @@ https://fastapi-social-vm.centralindia.cloudapp.azure.com
 k6 run loadtests/load.js
 ```
 
-> **At first glance**, you may expect more throughput because deployment uses **_Gunicorn + 2 Uvicorn workers_**, **so it feels like it should do maybe close to 1000 req/sec**.
+> **At first glance**, you may expect more throughput because deployment uses **_Gunicorn + 2 Uvicorn workers_**, **so it feels like it should do maybe close to 1000 req/sec or even more**.
 
-In real runs, it can still perform **worse than local**.
+In real runs, it performs **worse than local**.
 
-### ❌ Deployed run snapshot (real output)
+### ❌ Deployed run snapshot (real output) as of 2026-05-09
 
 Deployed `k6 run loadtests/load.js` summary from this project:
 
-1. `http_reqs`: `30475` total (`86.66 req/s`)
-2. `http_req_failed`: `33.59%` (`10239 out of 30475`)
-3. `iterations`: `2242`
-4. `interrupted iterations`: `592`
-5. `p95 latency`: `58.91s` (threshold failure)
-6. repeated transport errors: `request timeout`, `EOF`, `connection reset`, `connect timeout`
-
-> **Confidence signal**: this is not a tiny variance. It is a clear saturation pattern difference between local and deployed path.
+1. `http_reqs`: `38996` total (`112.43 req/s`)
+2. `http_req_failed`: `12.84%` (`5007 out of 38996`)
+3. `iterations`: `3128`
+4. `interrupted iterations`: `141`
+5. `p95 latency`: `9.84s` (threshold still failing, but much better than the original saturation run)
+6. repeated transport errors: `request timeout`, `EOF`, `connect timeout`
 
 ### 🧠 Why deployed VM can be worse than local even with 2 workers
 
-Two workers are not enough by themselves.
-Worker count is only one layer.
+Two workers are not enough by themselves; worker count is only one layer, and the real throughput comes from the full end-to-end path: Nginx, Gunicorn/Uvicorn worker behavior, app code and query shape, Redis, Postgres over network, and Azure infrastructure limits. Localhost mostly shows raw app and query-path performance because it removes TLS, public network latency, and most VM contention, while the deployed path adds all of that plus the possibility of CPU, memory, and I/O pressure in the shared VM/DB stack.
 
-Real throughput depends on the full end-to-end path:
-
-1. Nginx,
-2. Gunicorn/Uvicorn worker behavior,
-3. app code and query shape,
-4. Redis,
-5. Postgres over network,
-6. Azure infrastructure limits.
-
-If you check [docs/AZURE_DEPLOYMENT.md](./AZURE_DEPLOYMENT.md), the deployed profile is resource-constrained for heavy sustained traffic:
-
-1. VM: `Standard_B2ats_v2` (burstable class),
-2. Postgres: `B1ms` tier (small tier),
-3. Redis runs on same VM and competes for CPU/RAM with app and Nginx.
-
+If you check [docs/AZURE_DEPLOYMENT.md](./AZURE_DEPLOYMENT.md), the deployed profile is resource-constrained for heavy sustained traffic.
 What this means under load:
 
 1. Burstable VM can throttle when CPU credits drain,
 2. remote DB latency and IOPS limits dominate at high concurrency,
 3. this k6 script is heavy per iteration (many endpoints each loop),
 4. Nginx/Gunicorn backlog and timeout behavior can amplify drops,
-5. TLS + public internet overhead exists in deployed path but not localhost.
+5. TLS + public internet overhead exists in the deployed path but not localhost,
+6. a stronger cloud layout can still scale much further because the app code is now much closer to its raw limit.
 
 That is why you can see timeout/EOF/connect errors and lower req/s in deployed runs even when worker count appears better on paper.
 
-### 📉 Failure pattern you usually see when deployed starts saturating
+### 📌 Final Takeaway
 
-1. p95 rises sharply,
-2. request timeouts and EOF increase,
-3. interrupted iterations increase,
-4. overall req/s flattens or drops.
+Local and cloud benchmarks measure two complementary truths about system health. Local runs expose raw application and query-path performance — they show how efficiently your code, ORM shape, and database interactions behave without TLS, public network latency, or VM contention. A strong local baseline (for example, ~1k req/s) is a clear signal that the implementation and query paths are efficient.
 
-### 📌 Takeaway
+Cloud runs measure end-to-end, real-world capacity: networking, TLS, VM sizing, managed DB/Redis tiers, and operational headroom. Lower deployed numbers typically point to infrastructure limits to be addressed (CPU/memory/IO/DB latency, network/TLS overhead), not a failure of the application design.
 
-Workers increase app capacity, but they do not remove infrastructure bottlenecks.
-If DB, VM, or network saturates first, p95 latency and timeout/EOF failures will rise even when worker count looks more.
+Both views are valuable and complementary: use the local baseline to validate and iterate on queries, caching, and code paths, then use cloud benchmarks to size and tune infrastructure so the app can serve real users at scale.

@@ -1,11 +1,5 @@
 # 📸 Benchmark and Deployed Reality
 
-## ✨ At a Glance
-
-1. deployed screenshots for key Grafana panels,
-2. smoke and load test summaries,
-3. clear explanation of infra saturation vs code quality.
-
 > **_This file is the benchmark proof for the deployed app_**.
 
 ## 🎯 Why This File Exists
@@ -42,7 +36,7 @@ Command used:
 k6 run loadtests/smoke.js
 ```
 
-Summary from the deployed run:
+Summary from the deployed run as of (2026-04-12):
 
 1. `http_reqs`: `9321` total (`66.28 req/s`)
 2. `http_req_failed`: `2.00%` (`187 out of 9321`)
@@ -55,7 +49,7 @@ Important context from the same run: repeated transport failures still appeared 
 
 > **Note on variance**: _chart values and summary values can vary slightly between runs, and that is expected_.
 
-## ❌ Load Test Summary (Deployed, Real Run)
+## ❌ Load Test Summary (Deployed, Real Run) as of 2026-04-12
 
 1. `http_reqs`: `30475` total (`86.66 req/s`)
 2. `http_req_failed`: `33.59%` (`10239 out of 30475`)
@@ -82,22 +76,7 @@ From the above smoke,load test runs and the above screenshots, the app currently
 **This is a loud and clear infrastructure saturation signal, not a "weak code" signal.**
 **The backend architecture is async and solid; the current Azure VM/DB sizing is what is being overrun under sustained concurrency.**
 
-## 🧠 Why Deployed Is Currently Limited
-
-If you check [docs/AZURE_DEPLOYMENT.md](./AZURE_DEPLOYMENT.md), the deployed stack is basic-tier and student-budget friendly:
-
-1. VM is a burstable class (`Standard_B2ats_v2`),
-2. Postgres is small tier (`B1ms`),
-3. Redis runs on same VM and shares resources with app and Nginx.
-
-At high concurrency this causes:
-
-1. CPU/credit pressure on VM,
-2. DB IOPS and latency bottlenecks,
-3. queueing and timeout amplification at proxy/app layers,
-4. internet + TLS overhead that localhost does not have.
-
-So even with Gunicorn + multiple Uvicorn workers, end-to-end throughput can still collapse when infra saturates first.
+> **Update (PR #31):** The app shows measurable improvements after the improvments made in PR #31.
 
 
 ## 🚀 What a Strong Azure Setup Would Change
@@ -110,6 +89,4 @@ So in short: current infra = about `66 req/s`, better infra = easily a few hundr
 
 ## ✅ Honest Conclusion
 
-- Current deployed infra is enough to demonstrate real deployment and moderate traffic.
-- It is not sized for heavy sustained load/stress profiles.
-- **_The async backend architecture is still a solid foundation and is expected to scale much higher on stronger infra tiers and better resource separation._**
+**_The async backend architecture is still a solid foundation and is expected to scale much higher on stronger infra tiers and better resource separation._**

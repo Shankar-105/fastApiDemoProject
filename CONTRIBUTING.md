@@ -18,19 +18,10 @@ Welcome — contributions are open to everyone. Whether you're extending the bac
 
 ### 1. Get the project running locally
 
-Follow [docs/SETUP.md](./docs/SETUP.md) — the fastest way is Docker Compose (spins up API + PostgreSQL + Redis in one command).
+Follow [docs/SETUP.md](./docs/SETUP.md) — the fastest way is Docker Compose (spins up API + PostgreSQL + Redis and all the other services in one command).
 
-### 2. Understand the stack before you touch code
 
-| Layer | Technology |
-|---|---|
-| Framework | FastAPI |
-| Database | PostgreSQL 16 via `asyncpg` + SQLAlchemy AsyncSession |
-| Cache & Blacklist | Redis 7 (`redis.asyncio`) |
-| Auth | JWT (python-jose) + bcrypt |
-| Migrations | Alembic (auto-runs on startup) |
-
-### 3. Adding a new feature — typical flow
+### 2. Adding a new feature — typical flow
 
 ```
 1. Add/update the model in app/models.py
@@ -71,7 +62,7 @@ All endpoints are documented in [docs/API_GUIDE.md](./docs/API_GUIDE.md) — eve
 
 1. Fork the repo, branch off `main` → `git checkout -b feat/your-feature-name`
 2. Make Sure all the tests pass before you push — broken tests won't be merged.
-3. Write clear commits: `add hashtag filtering` not `update stuff`
+3. Write clear commits: example `add hashtag filtering` not `update stuff`
 
 I'll review and comment directly on the PR. If it looks good, I'll merge it.
 

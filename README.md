@@ -31,7 +31,7 @@ _Want to run the API, test it, or make your own changes? Start with [`docs/SETUP
 
 ## 📖 How to Use the API — Complete Endpoint Reference
 
-_Now that your setup is running, explore every endpoint this API has to offer! Check out [`docs/API_GUIDE.md`](./docs/API_GUIDE.md) for a detailed walkthrough of all **60+ REST endpoints** and the **real-time WebSocket chat system**._
+_Now that your setup is running, Check out [`docs/API_GUIDE.md`](./docs/API_GUIDE.md) for a detailed walkthrough of all **60+ REST endpoints** and the **real-time WebSocket chat system**._
 
 ---
 

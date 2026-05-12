@@ -14,7 +14,7 @@ import asyncio
 from app.config import settings
 from app.services.blob_service import upload_blob, delete_blob, get_blob_url
 router=APIRouter(
-    prefix="/v1/posts",
+    prefix="/posts",
     tags=['Posts']
 )
 

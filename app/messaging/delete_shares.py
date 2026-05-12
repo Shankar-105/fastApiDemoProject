@@ -8,7 +8,7 @@ import json,asyncio
 from datetime import datetime
 
 router=APIRouter(
-    prefix="/v1/messaging",
+    prefix="/messaging",
     tags=['Messaging']
 )
 

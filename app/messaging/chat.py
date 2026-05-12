@@ -2,11 +2,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from app import schemas, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.socket_manager import manager
-from chat_system import delete_msg,delete_shares,dm,edit_msg,load_missed_msgs,msg_reaction,share_reaction,reply_msg,reply_to_share,media_msg,read_receipt
+from app.messaging import delete_msg,delete_shares,dm,edit_msg,load_missed_msgs,msg_reaction,share_reaction,reply_msg,reply_to_share,media_msg,read_receipt
 import json
 import asyncio
 router = APIRouter(
-    prefix="/v1/messaging",
+    prefix="/messaging",
     tags=["Messaging"]
 )
 

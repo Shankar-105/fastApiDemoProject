@@ -6,7 +6,7 @@ from sqlalchemy import or_,and_,select,insert,literal
 from typing import List
 
 router=APIRouter(
-    prefix="/v1/messaging",
+    prefix="/messaging",
     tags=['Messaging']
 )
 

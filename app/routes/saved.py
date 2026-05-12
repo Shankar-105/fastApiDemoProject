@@ -6,7 +6,7 @@ from app import db, models, oauth2, schemas as sch
 from app.services.blob_service import get_blob_url
 
 router = APIRouter(
-    prefix="/v1",
+    prefix="",
     tags=["Saved Posts"]
 )
 

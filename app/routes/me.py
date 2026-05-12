@@ -15,7 +15,7 @@ from app.services.blob_service import upload_blob, delete_blob, get_blob_url
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
 
 router=APIRouter(
-    prefix="/v1/users/me",
+    prefix="/users/me",
     tags=['Current User']
 )
 

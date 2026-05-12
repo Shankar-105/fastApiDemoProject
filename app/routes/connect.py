@@ -12,7 +12,7 @@ from app.rate_limiter import follow_limiter
 from app.tasks.notification_tasks import create_notification_task
 
 router=APIRouter(
-    prefix="/v1/users",
+    prefix="/users",
     tags=['Connections']
 )
 

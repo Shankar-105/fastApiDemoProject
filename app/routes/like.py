@@ -10,7 +10,7 @@ from app.services.redis_service import delete_cache_pattern, increment_cache_ver
 from app.tasks.notification_tasks import create_notification_task
 
 router=APIRouter(
-    prefix="/v1",
+    prefix="",
     tags=['Votes']
 )
 

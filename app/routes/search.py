@@ -5,7 +5,7 @@ from sqlalchemy import select,func
 from app.services.blob_service import get_blob_url
 
 router=APIRouter(
-    prefix="/v1",
+    prefix="",
     tags=['Search']
 )
 

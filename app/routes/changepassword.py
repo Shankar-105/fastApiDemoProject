@@ -11,7 +11,7 @@ from app.rate_limiter import change_password_limiter, reset_password_auth_limite
 from app.tasks.email_tasks import send_otp_email as send_otp_email_task
 
 router = APIRouter(
-    prefix="/v1/auth",
+    prefix="/auth",
     tags=["Authentication"]
 )
 

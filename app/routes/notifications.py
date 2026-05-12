@@ -7,7 +7,7 @@ from app.services import notification_service as ns
 from app.services.redis_service import get_cache, set_cache, delete_cache_pattern
 
 router = APIRouter(
-    prefix="/v1/users/me/notifications",
+    prefix="/users/me/notifications",
     tags=["Notifications"]
 )
 

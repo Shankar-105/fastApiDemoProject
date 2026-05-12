@@ -8,7 +8,7 @@ from app.services.redis_service import get_cache, set_cache, delete_cache_patter
 from app.tasks.notification_tasks import create_notification_task
 
 router=APIRouter(
-    prefix="/v1",
+    prefix="",
     tags=['Comments']
 )
 

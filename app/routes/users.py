@@ -13,7 +13,7 @@ import app.services.otp_service as otp_service
 import app.services.email_service as email_service
 from app.tasks.email_tasks import send_verification_email as send_verification_email_task
 router=APIRouter(
-    prefix="/v1/users",
+    prefix="/users",
     tags=['Users']
 )
 

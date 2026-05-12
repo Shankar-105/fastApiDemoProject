@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from app.utils.socket_manager import manager
 
 router = APIRouter(
-    prefix="/v1/messaging",
+    prefix="/messaging",
     tags=["Messaging"]
 )
 

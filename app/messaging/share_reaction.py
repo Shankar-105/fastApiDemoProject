@@ -9,7 +9,7 @@ from typing import List
 import json
 
 router = APIRouter(
-    prefix="/v1/messaging",
+    prefix="/messaging",
     tags=['Messaging']
 )
 

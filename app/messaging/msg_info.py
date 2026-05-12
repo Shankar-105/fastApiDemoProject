@@ -5,7 +5,7 @@ from app import models,oauth2,db
 from app.utils.time_formatting import format_timestamp
 
 router = APIRouter(
-    prefix="/v1/messaging",
+    prefix="/messaging",
     tags=['Messaging']
 )
 

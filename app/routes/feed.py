@@ -8,7 +8,7 @@ from app.services.blob_service import get_blob_url
 import os
 
 router = APIRouter(
-    prefix="/v1/feed",
+    prefix="/feed",
     tags=["Feed"]
 )
 

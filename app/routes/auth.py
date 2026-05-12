@@ -19,7 +19,7 @@ from app.tasks.email_tasks import send_otp_email as send_otp_email_task
 from app.tasks.email_tasks import send_verification_email as send_verification_email_task
 
 router=APIRouter(
-    prefix="/v1/auth",
+    prefix="/auth",
     tags=['Authentication']
 )
 

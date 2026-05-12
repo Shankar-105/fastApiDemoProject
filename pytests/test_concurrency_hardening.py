@@ -12,7 +12,7 @@ from app import models
 from app.routes import connect
 from app.services.concurrency_service import run_with_transient_retry
 from app.services.reconciliation_service import reconcile_denormalized_counters
-from chat_system import delete_msg, load_missed_msgs, read_receipt
+from app.messaging import delete_msg, load_missed_msgs, read_receipt
 
 
 async def _seed_chat_users(session_factory):

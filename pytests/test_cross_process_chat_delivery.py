@@ -47,7 +47,7 @@ class TestCrossProcessChatDelivery:
     @pytest.mark.asyncio
     async def test_direct_message_publishes_to_redis(self, mock_redis_client, mock_db):
         """Test that dm.messageUser publishes to Redis for cross-process delivery."""
-        from chat_system import dm
+        from app.messaging import dm
         
         # Arrange
         sender_id = 1
@@ -64,8 +64,8 @@ class TestCrossProcessChatDelivery:
         mock_manager.send_json_to_user = AsyncMock()
         mock_manager.active_connections = {}
         
-        with patch("chat_system.dm.redis_service.redis_client", mock_redis_client):
-            with patch("chat_system.dm.manager", mock_manager):
+        with patch("app.messaging.dm.redis_service.redis_client", mock_redis_client):
+            with patch("app.messaging.dm.manager", mock_manager):
                 mock_db.add = MagicMock()
                 mock_db.commit = AsyncMock()
                 mock_db.refresh = AsyncMock()
@@ -88,7 +88,7 @@ class TestCrossProcessChatDelivery:
     @pytest.mark.asyncio
     async def test_deleted_message_publishes_to_redis(self, mock_redis_client, mock_db):
         """Test that delete_msg.delete_for_everyone publishes to Redis."""
-        from chat_system import delete_msg
+        from app.messaging import delete_msg
         
         # Arrange
         sender_id = 1
@@ -99,8 +99,8 @@ class TestCrossProcessChatDelivery:
         mock_manager.send_json_to_user = AsyncMock()
         mock_manager.send_personal_message = AsyncMock()
         
-        with patch("chat_system.delete_msg.redis_service.redis_client", mock_redis_client):
-            with patch("chat_system.delete_msg.manager", mock_manager):
+        with patch("app.messaging.delete_msg.redis_service.redis_client", mock_redis_client):
+            with patch("app.messaging.delete_msg.manager", mock_manager):
                 mock_db.execute = AsyncMock()
                 mock_db.commit = AsyncMock()
                 
@@ -126,7 +126,7 @@ class TestCrossProcessChatDelivery:
     @pytest.mark.asyncio
     async def test_message_reaction_publishes_to_redis(self, mock_redis_client, mock_db):
         """Test that msg_reaction.react publishes to Redis."""
-        from chat_system import msg_reaction
+        from app.messaging import msg_reaction
         
         # Arrange
         user_id = 1
@@ -150,8 +150,8 @@ class TestCrossProcessChatDelivery:
         mock_manager.send_personal_message = AsyncMock()
         mock_manager.send_json_to_user = AsyncMock()
         
-        with patch("chat_system.msg_reaction.redis_service.redis_client", mock_redis_client):
-            with patch("chat_system.msg_reaction.manager", mock_manager):
+        with patch("app.messaging.msg_reaction.redis_service.redis_client", mock_redis_client):
+            with patch("app.messaging.msg_reaction.manager", mock_manager):
                 mock_db.execute = AsyncMock()
                 mock_db.commit = AsyncMock()
                 mock_db.refresh = AsyncMock()
@@ -177,7 +177,7 @@ class TestCrossProcessChatDelivery:
     @pytest.mark.asyncio
     async def test_read_receipt_publishes_to_redis(self, mock_redis_client, mock_db):
         """Test that read_receipt.mark_as_read publishes to Redis."""
-        from chat_system import read_receipt
+        from app.messaging import read_receipt
         
         # Arrange
         sender_id = 1
@@ -188,8 +188,8 @@ class TestCrossProcessChatDelivery:
         mock_manager = AsyncMock()
         mock_manager.send_personal_message = AsyncMock()
         
-        with patch("chat_system.read_receipt.redis_service.redis_client", mock_redis_client):
-            with patch("chat_system.read_receipt.manager", mock_manager):
+        with patch("app.messaging.read_receipt.redis_service.redis_client", mock_redis_client):
+            with patch("app.messaging.read_receipt.manager", mock_manager):
                 mock_db.execute = AsyncMock()
                 mock_db.commit = AsyncMock()
                 
@@ -214,7 +214,7 @@ class TestCrossProcessChatDelivery:
     @pytest.mark.asyncio
     async def test_deleted_share_publishes_to_redis(self, mock_redis_client, mock_db):
         """Test that delete_shares.delete_share_for_everyone publishes to Redis."""
-        from chat_system import delete_shares
+        from app.messaging import delete_shares
         
         # Arrange
         sender_id = 1
@@ -225,8 +225,8 @@ class TestCrossProcessChatDelivery:
         mock_manager.send_json_to_user = AsyncMock()
         mock_manager.send_personal_message = AsyncMock()
         
-        with patch("chat_system.delete_shares.redis_service.redis_client", mock_redis_client):
-            with patch("chat_system.delete_shares.manager", mock_manager):
+        with patch("app.messaging.delete_shares.redis_service.redis_client", mock_redis_client):
+            with patch("app.messaging.delete_shares.manager", mock_manager):
                 mock_db.execute = AsyncMock()
                 mock_db.commit = AsyncMock()
                 

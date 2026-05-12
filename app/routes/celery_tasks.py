@@ -4,7 +4,7 @@ from app.celery_app import celery_app
 from celery.result import AsyncResult
 
 router = APIRouter(
-    prefix="/v1/admin/tasks",
+    prefix="/admin/tasks",
     tags=["Task Management"]
 )
 

@@ -18,9 +18,6 @@ from app.utils.observability import configure_observability
 
 
 # -- Database Setup --
-with sync_engine.begin() as conn:
-    conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-
 models.Base.metadata.create_all(bind=sync_engine)
 
 # -- Background Listeners --

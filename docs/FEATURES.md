@@ -62,7 +62,7 @@ Built for real traffic, not like a simple crud app. I hardened critical write pa
 - 🔍 **Optimistic Locking** — `version_id_col` detects stale writes and prevents silent overwrite of profile/auth changes.
 - 🔒 **Pessimistic Locking** — `SELECT ... FOR UPDATE` serializes short critical sections when read-validate-write must be deterministic.
 - 🔁 **Transient Retry** — bounded retry with jitter recovers from PostgreSQL deadlock/serialization aborts (`40P01`, `40001`) without hiding real business errors.
-- 🧩 **Database Design Guardrails** — check constraints, partial indexes, trigram search indexes, and hashed auth secrets keep the schema resilient even when code paths grow.
+- 🧩 **Database Design Guardrails** — check constraints, partial indexes, search indexes, and hashed auth secrets keep the schema resilient even when code paths grow.
 
 ### Why this makes the app better
 
@@ -75,7 +75,7 @@ Built for real traffic, not like a simple crud app. I hardened critical write pa
 ### Current database design choices in the app
 
 - Derived counters for posts, comments, reactions, followers, and views are synchronized in PostgreSQL, not by hand in Python.
-- Search uses PostgreSQL trigram indexes for username and hashtag matching.
+- Search uses PostgreSQL indexes for username and hashtag matching.
 - Refresh tokens and OTPs are stored hashed at rest.
 - Schema constraints reject invalid counters, invalid media types, and duplicate relational states before they reach application code.
 
@@ -266,8 +266,11 @@ The app now pushes slow or repeatable work into a queue instead of doing it in t
 
 ## 🔍 Search
 
-- **User search** — search by username with partial matching (`ILIKE`) backed by a PostgreSQL trigram index
-- **Hashtag search** — prefix query with `#` to search posts by hashtag, ranked with trigram similarity
+- **User search** — search by username with partial matching (`ILIKE`) backed by a PostgreSQL index.
+
+(**Removed the pg_trgm PostgreSQL extension, as it is not allowed in the Azure Database for PostgreSQL**)
+
+- **Hashtag search** — prefix query with `#` to search posts by hashtag, ranked with similarity
 - **Order by likes** — hashtag search results can be sorted by like count (`orderBy=likes`)
 - **Paginated results** — both user and post search support `limit` and `offset`
 - **Response type indicator** — the response includes `result_type` ("users" or "posts") so the client knows what it received
@@ -486,5 +489,3 @@ The API follows a strict versioning policy to ensure stability and backward comp
 - **Performance bottleneck discovery** — setup is designed to reveal latency tail growth, timeout behavior, and transport-level failures (EOF/connect timeout) under pressure.
 
 ---
-
-> Built with ❤️ using FastAPI, SQLAlchemy, PostgreSQL, Redis, WebSockets & Real-Time Pub/Sub

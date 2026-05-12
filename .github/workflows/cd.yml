@@ -39,18 +39,18 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            echo "📥 Installing dependencies..."
+            echo "📥 Updating dependencies..."
             source venv/bin/activate
             pip install -r requirements.txt --quiet
 
-            echo "🗃️ Running database migrations..."
-            set -a && source .env && set +a
-            alembic upgrade head
-
-            echo "🔄 Restarting application..."
+            echo "🚀 Reloading Systemd Service..."
+            chmod +x startup_prod.sh
+            
+            # This triggers the startup_prod.sh script via the system manager
+            sudo systemctl daemon-reload
             sudo systemctl restart fastapi
 
-            sleep 3
+            sleep 5
             if sudo systemctl is-active --quiet fastapi; then
               echo "✅ Deployment successful! App is running."
             else

@@ -266,7 +266,10 @@ The app now pushes slow or repeatable work into a queue instead of doing it in t
 
 ## 🔍 Search
 
-- **User search** — search by username with partial matching (`ILIKE`) backed by a PostgreSQL trigram index
+- **User search** — search by username with partial matching (`ILIKE`) backed by a PostgreSQL trigram index.
+
+(**Removed the pg_trgm PostgreSQL extension, as it is not allowed in the Azure Database for PostgreSQL**)
+
 - **Hashtag search** — prefix query with `#` to search posts by hashtag, ranked with trigram similarity
 - **Order by likes** — hashtag search results can be sorted by like count (`orderBy=likes`)
 - **Paginated results** — both user and post search support `limit` and `offset`

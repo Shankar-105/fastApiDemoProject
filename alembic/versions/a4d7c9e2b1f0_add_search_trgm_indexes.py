@@ -18,26 +18,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
     op.create_index(
-        "ix_users_username_trgm",
+        "ix_users_username_lower",
         "users",
-        ["username"],
+        [sa.text("lower(username)")],
         unique=False,
-        postgresql_using="gin",
-        postgresql_ops={"username": "gin_trgm_ops"},
     )
     op.create_index(
-        "ix_posts_hashtags_trgm",
+        "ix_posts_hashtags",
         "posts",
         ["hashtags"],
         unique=False,
-        postgresql_using="gin",
-        postgresql_ops={"hashtags": "gin_trgm_ops"},
         postgresql_where=sa.text("hashtags IS NOT NULL"),
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_posts_hashtags_trgm", table_name="posts")
-    op.drop_index("ix_users_username_trgm", table_name="users")
+    op.drop_index("ix_posts_hashtags", table_name="posts")
+    op.drop_index("ix_users_username_lower", table_name="users")

@@ -15,13 +15,12 @@ async def search(searchParams: sch.SearchRequest = Depends(), db: AsyncSession =
         # Hashtag search - search for posts
         hashtag = searchParams.q.lstrip("#")
         hashtag_filter = models.Post.hashtags.ilike(f"%{hashtag}%")
-        hashtag_rank = func.similarity(func.coalesce(models.Post.hashtags, ""), hashtag)
         total_count = func.count(models.Post.id).over().label("total_count")
-        base_query=select(models.Post, total_count).where(models.Post.hashtags.isnot(None), hashtag_filter)
+        base_query = select(models.Post, total_count).where(models.Post.hashtags.isnot(None), hashtag_filter)
         if searchParams.orderBy == "likes":
-            base_query=base_query.order_by(models.Post.likes.desc(), hashtag_rank.desc(), models.Post.created_at.desc())
+            base_query = base_query.order_by(models.Post.likes.desc(), models.Post.created_at.desc())
         else:
-            base_query=base_query.order_by(hashtag_rank.desc(), models.Post.created_at.desc())
+            base_query = base_query.order_by(models.Post.created_at.desc())
         
         # Fetch paginated results
         postsResult=await db.execute(base_query.offset(searchParams.offset).limit(searchParams.limit))
@@ -54,7 +53,7 @@ async def search(searchParams: sch.SearchRequest = Depends(), db: AsyncSession =
         usersResult=await db.execute(
             select(models.User, total_count)
             .where(user_filter)
-            .order_by(func.similarity(models.User.username, searchParams.q).desc(), models.User.username.asc())
+            .order_by(models.User.username.asc())
             .offset(searchParams.offset)
             .limit(searchParams.limit)
         )

@@ -8,12 +8,15 @@ from app.services import redis_service
 from typing import List
 import json
 
-router = APIRouter(tags=['shared post reactions'])
+router = APIRouter(
+    prefix="/v1/messaging",
+    tags=['Messaging']
+)
 
 # same as the message_reaction but here the shares are
 # stored in the SharedPosts table so we query that insted of
 # the messages table
-@router.get("/shared/{shared_id}/reactions", response_model=List[schemas.ReactedUsers])
+@router.get("/shares/{shared_id}/reactions", response_model=List[schemas.ReactedUsers])
 async def get_shared_post_reactions(
     shared_id: int,
     db: AsyncSession = Depends(db.getDb),

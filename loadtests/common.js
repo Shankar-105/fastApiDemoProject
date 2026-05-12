@@ -24,7 +24,7 @@ function signupTestUser() {
     nickname: "k6-user",
   });
 
-  const res = http.post(`${BASE_URL}/user/signup`, payload, {
+  const res = http.post(`${BASE_URL}/v1/users/register`, payload, {
     headers: { "Content-Type": "application/json" },
     responseCallback: http.expectedStatuses(201, 409, 422, 429, 500),
     tags: { endpoint: "user_signup" },
@@ -38,7 +38,7 @@ function signupTestUser() {
 function tryLoginForToken() {
   const body = `username=${encodeURIComponent(TEST_USER.username)}&password=${encodeURIComponent(TEST_USER.password)}`;
 
-  const res = http.post(`${BASE_URL}/login`, body, {
+  const res = http.post(`${BASE_URL}/v1/auth/login`, body, {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     responseCallback: http.expectedStatuses(202, 401, 403, 422, 429),
     tags: { endpoint: "auth_login" },
@@ -84,18 +84,18 @@ function hitHealth() {
 }
 
 function hitUsersAll() {
-  const res = http.get(`${BASE_URL}/users/getAllUsers`, {
+  const res = http.get(`${BASE_URL}/v1/users`, {
     responseCallback: http.expectedStatuses(201, 500),
     tags: { endpoint: "users_all" },
   });
 
   check(res, {
-    "users/getAllUsers reachable": (r) => [201, 500].includes(r.status),
+    "v1/users reachable": (r) => [201, 500].includes(r.status),
   });
 }
 
 function hitFeedExplore(token) {
-  const res = http.get(`${BASE_URL}/feed/explore?page=1&limit=10`, {
+  const res = http.get(`${BASE_URL}/v1/feed/explore?page=1&limit=10`, {
     headers: makeAuthHeaders(token),
     responseCallback: http.expectedStatuses(200, 401, 403, 429),
     tags: { endpoint: "feed_explore" },
@@ -107,91 +107,91 @@ function hitFeedExplore(token) {
 }
 
 function hitSearch(token) {
-  const res = http.get(`${BASE_URL}/search?q=dev&limit=5&offset=0`, {
+  const res = http.get(`${BASE_URL}/v1/search?q=dev&limit=5&offset=0`, {
     headers: makeAuthHeaders(token),
     responseCallback: http.expectedStatuses(202, 400, 401, 403, 429, 500),
     tags: { endpoint: "search" },
   });
 
   check(res, {
-    "search reachable": (r) => [202, 400, 401, 403, 429, 500].includes(r.status),
+    "v1/search reachable": (r) => [202, 400, 401, 403, 429, 500].includes(r.status),
   });
 }
 
 function hitUserPosts(token) {
-  const res = http.get(`${BASE_URL}/users/1/posts?limit=5&offset=0`, {
+  const res = http.get(`${BASE_URL}/v1/users/1/posts?limit=5&offset=0`, {
     headers: makeAuthHeaders(token),
     responseCallback: http.expectedStatuses(200, 401, 403, 404, 429, 500),
     tags: { endpoint: "users_posts" },
   });
 
   check(res, {
-    "users/{id}/posts reachable": (r) => [200, 401, 403, 404, 429, 500].includes(r.status),
+    "v1/users/{id}/posts reachable": (r) => [200, 401, 403, 404, 429, 500].includes(r.status),
   });
 }
 
 function hitNotifications(token) {
-  const res = http.get(`${BASE_URL}/me/notifications/unread-count`, {
+  const res = http.get(`${BASE_URL}/v1/users/me/notifications/unread-count`, {
     headers: makeAuthHeaders(token),
     responseCallback: http.expectedStatuses(200, 401, 403, 429),
     tags: { endpoint: "notifications_unread" },
   });
 
   check(res, {
-    "notifications/unread-count reachable": (r) => [200, 401, 403, 429].includes(r.status),
+    "v1/users/me/notifications/unread-count reachable": (r) => [200, 401, 403, 429].includes(r.status),
   });
 }
 
 function hitPostDetails(token) {
-  const res = http.get(`${BASE_URL}/posts/getPost/1`, {
+  const res = http.get(`${BASE_URL}/v1/posts/1`, {
     headers: makeAuthHeaders(token),
     responseCallback: http.expectedStatuses(200, 401, 403, 404, 429, 500),
     tags: { endpoint: "post_get" },
   });
 
   check(res, {
-    "posts/getPost reachable": (r) => [200, 401, 403, 404, 429, 500].includes(r.status),
+    "v1/posts/{id} reachable": (r) => [200, 401, 403, 404, 429, 500].includes(r.status),
   });
 }
 
 function hitFeedHome(token) {
-  const res = http.get(`${BASE_URL}/feed/home?limit=10&offset=0`, {
+  const res = http.get(`${BASE_URL}/v1/feed?limit=10&offset=0`, {
     headers: makeAuthHeaders(token),
     responseCallback: http.expectedStatuses(200, 401, 403, 429, 500),
     tags: { endpoint: "feed_home" },
   });
 
   check(res, {
-    "feed/home reachable": (r) => [200, 401, 403, 429, 500].includes(r.status),
+    "v1/feed reachable": (r) => [200, 401, 403, 429, 500].includes(r.status),
   });
 }
 
 function hitMePosts(token) {
-  const res = http.get(`${BASE_URL}/me/posts?limit=10&offset=0`, {
+  const res = http.get(`${BASE_URL}/v1/users/me/posts?limit=10&offset=0`, {
     headers: makeAuthHeaders(token),
     responseCallback: http.expectedStatuses(200, 401, 403, 429, 500),
     tags: { endpoint: "me_posts" },
   });
 
   check(res, {
-    "me/posts reachable": (r) => [200, 401, 403, 429, 500].includes(r.status),
+    "v1/users/me/posts reachable": (r) => [200, 401, 403, 429, 500].includes(r.status),
   });
 }
 
 function hitUserProfile(token) {
-  const res = http.get(`${BASE_URL}/users/1/profile`, {
+  const res = http.get(`${BASE_URL}/v1/users/1`, {
     headers: makeAuthHeaders(token),
     responseCallback: http.expectedStatuses(200, 401, 403, 404, 429, 500),
     tags: { endpoint: "user_profile" },
   });
 
   check(res, {
-    "users/{id}/profile reachable": (r) => [200, 401, 403, 404, 429, 500].includes(r.status),
+    "v1/users/{id} reachable": (r) => [200, 401, 403, 404, 429, 500].includes(r.status),
   });
 }
 
 function hitCommentStats(token) {
-  const res = http.get(`${BASE_URL}/me/comment-stats`, {
+  const res = http.get(`${BASE_URL}/v1/users/me/stats/comments`, {
     headers: makeAuthHeaders(token),
     responseCallback: http.expectedStatuses(200, 401, 403, 429, 500),
     tags: { endpoint: "me_comment_stats" },
@@ -203,14 +203,14 @@ function hitCommentStats(token) {
 }
 
 function hitVoteStats(token) {
-  const res = http.get(`${BASE_URL}/me/voteStats`, {
+  const res = http.get(`${BASE_URL}/v1/users/me/stats/votes`, {
     headers: makeAuthHeaders(token),
     responseCallback: http.expectedStatuses(200, 401, 403, 429, 500),
     tags: { endpoint: "me_vote_stats" },
   });
 
   check(res, {
-    "me/voteStats reachable": (r) => [200, 401, 403, 429, 500].includes(r.status),
+    "v1/users/me/stats/votes reachable": (r) => [200, 401, 403, 429, 500].includes(r.status),
   });
 }
 

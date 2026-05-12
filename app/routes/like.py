@@ -10,12 +10,15 @@ from app.services.redis_service import delete_cache_pattern, increment_cache_ver
 from app.tasks.notification_tasks import create_notification_task
 
 router=APIRouter(
-    tags=['likes']
+    prefix="/v1",
+    tags=['Votes']
 )
 
-@router.post("/vote/on_post",status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
+@router.post("/posts/{postId}/votes", status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
 # get the post user that user wants to vote on with which user he is
-async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+async def voteOnPost(postId:int, post:sch.VoteRequest=Body(...), db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    if post.post_id != postId:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path postId and request post_id must match")
     # search for the post he wants to vote on against the db 
     # to firstly check whether that particular post is present or not in the db
     result=await db.execute(select(models.Post).where(models.Post.id==post.post_id))
@@ -89,8 +92,10 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Database error, please try again"
                             )
-@router.post("/vote/on_comment",status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
-async def likeAComment(comment:sch.CommentVoteRequest=Body(...),db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.post("/comments/{commentId}/votes", status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
+async def likeAComment(commentId:int, comment:sch.CommentVoteRequest=Body(...), db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    if comment.comment_id != commentId:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path commentId and request comment_id must match")
     # search for the comment he wants to vote on against the db 
     # to firstly check whether that particular comment is present or not in the db
     result=await db.execute(select(models.Comments).where(models.Comments.id==comment.comment_id))

@@ -120,21 +120,19 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "https://fastapi-social-vm.centralindia.cloudapp.azure.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 app.include_router(posts.router)
+app.include_router(me.router)
 app.include_router(users.router)
 app.include_router(auth.router)
 app.include_router(like.router)
 app.include_router(connect.router)
 app.include_router(comment.router)
 app.include_router(search.router)
-app.include_router(me.router)
 app.include_router(changepassword.router)
 app.include_router(feed.router)
 app.include_router(saved.router)

@@ -23,13 +23,16 @@ Follow [`SETUP.md`](./docs/SETUP.md) — the fastest way is Docker Compose (spin
 
 ### 2. Adding a new feature — typical flow
 
+> [!IMPORTANT]
+> **API Versioning Rule**: Always use versioned prefixes (e.g., `/v1`). If you are making a **breaking change** to an existing endpoint, do not update the current version. Instead, create a new versioned router (e.g., `/v2`) to maintain backward compatibility for existing clients.
+
 ```
 1. Add/update the model in app/models.py
 2. Generate a migration: alembic revision --autogenerate -m "description"
 3. Add request/response schemas in app/schemas.py
-4. Write the route in app/routes/<your_file>.py
+4. Write the route in app/routes/<your_file>.py (Ensure prefix="/v1/...")
 5. Register the router in app/main.py
-6. Write tests in pytests/
+6. Write tests in pytests/ (Using versioned paths)
 7. Run tests: docker compose exec api pytest pytests/ -v
 ```
 
@@ -48,7 +51,7 @@ The backend is **already deployed on Azure** — you don't need to run anything 
 | Live (Azure) | `https://fastapi-social-vm.centralindia.cloudapp.azure.com/docs`  |
 | Local (Docker) | `http://localhost:8000` |
 
-Both results the same response. So instead of `http://localhost:8000/login` you can just hit `https://fastapi-social-vm.centralindia.cloudapp.azure.com/login` — same endpoint, same response. Use whichever fits your workflow.
+Both results the same response. So instead of `http://localhost:8000/v1/auth/login` you can just hit `https://fastapi-social-vm.centralindia.cloudapp.azure.com/v1/auth/login` — same endpoint, same response. Use whichever fits your workflow.
 
 ### Your API Reference
 

@@ -10,9 +10,12 @@ from typing import List
 from sqlalchemy.exc import IntegrityError
 from app.utils.socket_manager import manager
 
-router = APIRouter(prefix="/chat", tags=["chat_history"])
+router = APIRouter(
+    prefix="/v1/messaging",
+    tags=["Messaging"]
+)
 
-@router.get("/history/{friend_id}")
+@router.get("/conversations/{friend_id}/messages")
 async def get_chat_history(
     friend_id: int,
     db: AsyncSession = Depends(getDb),
@@ -140,7 +143,7 @@ async def get_chat_history(
     chat_history.sort(key=lambda x : x.get("timestamp") if "timestamp" in  x else x.get("sent_at"))
     return chat_history  # oldest first
 
-@router.get("/recent-chats")
+@router.get("/conversations")
 async def get_recent_chats(
     db: AsyncSession = Depends(getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser)

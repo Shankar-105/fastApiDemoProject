@@ -300,11 +300,11 @@ async def create_test_user(client):
         "nickname": "TestUser",
         "email": "testuser@example.com",
     }
-    resp = await client.post("/user/signup", json=user_data)
+    resp = await client.post("/v1/users/register", json=user_data)
     assert resp.status_code in (201, 409)  # 201=created, 409=already exists
 
     verify = await client.post(
-        "/verify-email",
+        "/v1/auth/email/verify",
         json={"email": user_data["email"], "otp": "123456"},
     )
     assert verify.status_code in (200, 404)
@@ -318,7 +318,7 @@ async def get_token(client, create_test_user):
         "username": create_test_user["username"],
         "password": create_test_user["password"]
     }
-    resp = await client.post("/login", data=data)
+    resp = await client.post("/v1/auth/login", data=data)
     assert resp.status_code == 202
     token = resp.json()["accessToken"]
     return token

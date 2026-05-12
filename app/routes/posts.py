@@ -14,12 +14,13 @@ import asyncio
 from app.config import settings
 from app.services.blob_service import upload_blob, delete_blob, get_blob_url
 router=APIRouter(
+    prefix="/v1/posts",
     tags=['Posts']
 )
 
 # gets a specific post with id -> {postId}
-@router.get("/posts/getPost/{postId}", response_model=sch.PostDetailResponse)
-async def getPost(postId:int,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.get("/{postId}", response_model=sch.PostDetailResponse)
+async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # Check Redis cache first
     cache_key = f"post:{postId}:{currentUser.id}"
     cached = await get_cache(cache_key)
@@ -85,7 +86,7 @@ async def getPost(postId:int,db:AsyncSession=Depends(getDb),currentUser:models.U
 
 
 # creates a new post using sqlAlchemy
-@router.post("/posts/createPost", status_code=status.HTTP_201_CREATED, response_model=sch.PostDetailResponse)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=sch.PostDetailResponse)
 async def create_post(
     title:str=Form(...),
     content:str=Form(...),
@@ -153,8 +154,8 @@ async def create_post(
         owner=owner
     )
 # delets a specific post with the mentioned id -> {id}
-@router.delete("/posts/deletePost/{postId}", response_model=sch.SuccessResponse)
-async def deletePost(postId:int,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.delete("/{postId}", response_model=sch.SuccessResponse)
+async def delete_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     result=await db.execute(select(models.Post).where(and_(models.Post.id==postId,models.Post.user_id==currentUser.id)))
     postToDelete=result.scalars().first()
     if not postToDelete:
@@ -175,8 +176,8 @@ async def deletePost(postId:int,db:AsyncSession=Depends(getDb),currentUser:model
     return sch.SuccessResponse(message=f"Post {postToDelete.id} deleted successfully")
 
 # update a specific post with id -> {id}
-@router.put("/posts/editPost/{postId}", response_model=sch.PostDetailResponse)
-async def editPost(postId:int,post:sch.PostUpdateRequest,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.put("/{postId}", response_model=sch.PostDetailResponse)
+async def update_post(postId:int, post:sch.PostUpdateRequest, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     result=await db.execute(
         select(models.Post)
         .options(selectinload(models.Post.user))

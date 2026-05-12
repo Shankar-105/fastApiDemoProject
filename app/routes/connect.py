@@ -11,10 +11,13 @@ from app.models import NotificationType
 from app.rate_limiter import follow_limiter
 from app.tasks.notification_tasks import create_notification_task
 
-router=APIRouter(tags=['connections'])
+router=APIRouter(
+    prefix="/v1/users",
+    tags=['Connections']
+)
 
-@router.post("/follow/{user_id}",status_code=status.HTTP_201_CREATED, response_model=sch.FollowResponse)
-async def follow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),background_tasks=None,_:None=Depends(follow_limiter)):
+@router.post("/{user_id}/follow", status_code=status.HTTP_201_CREATED, response_model=sch.FollowResponse)
+async def follow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser), background_tasks=None, _:None=Depends(follow_limiter)):
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     userToFollow=result.scalars().first()
     if not userToFollow:
@@ -59,8 +62,8 @@ async def follow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.U
     )
     return sch.FollowResponse(message=f"Followed user {userToFollow.username}", following_count=currentUser.following_cnt)
     
-@router.delete("/unfollow/{user_id}",status_code=status.HTTP_200_OK, response_model=sch.FollowResponse)
-async def unfollow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.delete("/{user_id}/unfollow", status_code=status.HTTP_200_OK, response_model=sch.FollowResponse)
+async def unfollow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     userToUnFollow=result.scalars().first()
     if not userToUnFollow:
@@ -93,9 +96,13 @@ async def unfollow(user_id:int,db:AsyncSession=Depends(getDb),currentUser:models
     await delete_cache_pattern(f"feed:home:{currentUser.id}:*")
     return sch.FollowResponse(message=f"Unfollowed user {userToUnFollow.username}", following_count=currentUser.following_cnt)
 
-@router.delete("/remove_follower/{user_id}", status_code=status.HTTP_200_OK, response_model=sch.FollowResponse)
-async def remove_follower(user_id: int, db: AsyncSession = Depends(getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
-    result=await db.execute(select(models.User).where(models.User.id == user_id))
+@router.delete("/{user_id}/followers/{follower_id}", status_code=status.HTTP_200_OK, response_model=sch.FollowResponse)
+async def remove_follower_endpoint(user_id:int, follower_id:int, db: AsyncSession = Depends(getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
+    # Verify that the current user is trying to remove their own follower
+    if user_id != currentUser.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Can only remove followers from your own account")
+    
+    result=await db.execute(select(models.User).where(models.User.id == follower_id))
     userToRemove=result.scalars().first()
     if not userToRemove:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User doesn't exist")
@@ -104,7 +111,7 @@ async def remove_follower(user_id: int, db: AsyncSession = Depends(getDb), curre
         delete_result = await db.execute(
             delete(models.connections)
             .where(
-                and_(models.connections.c.followed_id==currentUser.id, models.connections.c.follower_id==user_id)
+                and_(models.connections.c.followed_id==currentUser.id, models.connections.c.follower_id==follower_id)
             )
             .returning(models.connections.c.follower_id)
         )
@@ -127,8 +134,8 @@ async def remove_follower(user_id: int, db: AsyncSession = Depends(getDb), curre
     await delete_cache(f"following:{userToRemove.id}")
     return sch.FollowResponse(message=f"Removed follower {userToRemove.username}", following_count=currentUser.following_cnt)
 
-@router.get("/connections/users/{user_id}/followers", response_model=List[sch.UserBasicResponse])
-async def get_followers(user_id:int,db:AsyncSession=Depends(getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
+@router.get("/{user_id}/followers", response_model=List[sch.UserBasicResponse])
+async def get_followers_list(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()
     if not user:
@@ -162,8 +169,8 @@ async def get_followers(user_id:int,db:AsyncSession=Depends(getDb), currentUser:
         ) for f, is_following in followers
     ]
 
-@router.get("/connections/users/{user_id}/following", response_model=List[sch.UserBasicResponse])
-async def get_following(user_id:int,db:AsyncSession=Depends(getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
+@router.get("/{user_id}/following", response_model=List[sch.UserBasicResponse])
+async def get_following_list(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()
     if not user:

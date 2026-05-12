@@ -10,9 +10,12 @@ from app.services.concurrency_service import lock_user_row, run_with_transient_r
 from app.rate_limiter import change_password_limiter, reset_password_auth_limiter
 from app.tasks.email_tasks import send_otp_email as send_otp_email_task
 
-router = APIRouter(tags=["changepassword"])
+router = APIRouter(
+    prefix="/v1/auth",
+    tags=["Authentication"]
+)
 
-@router.post("/change-password", response_model=schemas.SuccessResponse)
+@router.post("/password/change", response_model=schemas.SuccessResponse)
 async def change_password(db: AsyncSession = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),_:None=Depends(change_password_limiter)):
     # call the generate otp method in the otp_service file which generates an otp
     otp=otp_service.generateOtp()
@@ -29,8 +32,8 @@ async def verifyOtp(db:AsyncSession,otp:str,currentUser:models.User):
     await db.rollback()
     raise HTTPException(status_code=400,detail="Wrong or expired OTP")
 
-@router.post("/reset-password-auth", response_model=schemas.SuccessResponse)
-async def reset_password(request:schemas.PasswordResetRequest=Body(...),db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),token: str = Depends(oauth2.oauth2_scheme),_:None=Depends(reset_password_auth_limiter)):
+@router.post("/password/reset-authenticated", response_model=schemas.SuccessResponse)
+async def reset_password_authenticated(request:schemas.PasswordResetRequest=Body(...),db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),token: str = Depends(oauth2.oauth2_scheme),_:None=Depends(reset_password_auth_limiter)):
     async def _reset_password():
         locked_user = await lock_user_row(db, user_id=currentUser.id)
         # first check whether the user entered the correct current password

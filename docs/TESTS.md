@@ -191,7 +191,7 @@ Example:
 ```python
 def test_new_endpoint(client, get_token):
     headers = {"Authorization": f"Bearer {get_token}"}
-    resp = client.post("/new-endpoint", json={"data": "test"}, headers=headers)
+    resp = client.post("/v1/new-endpoint", json={"data": "test"}, headers=headers)
     assert resp.status_code == 201
 ```
 

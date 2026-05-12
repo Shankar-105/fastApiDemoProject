@@ -8,13 +8,17 @@ from app.services import redis_service
 import json,asyncio
 from datetime import datetime
 
-router=APIRouter(tags=['delete msg'])
+router=APIRouter(
+    prefix="/v1/messaging",
+    tags=['Messaging']
+)
+
 # a http route to handle the delete for me click from the user
 # its not a web socket route like the delete for everyone message because
 # when a user clicks on the delete for me button its enough to show the
 # user that the message is deleted so doesn't envolve the receiver so we dont
 # have a need here to use the websockets just let the frontend do its ui work
-@router.post("/delete/for-me/{msg_id}")
+@router.post("/messages/{msg_id}")
 async def deleteForMe(
     msg_id: int,
     db: AsyncSession=Depends(db.getDb),

@@ -179,7 +179,7 @@ async def test_follow_is_atomic_under_concurrency(db_session_factory):
         async with db_session_factory() as db:
             follower_row = (await db.execute(select(models.User).where(models.User.id == follower_id))).scalars().first()
             assert follower_row is not None
-            return await connect.follow(
+            return await connect.follow_user(
                 followed_id,
                 db=db,
                 currentUser=follower_row,

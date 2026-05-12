@@ -5,9 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import or_,and_,select,insert,literal
 from typing import List
 
-router=APIRouter(tags=['clear-chat'])
+router=APIRouter(
+    prefix="/v1/messaging",
+    tags=['Messaging']
+)
 
-@router.delete("/clear-chat/{friend_id}")
+@router.delete("/conversations/{friend_id}")
 async def clear_chat(friend_id:int,db:AsyncSession =Depends(db.getDb),current_user:models.User=Depends(oauth2.getCurrentUser)):
     
     # messages already deleted by me

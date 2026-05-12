@@ -3,10 +3,13 @@ from fastapi import APIRouter, HTTPException
 from app.celery_app import celery_app
 from celery.result import AsyncResult
 
-router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+router = APIRouter(
+    prefix="/v1/admin/tasks",
+    tags=["Task Management"]
+)
 
 
-@router.get("/status/{task_id}")
+@router.get("/{task_id}/status")
 async def get_task_status(task_id: str):
     """
     Get status and result of a specific task.
@@ -144,7 +147,7 @@ async def get_worker_stats():
     return {"workers": worker_info}
 
 
-@router.post("/revoke/{task_id}")
+@router.post("/{task_id}/revoke")
 async def revoke_task(task_id: str, terminate: bool = False):
     """
     Revoke (cancel) a specific task.
@@ -163,7 +166,7 @@ async def revoke_task(task_id: str, terminate: bool = False):
     }
 
 
-@router.get("/purge/{queue_name}")
+@router.get("/queues/{queue_name}/purge")
 async def purge_queue(queue_name: str = "celery"):
     """
     Purge all tasks from a specific queue.

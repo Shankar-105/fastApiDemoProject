@@ -13,11 +13,12 @@ import app.services.otp_service as otp_service
 import app.services.email_service as email_service
 from app.tasks.email_tasks import send_verification_email as send_verification_email_task
 router=APIRouter(
+    prefix="/v1/users",
     tags=['Users']
 )
 
-@router.get("/users/{user_id}/profile",status_code=status.HTTP_200_OK,response_model=sch.UserProfileResponse)
-async def userProfile(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.get("/{user_id}", status_code=status.HTTP_200_OK, response_model=sch.UserProfileResponse)
+async def get_user_profile(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # Phase A: Check cache FIRST before doing expensive is_following query.
     # This avoids DB queries on cache hits even for user-specific data.
     cache_key = f"user_profile:{user_id}"
@@ -77,8 +78,8 @@ async def userProfile(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:
     await set_cache(cache_key, result_response.model_dump(mode="json"), ttl=120)
     return result_response
 
-@router.get("/users/{user_id}/profile/pic",status_code=status.HTTP_200_OK, response_model=sch.MediaInfo)
-async def myProfilePicture(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.get("/{user_id}/avatar", status_code=status.HTTP_200_OK, response_model=sch.MediaInfo)
+async def get_user_avatar(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # get the current users profile pic
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()
@@ -91,8 +92,8 @@ async def myProfilePicture(user_id:int,db:AsyncSession=Depends(db.getDb),current
         type="image"
     )
 
-@router.post("/user/signup",status_code=status.HTTP_201_CREATED,response_model=sch.UserResponse)
-async def createUser(userData:sch.UserSignupRequest=Body(...),db:AsyncSession=Depends(db.getDb),_:None=Depends(signup_limiter)):
+@router.post("/register", status_code=status.HTTP_201_CREATED, response_model=sch.UserResponse)
+async def register_user(userData:sch.UserSignupRequest=Body(...), db:AsyncSession=Depends(db.getDb), _:None=Depends(signup_limiter)):
     # prevent duplicate emails to keep OTP verification deterministic per user
     existing_email = await db.execute(select(models.User).where(models.User.email == userData.email))
     if existing_email.scalars().first():
@@ -118,8 +119,8 @@ async def createUser(userData:sch.UserSignupRequest=Body(...),db:AsyncSession=De
     await delete_cache("all_users")
     return newUser
 
-@router.get("/users/getAllUsers",status_code=status.HTTP_201_CREATED,response_model=List[sch.UserResponse])
-async def getAllUsers(db:AsyncSession=Depends(db.getDb)):
+@router.get("", status_code=status.HTTP_200_OK, response_model=List[sch.UserResponse])
+async def list_users(db:AsyncSession=Depends(db.getDb)):
     # Check the cache first
     cached = await get_cache("all_users")
     if cached:
@@ -140,8 +141,8 @@ async def getAllUsers(db:AsyncSession=Depends(db.getDb)):
 
     return [sch.UserResponse(**item) for item in users_data]
 
-@router.get("/users/{user_id}/followers",status_code=status.HTTP_200_OK, response_model=List[sch.UserBasicResponse])
-async def get_followers(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.get("/{user_id}/followers", status_code=status.HTTP_200_OK, response_model=List[sch.UserBasicResponse])
+async def get_followers(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # Check Redis cache
     cache_key = f"followers:{user_id}"
     cached = await get_cache(cache_key)
@@ -171,8 +172,8 @@ async def get_followers(user_id:int,db:AsyncSession=Depends(db.getDb),currentUse
     await set_cache(cache_key, [f.model_dump(mode="json") for f in followers_response], ttl=120)
     return followers_response
 
-@router.get("/users/{user_id}/following",status_code=status.HTTP_200_OK, response_model=List[sch.UserBasicResponse])
-async def get_following(user_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.get("/{user_id}/following", status_code=status.HTTP_200_OK, response_model=List[sch.UserBasicResponse])
+async def get_following(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # Check Redis cache
     cache_key = f"following:{user_id}"
     cached = await get_cache(cache_key)
@@ -202,12 +203,8 @@ async def get_following(user_id:int,db:AsyncSession=Depends(db.getDb),currentUse
     await set_cache(cache_key, [f.model_dump(mode="json") for f in following_response], ttl=120)
     return following_response
 
-@router.get("/users/{user_id}/posts", response_model=sch.PostListResponse)  
-async def getAllPosts(user_id:int,limit:int=Query(10, ge=1, le=100),
-    offset: int = Query(0,ge=0),
-    db:AsyncSession=Depends(db.getDb),
-    currentUser:models.User=Depends(oauth2.getCurrentUser)
-    ):
+@router.get("/{user_id}/posts", response_model=sch.PostListResponse)
+async def get_user_posts(user_id:int, limit:int=Query(10, ge=1, le=100), offset: int = Query(0, ge=0), db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # Check Redis cache
     cache_key = f"user:posts:{user_id}:{offset}:{limit}"
     cached = await get_cache(cache_key)

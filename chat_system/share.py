@@ -13,7 +13,10 @@ from app.services import redis_service
 import json
 
 
-router = APIRouter(tags=["Share Post"])
+router = APIRouter(
+    prefix="/v1/messaging",
+    tags=["Messaging"]
+)
 
 @router.post("/share", response_model=SharedPostDetailResponse)
 async def share_post(

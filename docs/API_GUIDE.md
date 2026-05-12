@@ -29,15 +29,15 @@ Before calling **any** endpoint, make sure you have:
 
 Most endpoints require a **JWT Bearer Token**. Here's the flow:
 
-1. **Sign up** → `POST /user/signup`
-2. **Verify email** → `POST /verify-email` with OTP sent during signup
-3. **Log in** → `POST /login` → you receive an `accessToken` + `refreshToken`
+1. **Sign up** → `POST /v1/users/register`
+2. **Verify email** → `POST /v1/auth/email/verify` with OTP sent during signup
+3. **Log in** → `POST /v1/auth/login` → you receive an `accessToken` + `refreshToken`
 4. **Use the access token** in subsequent requests:
    - **Header:** `Authorization: Bearer <your_access_token>`
    - **Postman:** Go to the *Authorization* tab → select *Bearer Token* → paste your token.
-   - **cURL:** `curl -H "Authorization: Bearer <token>" http://localhost:8000/me/profile`
-5. **When the access token expires** → call `POST /refresh` with your `refreshToken` to get a fresh pair (old refresh token is revoked)
-6. **Log out** → `POST /logout` — blacklists the access token and revokes all refresh tokens for that user
+   - **cURL:** `curl -H "Authorization: Bearer <token>" http://localhost:8000/v1/users/me/profile`
+5. **When the access token expires** → call `POST /v1/auth/refresh-token` with your `refreshToken` to get a fresh pair (old refresh token is revoked)
+6. **Log out** → `POST /v1/auth/logout` — blacklists the access token and revokes all refresh tokens for that user
 
 > 🔒 Endpoints marked with 🔐 require authentication. Public endpoints are marked with 🌐.
 > 
@@ -99,7 +99,7 @@ curl http://localhost:8000/health
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /user/signup` |
+| **Endpoint** | `POST /v1/users/register` |
 | **Auth** | 🌐 None |
 | **Content-Type** | `application/json` |
 | **Description** | Register a new user account. |
@@ -130,7 +130,7 @@ curl http://localhost:8000/health
 }
 ```
 
-> 🔐 New users are created with `email_verified=false`. Check your email for OTP and call `POST /verify-email` before login.
+> 🔐 New users are created with `email_verified=false`. Check your email for OTP and call `POST /v1/auth/email/verify` before login.
 
 ---
 
@@ -138,7 +138,7 @@ curl http://localhost:8000/health
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /login` |
+| **Endpoint** | `POST /v1/auth/login` |
 | **Auth** | 🌐 None |
 | **Rate Limit** | ⚡ 5 requests / 5 min per IP |
 | **Content-Type** | `application/x-www-form-urlencoded` |
@@ -152,7 +152,7 @@ curl http://localhost:8000/health
 
 **cURL Example:**
 ```bash
-curl -X POST http://localhost:8000/login \
+curl -X POST http://localhost:8000/v1/auth/login \
   -d "username=john_doe&password=securePass123"
 ```
 
@@ -175,7 +175,7 @@ curl -X POST http://localhost:8000/login \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /refresh` |
+| **Endpoint** | `POST /v1/auth/refresh-token` |
 | **Auth** | 🌐 None |
 | **Rate Limit** | ⚡ 10 requests / 1 min per IP |
 | **Content-Type** | `application/json` |
@@ -190,7 +190,7 @@ curl -X POST http://localhost:8000/login \
 
 **cURL Example:**
 ```bash
-curl -X POST http://localhost:8000/refresh \
+curl -X POST http://localhost:8000/v1/auth/refresh-token \
   -H "Content-Type: application/json" \
   -d '{"refresh_token": "a1b2c3d4e5f6..."}'
 ```
@@ -211,13 +211,13 @@ curl -X POST http://localhost:8000/refresh \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /logout` |
+| **Endpoint** | `POST /v1/auth/logout` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Blacklists the current access token and revokes all refresh tokens for the user. |
 
 **cURL Example:**
 ```bash
-curl -X POST http://localhost:8000/logout \
+curl -X POST http://localhost:8000/v1/auth/logout \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -236,7 +236,7 @@ curl -X POST http://localhost:8000/logout \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /verify-email` |
+| **Endpoint** | `POST /v1/auth/email/verify` |
 | **Auth** | 🌐 None |
 | **Content-Type** | `application/json` |
 | **Description** | Verify a newly registered account using the OTP sent to email during signup. |
@@ -262,7 +262,7 @@ curl -X POST http://localhost:8000/logout \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /resend-verification-otp` |
+| **Endpoint** | `POST /v1/auth/email/resend-otp` |
 | **Auth** | 🌐 None |
 | **Rate Limit** | ⚡ 3 requests / 1 hour per IP |
 | **Content-Type** | `application/json` |
@@ -292,7 +292,7 @@ All `/me/*` endpoints operate on the **currently authenticated user**.
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /me/profile` |
+| **Endpoint** | `GET /v1/users/me/profile` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Retrieve your complete profile information. |
 
@@ -317,7 +317,7 @@ All `/me/*` endpoints operate on the **currently authenticated user**.
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /me/profile/pic` |
+| **Endpoint** | `GET /v1/users/me/avatar` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Get the URL of your current profile picture. |
 
@@ -336,7 +336,7 @@ All `/me/*` endpoints operate on the **currently authenticated user**.
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `DELETE /me/profilepic/delete` |
+| **Endpoint** | `DELETE /v1/users/me/avatar` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Remove your current profile picture. |
 
@@ -353,7 +353,7 @@ All `/me/*` endpoints operate on the **currently authenticated user**.
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `PATCH /me/updateInfo` |
+| **Endpoint** | `PATCH /v1/users/me` |
 | **Auth** | 🔐 Bearer Token |
 | **Content-Type** | `multipart/form-data` |
 | **Description** | Update username, bio, and/or profile picture. All fields are optional. |
@@ -367,7 +367,7 @@ All `/me/*` endpoints operate on the **currently authenticated user**.
 
 **cURL Example:**
 ```bash
-curl -X PATCH http://localhost:8000/me/updateInfo \
+curl -X PATCH http://localhost:8000/v1/users/me \
   -H "Authorization: Bearer <token>" \
   -F "bio=I love coding!" \
   -F "profile_picture=@/path/to/avatar.png"
@@ -381,7 +381,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /me/posts` |
+| **Endpoint** | `GET /v1/users/me/posts` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Retrieve all your posts with pagination. |
 
@@ -420,7 +420,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /me/votedOnPosts` |
+| **Endpoint** | `GET /v1/users/me/engagements/votes` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Lists all posts you have voted (liked or disliked) on. |
 
@@ -443,7 +443,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /me/voteStats` |
+| **Endpoint** | `GET /v1/users/me/stats/votes` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | See how many posts you've liked vs disliked. |
 
@@ -461,7 +461,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /me/likedPosts` |
+| **Endpoint** | `GET /v1/users/me/posts/liked` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Lists all posts you have liked. |
 
@@ -481,7 +481,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /me/dislikedPosts` |
+| **Endpoint** | `GET /v1/users/me/posts/disliked` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Lists all posts you have disliked. |
 
@@ -500,7 +500,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /me/commented-on` |
+| **Endpoint** | `GET /v1/users/me/posts/commented` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Lists all unique posts you've commented on. |
 
@@ -523,7 +523,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /me/comment-stats` |
+| **Endpoint** | `GET /v1/users/me/stats/comments` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Get the total number of comments you've made and unique posts commented on. |
 
@@ -543,7 +543,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /me/notifications` |
+| **Endpoint** | `GET /v1/users/me/notifications` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Retrieve your notifications (likes, comments, follows), newest first. Cached for 20s. |
 
@@ -582,7 +582,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /me/notifications/unread-count` |
+| **Endpoint** | `GET /v1/users/me/notifications/unread-count` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Returns the number of unread notifications — use this for the badge number in your UI. Cached for 20s. |
 
@@ -599,7 +599,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `PATCH /me/notifications/read` |
+| **Endpoint** | `PATCH /v1/users/me/notifications/read` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Marks all unread notifications as read for the current user. |
 
@@ -618,7 +618,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /users/getAllUsers` |
+| **Endpoint** | `GET /v1/users` |
 | **Auth** | 🌐 None |
 | **Description** | Retrieve a list of all registered users. |
 
@@ -644,7 +644,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /users/{user_id}/profile` |
+| **Endpoint** | `GET /v1/users/{user_id}` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | View another user's profile. Includes `is_following` status. |
 
@@ -670,7 +670,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /users/{user_id}/profile/pic` |
+| **Endpoint** | `GET /v1/users/{user_id}/pic` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Get the profile picture URL of a specific user. |
 
@@ -688,7 +688,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /users/{user_id}/posts` |
+| **Endpoint** | `GET /v1/users/{user_id}/posts` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Retrieve a specific user's posts with pagination. |
 
@@ -698,7 +698,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 | `limit` | int | `10` | 1–100 |
 | `offset` | int | `0` | Skip N posts |
 
-**Response — `200 OK`:** Same structure as `GET /me/posts`.
+**Response — `200 OK`:** Same structure as `GET /v1/users/me/posts`.
 
 ---
 
@@ -706,7 +706,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /users/{user_id}/followers` |
+| **Endpoint** | `GET /v1/users/{user_id}/followers` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | List all followers of a specific user. |
 
@@ -729,7 +729,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /users/{user_id}/following` |
+| **Endpoint** | `GET /v1/users/{user_id}/following` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | List all users a specific user is following. |
 
@@ -743,7 +743,7 @@ curl -X PATCH http://localhost:8000/me/updateInfo \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /posts/createPost` |
+| **Endpoint** | `POST /v1/posts` |
 | **Auth** | 🔐 Bearer Token |
 | **Content-Type** | `multipart/form-data` |
 | **Description** | Create a new post with text and optional media (image/video). |
@@ -794,7 +794,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /posts/getPost/{postId}` |
+| **Endpoint** | `GET /v1/posts/{postId}` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Get full details of a specific post. Increments the view counter on first view. |
 
@@ -806,7 +806,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `PUT /posts/editPost/{postId}` |
+| **Endpoint** | `PATCH /v1/posts/{postId}` |
 | **Auth** | 🔐 Bearer Token |
 | **Content-Type** | `application/json` |
 | **Description** | Update the title, content, or other fields of your post. Only the post owner can edit. |
@@ -827,7 +827,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `DELETE /posts/deletePost/{postId}` |
+| **Endpoint** | `DELETE /v1/posts/{postId}` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Permanently delete your post and its associated media file. |
 
@@ -845,7 +845,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /comment` |
+| **Endpoint** | `POST /v1/posts/{post_id}/comments` |
 | **Auth** | 🔐 Bearer Token |
 | **Content-Type** | `application/json` |
 | **Description** | Add a comment to a post (if comments are enabled on that post). |
@@ -881,7 +881,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /comments-on/{post_id}` |
+| **Endpoint** | `GET /v1/posts/{post_id}/comments` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Retrieve paginated comments on a specific post. |
 
@@ -924,7 +924,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `PATCH /comments/edit_comment/{comment_id}` |
+| **Endpoint** | `PATCH /v1/comments/{comment_id}` |
 | **Auth** | 🔐 Bearer Token |
 | **Content-Type** | `application/json` |
 | **Description** | Edit the content of your comment. |
@@ -944,7 +944,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `DELETE /comments/delete_comment/{comment_id}` |
+| **Endpoint** | `DELETE /v1/comments/{comment_id}` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Delete your comment. |
 
@@ -963,7 +963,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /vote/on_post` |
+| **Endpoint** | `POST /v1/posts/{postId}/votes` |
 | **Auth** | 🔐 Bearer Token |
 | **Content-Type** | `application/json` |
 | **Description** | Like or dislike a post. Acts as a toggle — same vote again removes it, different vote switches it. |
@@ -1000,7 +1000,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /vote/on_comment` |
+| **Endpoint** | `POST /v1/comments/{commentId}/votes` |
 | **Auth** | 🔐 Bearer Token |
 | **Content-Type** | `application/json` |
 | **Description** | Like a comment. Toggle same choice to remove the like. |
@@ -1029,7 +1029,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /follow/{user_id}` |
+| **Endpoint** | `POST /v1/users/{user_id}/follow` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Follow a user. Cannot follow yourself. |
 
@@ -1047,7 +1047,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `DELETE /unfollow/{user_id}` |
+| **Endpoint** | `DELETE /v1/users/{user_id}/unfollow` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Unfollow a user you're currently following. |
 
@@ -1065,7 +1065,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `DELETE /remove_follower/{user_id}` |
+| **Endpoint** | `DELETE /v1/users/followers/{user_id}` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Remove someone from your followers list (they stop following you). |
 
@@ -1085,7 +1085,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /feed/home` |
+| **Endpoint** | `GET /v1/feed` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Get posts from users you follow, most recent first. |
 
@@ -1128,7 +1128,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /feed/explore` |
+| **Endpoint** | `GET /v1/feed/explore` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Discover all posts on the platform, most recent first. |
 
@@ -1138,7 +1138,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 | `limit` | int | `20` |
 | `offset` | int | `0` |
 
-**Response — `200 OK`:** Same paginated `PostListResponse` structure as `GET /me/posts`.
+**Response — `200 OK`:** Same paginated `PostListResponse` structure as `GET /v1/users/me/posts`.
 
 ---
 
@@ -1148,7 +1148,7 @@ curl -X POST http://localhost:8000/posts/createPost \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /saved/{post_id}` |
+| **Endpoint** | `POST /v1/posts/{post_id}/save` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Save a post to your personal saved collection. If already saved, returns a success message without duplicating rows. |
 
@@ -1172,7 +1172,7 @@ Possible duplicate-save response:
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `DELETE /saved/{post_id}` |
+| **Endpoint** | `DELETE /v1/posts/{post_id}/unsave` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Remove a post from your saved collection. |
 
@@ -1189,7 +1189,7 @@ Possible duplicate-save response:
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /saved/me` |
+| **Endpoint** | `GET /v1/users/me/saved-posts` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Returns saved posts newest-first, including full `PostDetailResponse` per saved item and `saved_at` timestamp. |
 
@@ -1233,7 +1233,7 @@ Possible duplicate-save response:
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /search` |
+| **Endpoint** | `GET /v1/search` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Search for users by username **or** posts by hashtag (`#tag`). |
 
@@ -1248,7 +1248,7 @@ Possible duplicate-save response:
 **Example — Search users:**
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  "http://localhost:8000/search?q=john"
+  "http://localhost:8000/v1/search?q=john"
 ```
 
 **Response (user search) — `202 Accepted`:**
@@ -1270,7 +1270,7 @@ curl -H "Authorization: Bearer <token>" \
 **Example — Search hashtags:**
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  "http://localhost:8000/search?q=%23sunset"
+  "http://localhost:8000/v1/search?q=%23sunset"
 ```
 
 **Response (hashtag search) — `202 Accepted`:**
@@ -1300,7 +1300,7 @@ curl -H "Authorization: Bearer <token>" \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /change-password` |
+| **Endpoint** | `POST /v1/auth/password/change` |
 | **Auth** | 🔐 Bearer Token |
 | **Rate Limit** | ⚡ 3 requests / 1 hour per user |
 | **Description** | Sends a one-time password (OTP) to your registered email. Required before resetting your password. |
@@ -1320,7 +1320,7 @@ curl -H "Authorization: Bearer <token>" \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /reset-password` |
+| **Endpoint** | `POST /v1/auth/password/reset` |
 | **Auth** | 🔐 Bearer Token |
 | **Rate Limit** | ⚡ 5 requests / 5 min per user |
 | **Content-Type** | `application/json` |
@@ -1348,7 +1348,7 @@ curl -H "Authorization: Bearer <token>" \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /forgot-password` |
+| **Endpoint** | `POST /v1/auth/password/forgot` |
 | **Auth** | 🌐 None |
 | **Rate Limit** | ⚡ 3 requests / 1 hour per IP |
 | **Content-Type** | `application/json` |
@@ -1381,7 +1381,7 @@ curl -X POST http://localhost:8000/forgot-password \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /reset-password` (auth.py) |
+| **Endpoint** | `POST /v1/auth/password/reset` (auth.py) |
 | **Auth** | 🌐 None |
 | **Rate Limit** | ⚡ 5 requests / 5 min per IP |
 | **Content-Type** | `application/json` |
@@ -1411,7 +1411,7 @@ curl -X POST http://localhost:8000/forgot-password \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /recent-chats` |
+| **Endpoint** | `GET /v1/messaging/recent-chats` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | List your recent chat conversations with a summary of the last message in each. |
 
@@ -1438,7 +1438,7 @@ curl -X POST http://localhost:8000/forgot-password \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /share` |
+| **Endpoint** | `POST /v1/messaging/share` |
 | **Auth** | 🔐 Bearer Token |
 | **Content-Type** | `application/json` |
 | **Description** | Share a post to another user via direct message. The receiver gets a real-time notification if online. |
@@ -1462,7 +1462,7 @@ curl -X POST http://localhost:8000/forgot-password \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /media/send` |
+| **Endpoint** | `POST /v1/messaging/media/send` |
 | **Auth** | 🔐 Bearer Token |
 | **Content-Type** | `multipart/form-data` |
 | **Description** | Upload an image, video, or audio file for use in chat messages. The endpoint persists a chat `Message` and publishes it (so recipients receive it immediately). Returns a `media_url` plus the created `message_id`. |
@@ -1500,7 +1500,7 @@ curl -X POST http://localhost:8000/media/send \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /msgs/{msg_id}/info` |
+| **Endpoint** | `GET /v1/messaging/msgs/{msg_id}/info` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Get delivery and read status of a specific message. Only the sender or receiver can access this. |
 
@@ -1520,7 +1520,7 @@ curl -X POST http://localhost:8000/media/send \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /msgs/{msg_id}/msg_reaction_info` |
+| **Endpoint** | `GET /v1/messaging/msgs/{msg_id}/msg_reaction_info` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Get the list of users who reacted to a specific message and their reactions. |
 
@@ -1542,7 +1542,7 @@ curl -X POST http://localhost:8000/media/send \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /shared/{shared_id}/reactions` |
+| **Endpoint** | `GET /v1/messaging/shared/{shared_id}/reactions` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Get reaction details for a shared post. Only sender or receiver of the share can view. |
 
@@ -1556,7 +1556,7 @@ curl -X POST http://localhost:8000/media/send \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /delete/for-me/{msg_id}` |
+| **Endpoint** | `POST /v1/messaging/delete/for-me/{msg_id}` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Hides a message from your view only. The other person can still see it. |
 
@@ -1574,7 +1574,7 @@ curl -X POST http://localhost:8000/media/send \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `POST /delete-share/for-me/{share_id}` |
+| **Endpoint** | `POST /v1/messaging/delete-share/for-me/{share_id}` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Hides a shared post from your view only. |
 
@@ -1592,7 +1592,7 @@ curl -X POST http://localhost:8000/media/send \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `DELETE /clear-chat/{friend_id}` |
+| **Endpoint** | `DELETE /v1/messaging/clear-chat/{friend_id}` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Clears all visible messages in a conversation from your view. Messages remain visible to the other person. |
 
@@ -1611,7 +1611,7 @@ curl -X POST http://localhost:8000/media/send \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /msg/{msg_id}/can_edit` |
+| **Endpoint** | `GET /v1/messaging/msg/{msg_id}/can_edit` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Check whether a message can still be edited. Messages can only be edited within a configured time window (default: 15 minutes) after sending. |
 
@@ -1636,7 +1636,7 @@ curl -X POST http://localhost:8000/media/send \
 
 | Detail | Value |
 |--------|-------|
-| **Endpoint** | `GET /chat/history/{friend_id}` |
+| **Endpoint** | `GET /v1/messaging/chat/history/{friend_id}` |
 | **Auth** | 🔐 Bearer Token |
 | **Description** | Retrieve the full conversation history with a friend — both messages and shared posts, excluding deleted items. |
 
@@ -1782,7 +1782,7 @@ All messages are sent as **JSON strings** through the WebSocket. The `type` fiel
 }
 ```
 
-> ⏱️ Editing is only allowed within the configured time window (default: 15 min). Use `GET /msg/{msg_id}/can_edit` to check.
+> ⏱️ Editing is only allowed within the configured time window (default: 15 min). Use `GET /v1/messaging/msg/{msg_id}/can_edit` to check.
 
 ---
 
@@ -1905,66 +1905,66 @@ You will receive various event payloads from the server:
 | # | Method | Endpoint | Auth | Description |
 |---|--------|----------|------|-------------|
 | 1 | `GET` | `/health` | 🌐 | Health check |
-| 2 | `POST` | `/user/signup` | 🌐 ⚡ | Register new user |
-| 3 | `POST` | `/login` | 🌐 ⚡ | Log in, get JWT + refresh token |
-| 4 | `POST` | `/refresh` | 🌐 ⚡ | Rotate refresh token |
-| 5 | `POST` | `/logout` | 🔐 | Blacklist token + revoke refresh tokens |
-| 6 | `POST` | `/forgot-password` | 🌐 ⚡ | Initiate unauthenticated password reset |
-| 7 | `POST` | `/reset-password` | 🌐 ⚡ | Complete unauthenticated password reset |
-| 60 | `POST` | `/verify-email` | 🌐 | Verify email with signup OTP |
-| 61 | `POST` | `/resend-verification-otp` | 🌐 ⚡ | Re-send verification OTP |
-| 8 | `GET` | `/users/getAllUsers` | 🌐 | List all users |
-| 9 | `GET` | `/users/{id}/profile` | 🔐 | View user profile |
-| 10 | `GET` | `/users/{id}/profile/pic` | 🔐 | Get user's profile pic |
-| 11 | `GET` | `/users/{id}/posts` | 🔐 | Get user's posts |
-| 12 | `GET` | `/users/{id}/followers` | 🔐 | List user's followers |
-| 13 | `GET` | `/users/{id}/following` | 🔐 | List user's following |
-| 14 | `GET` | `/me/profile` | 🔐 | My profile |
-| 15 | `GET` | `/me/profile/pic` | 🔐 | My profile picture |
-| 16 | `DELETE` | `/me/profilepic/delete` | 🔐 | Remove my profile pic |
-| 17 | `PATCH` | `/me/updateInfo` | 🔐 | Update my info |
-| 18 | `GET` | `/me/posts` | 🔐 | My posts (paginated) |
-| 19 | `GET` | `/me/votedOnPosts` | 🔐 | Posts I voted on |
-| 20 | `GET` | `/me/voteStats` | 🔐 | My vote statistics |
-| 21 | `GET` | `/me/likedPosts` | 🔐 | Posts I liked |
-| 22 | `GET` | `/me/dislikedPosts` | 🔐 | Posts I disliked |
-| 23 | `GET` | `/me/commented-on` | 🔐 | Posts I commented on |
-| 24 | `GET` | `/me/comment-stats` | 🔐 | My comment statistics |
-| 25 | `GET` | `/me/notifications` | 🔐 | Paginated notifications |
-| 26 | `GET` | `/me/notifications/unread-count` | 🔐 | Unread notification count |
-| 27 | `PATCH` | `/me/notifications/read` | 🔐 | Mark all notifications read |
-| 28 | `POST` | `/posts/createPost` | 🔐 ⚡ | Create post |
-| 29 | `GET` | `/posts/getPost/{id}` | 🔐 | Get post detail |
-| 30 | `PUT` | `/posts/editPost/{id}` | 🔐 | Edit post |
-| 31 | `DELETE` | `/posts/deletePost/{id}` | 🔐 | Delete post |
-| 32 | `POST` | `/comment` | 🔐 ⚡ | Create comment |
-| 33 | `GET` | `/comments-on/{post_id}` | 🔐 | Get comments on post |
-| 34 | `PATCH` | `/comments/edit_comment/{id}` | 🔐 | Edit comment |
-| 35 | `DELETE` | `/comments/delete_comment/{id}` | 🔐 | Delete comment |
-| 36 | `POST` | `/vote/on_post` | 🔐 | Vote on post |
-| 37 | `POST` | `/vote/on_comment` | 🔐 | Vote on comment |
-| 38 | `POST` | `/follow/{user_id}` | 🔐 ⚡ | Follow user |
-| 39 | `DELETE` | `/unfollow/{user_id}` | 🔐 | Unfollow user |
-| 40 | `DELETE` | `/remove_follower/{user_id}` | 🔐 | Remove follower |
-| 41 | `GET` | `/feed/home` | 🔐 | Home feed |
-| 42 | `GET` | `/feed/explore` | 🔐 | Explore feed |
-| 43 | `POST` | `/saved/{post_id}` | 🔐 | Save a post |
-| 44 | `DELETE` | `/saved/{post_id}` | 🔐 | Remove a saved post |
-| 45 | `GET` | `/saved/me` | 🔐 | List my saved posts |
-| 46 | `GET` | `/search` | 🔐 | Search users/hashtags |
-| 47 | `POST` | `/change-password` | 🔐 ⚡ | Request password OTP |
-| 48 | `POST` | `/reset-password` (auth) | 🔐 ⚡ | Reset password with OTP |
-| 49 | `GET` | `/recent-chats` | 🔐 | Recent conversations |
-| 50 | `POST` | `/share` | 🔐 | Share post to DM |
-| 51 | `POST` | `/upload-media` | 🔐 | Upload chat media |
-| 52 | `GET` | `/chat/history/{friend_id}` | 🔐 | Chat history |
-| 53 | `GET` | `/msgs/{msg_id}/info` | 🔐 | Message delivery info |
-| 54 | `GET` | `/msgs/{msg_id}/msg_reaction_info` | 🔐 | Message reactions |
-| 55 | `GET` | `/shared/{id}/reactions` | 🔐 | Shared post reactions |
-| 56 | `POST` | `/delete/for-me/{msg_id}` | 🔐 | Delete message for me |
-| 57 | `POST` | `/delete-share/for-me/{id}` | 🔐 | Delete share for me |
-| 58 | `DELETE` | `/clear-chat/{friend_id}` | 🔐 | Clear chat |
-| 59 | `GET` | `/msg/{msg_id}/can_edit` | 🔐 | Check edit eligibility |
+| 2 | `POST` | `/v1/users/register` | 🌐 ⚡ | Register new user |
+| 3 | `POST` | `/v1/auth/login` | 🌐 ⚡ | Log in, get JWT + refresh token |
+| 4 | `POST` | `/v1/auth/refresh-token` | 🌐 ⚡ | Rotate refresh token |
+| 5 | `POST` | `/v1/auth/logout` | 🔐 | Blacklist token + revoke refresh tokens |
+| 6 | `POST` | `/v1/auth/password/forgot` | 🌐 ⚡ | Initiate unauthenticated password reset |
+| 7 | `POST` | `/v1/auth/password/reset` | 🌐 ⚡ | Complete unauthenticated password reset |
+| 60 | `POST` | `/v1/auth/email/verify` | 🌐 | Verify email with signup OTP |
+| 61 | `POST` | `/v1/auth/email/resend-otp` | 🌐 ⚡ | Re-send verification OTP |
+| 8 | `GET` | `/v1/users` | 🌐 | List all users |
+| 9 | `GET` | `/v1/users/{id}` | 🔐 | View user profile |
+| 10 | `GET` | `/v1/users/{id}/avatar` | 🔐 | Get user's profile pic |
+| 11 | `GET` | `/v1/users/{id}/posts` | 🔐 | Get user's posts |
+| 12 | `GET` | `/v1/users/{id}/followers` | 🔐 | List user's followers |
+| 13 | `GET` | `/v1/users/{id}/following` | 🔐 | List user's following |
+| 14 | `GET` | `/v1/users/me/profile` | 🔐 | My profile |
+| 15 | `GET` | `/v1/users/me/avatar` | 🔐 | My profile picture |
+| 16 | `DELETE` | `/v1/users/me/avatar` | 🔐 | Remove my profile pic |
+| 17 | `PATCH` | `/v1/users/me` | 🔐 | Update my info |
+| 18 | `GET` | `/v1/users/me/posts` | 🔐 | My posts (paginated) |
+| 19 | `GET` | `/v1/users/me/engagements/votes` | 🔐 | Posts I voted on |
+| 20 | `GET` | `/v1/users/me/stats/votes` | 🔐 | My vote statistics |
+| 21 | `GET` | `/v1/users/me/posts/liked` | 🔐 | Posts I liked |
+| 22 | `GET` | `/v1/users/me/posts/disliked` | 🔐 | Posts I disliked |
+| 23 | `GET` | `/v1/users/me/posts/commented` | 🔐 | Posts I commented on |
+| 24 | `GET` | `/v1/users/me/stats/comments` | 🔐 | My comment statistics |
+| 25 | `GET` | `/v1/users/me/notifications` | 🔐 | Paginated notifications |
+| 26 | `GET` | `/v1/users/me/notifications/unread-count` | 🔐 | Unread notification count |
+| 27 | `PATCH` | `/v1/users/me/notifications/read` | 🔐 | Mark all notifications read |
+| 28 | `POST` | `/v1/posts` | 🔐 ⚡ | Create post |
+| 29 | `GET` | `/v1/posts/{id}` | 🔐 | Get post detail |
+| 30 | `PATCH` | `/v1/posts/{id}` | 🔐 | Edit post |
+| 31 | `DELETE` | `/v1/posts/{id}` | 🔐 | Delete post |
+| 32 | `POST` | `/v1/posts/{post_id}/comments` | 🔐 ⚡ | Create comment |
+| 33 | `GET` | `/v1/posts/{post_id}/comments` | 🔐 | Get comments on post |
+| 34 | `PATCH` | `/v1/comments/{id}` | 🔐 | Edit comment |
+| 35 | `DELETE` | `/v1/comments/{id}` | 🔐 | Delete comment |
+| 36 | `POST` | `/v1/posts/{post_id}/votes` | 🔐 | Vote on post |
+| 37 | `POST` | `/v1/comments/{comment_id}/votes` | 🔐 | Vote on comment |
+| 38 | `POST` | `/v1/users/{user_id}/follow` | 🔐 ⚡ | Follow user |
+| 39 | `DELETE` | `/v1/users/{user_id}/unfollow` | 🔐 | Unfollow user |
+| 40 | `DELETE` | `/v1/users/followers/{user_id}` | 🔐 | Remove follower |
+| 41 | `GET` | `/v1/feed` | 🔐 | Home feed |
+| 42 | `GET` | `/v1/feed/explore` | 🔐 | Explore feed |
+| 43 | `POST` | `/v1/posts/{post_id}/save` | 🔐 | Save a post |
+| 44 | `DELETE` | `/v1/posts/{post_id}/unsave` | 🔐 | Remove a saved post |
+| 45 | `GET` | `/v1/users/me/saved-posts` | 🔐 | List my saved posts |
+| 46 | `GET` | `/v1/search` | 🔐 | Search users/hashtags |
+| 47 | `POST` | `/v1/auth/password/change` | 🔐 ⚡ | Request password OTP |
+| 48 | `POST` | `/v1/auth/password/reset-authenticated` | 🔐 ⚡ | Reset password with OTP |
+| 49 | `GET` | `/v1/messaging/recent-chats` | 🔐 | Recent conversations |
+| 50 | `POST` | `/v1/messaging/share` | 🔐 | Share post to DM |
+| 51 | `POST` | `/v1/messaging/media/send` | 🔐 | Upload chat media |
+| 52 | `GET` | `/v1/messaging/chat/history/{friend_id}` | 🔐 | Chat history |
+| 53 | `GET` | `/v1/messaging/msgs/{msg_id}/info` | 🔐 | Message delivery info |
+| 54 | `GET` | `/v1/messaging/msgs/{msg_id}/msg_reaction_info` | 🔐 | Message reactions |
+| 55 | `GET` | `/v1/messaging/shared/{id}/reactions` | 🔐 | Shared post reactions |
+| 56 | `POST` | `/v1/messaging/delete/for-me/{msg_id}` | 🔐 | Delete message for me |
+| 57 | `POST` | `/v1/messaging/delete-share/for-me/{id}` | 🔐 | Delete share for me |
+| 58 | `DELETE` | `/v1/messaging/clear-chat/{friend_id}` | 🔐 | Clear chat |
+| 59 | `GET` | `/v1/messaging/msg/{msg_id}/can_edit` | 🔐 | Check edit eligibility |
 
 > ⚡ = Rate-limited endpoint. See [FEATURES.md](./FEATURES.md) for default limits and `.env` configuration.
 
@@ -1972,7 +1972,7 @@ You will receive various event payloads from the server:
 
 | # | Protocol | Endpoint | Auth | Description |
 |---|----------|----------|------|-------------|
-| 1 | `WS` | `/chat/ws/{user_id}?token=<jwt>` | 🔐 | Real-time chat + notifications |
+| 1 | `WS` | `/v1/messaging/ws/{user_id}?token=<jwt>` | 🔐 | Real-time chat + notifications |
 
 ### WebSocket Message Types (Send)
 
@@ -1998,17 +1998,17 @@ You will receive various event payloads from the server:
 
 These endpoints are for Celery/RabbitMQ observability and operator control.
 
-- `GET /api/tasks/status/{task_id}` — check status, result, and traceback for one task.
-- `GET /api/tasks/active` — list tasks currently running on workers.
-- `GET /api/tasks/reserved` — list tasks reserved by workers but not yet started.
-- `GET /api/tasks/stats` — view worker health and processed task counts.
-- `POST /api/tasks/revoke/{task_id}` — revoke a task; add `?terminate=true` to stop a running worker process.
-- `GET /api/tasks/purge/{queue_name}` — purge a queue only when you are intentionally clearing pending work.
+- `GET /v1/admin/tasks/{task_id}/status` — check status, result, and traceback for one task.
+- `GET /v1/admin/tasks/active` — list tasks currently running on workers.
+- `GET /v1/admin/tasks/reserved` — list tasks reserved by workers but not yet started.
+- `GET /v1/admin/tasks/stats` — view worker health and processed task counts.
+- `POST /v1/admin/tasks/revoke/{task_id}` — revoke a task; add `?terminate=true` to stop a running worker process.
+- `GET /v1/admin/tasks/purge/{queue_name}` — purge a queue only when you are intentionally clearing pending work.
 - Flower on `http://localhost:5555` gives the visual version of the same information.
 
 ## 💡 Tips & Troubleshooting
 
-- **Getting `401 Unauthorized`?** Your access token may have expired. Use `POST /refresh` with your refresh token to get a new one silently — no re-login needed.
+- **Getting `401 Unauthorized`?** Your access token may have expired. Use `POST /v1/auth/refresh-token` with your refresh token to get a new one silently — no re-login needed.
 - **Getting `429 Too Many Requests`?** You've hit a rate limit. Check the `Retry-After` header for when you can try again.
 - **Getting `404 Not Found` for media?** Ensure the Docker volumes are mounted and the folders (`profilepics/`, `posts_media/`, `chat-media/`) exist.
 - **Presence not updating instantly?** Keep the WebSocket connection open and listen for `presence_update` events.

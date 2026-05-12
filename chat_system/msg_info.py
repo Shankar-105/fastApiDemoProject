@@ -4,9 +4,12 @@ from sqlalchemy import select
 from app import models,oauth2,db
 from app.utils.time_formatting import format_timestamp
 
-router = APIRouter(tags=['Message Info'])
+router = APIRouter(
+    prefix="/v1/messaging",
+    tags=['Messaging']
+)
 
-@router.get("/msgs/{msg_id}/info")
+@router.get("/messages/{msg_id}")
 async def get_message_info(
     msg_id: int,
     db: AsyncSession = Depends(db.getDb),

@@ -11,9 +11,12 @@ from datetime import datetime,timedelta,timezone
 from app.utils.time_formatting import format_timestamp
 import json
 
-router=APIRouter(tags=['can_edit'])
+router=APIRouter(
+    prefix="/v1/messaging",
+    tags=['Messaging']
+)
 
-@router.get("/msg/{msg_id}/can_edit", response_model=CanEditResponse)
+@router.get("/messages/{msg_id}/can-edit", response_model=CanEditResponse)
 async def can_edit(msg_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
     result = await db.execute(
         select(models.Message).where(

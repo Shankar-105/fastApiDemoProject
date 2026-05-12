@@ -7,9 +7,12 @@ from app.services.redis_service import get_cache, set_cache, delete_cache
 from app.services.blob_service import get_blob_url
 import os
 
-router = APIRouter(tags=["Feed"])
+router = APIRouter(
+    prefix="/v1/feed",
+    tags=["Feed"]
+)
 
-@router.get("/feed/home", response_model=schemas.FeedResponse)
+@router.get("", response_model=schemas.FeedResponse)
 async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
     offset: int = Query(0,ge=0),
     db:AsyncSession=Depends(db.getDb),
@@ -91,7 +94,7 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
     await set_cache(cache_key, result.model_dump(mode="json"), ttl=30)
     return result
 
-@router.get("/feed/explore", response_model=schemas.PostListResponse)
+@router.get("/explore", response_model=schemas.PostListResponse)
 async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
     offset: int = Query(0,ge=0),
     db:AsyncSession=Depends(db.getDb),

@@ -5,7 +5,10 @@ from sqlalchemy import select
 from app import db, models, oauth2, schemas as sch
 from app.services.blob_service import get_blob_url
 
-router = APIRouter(tags=["saved"])
+router = APIRouter(
+    prefix="/v1",
+    tags=["Saved Posts"]
+)
 
 
 def _build_post_detail(post: models.Post, is_liked: bool) -> sch.PostDetailResponse:
@@ -34,7 +37,7 @@ def _build_post_detail(post: models.Post, is_liked: bool) -> sch.PostDetailRespo
     )
 
 
-@router.post("/saved/{post_id}", status_code=status.HTTP_201_CREATED, response_model=sch.SuccessResponse)
+@router.post("/posts/{post_id}/save", status_code=status.HTTP_201_CREATED, response_model=sch.SuccessResponse)
 async def save_post(
     post_id: int,
     db_session: AsyncSession = Depends(db.getDb),
@@ -62,7 +65,7 @@ async def save_post(
     return sch.SuccessResponse(message="Post saved")
 
 
-@router.delete("/saved/{post_id}", status_code=status.HTTP_200_OK, response_model=sch.SuccessResponse)
+@router.delete("/posts/{post_id}/unsave", status_code=status.HTTP_200_OK, response_model=sch.SuccessResponse)
 async def unsave_post(
     post_id: int,
     db_session: AsyncSession = Depends(db.getDb),
@@ -83,7 +86,7 @@ async def unsave_post(
     return sch.SuccessResponse(message="Saved post removed")
 
 
-@router.get("/saved/me", status_code=status.HTTP_200_OK, response_model=sch.SavedPostsResponse)
+@router.get("/users/me/saved-posts", status_code=status.HTTP_200_OK, response_model=sch.SavedPostsResponse)
 async def get_saved_posts(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),

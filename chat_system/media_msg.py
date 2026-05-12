@@ -10,9 +10,12 @@ from app import models
 from app.utils.time_formatting import format_timestamp
 import json
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/v1/messaging",
+    tags=["Messaging"]
+)
 
-@router.post("/media/send")
+@router.post("/messages/media")
 async def send_media(
     file: UploadFile = File(...),
     to: int = Form(...),

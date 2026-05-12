@@ -3,7 +3,11 @@ from app import models,db,schemas as sch,oauth2
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func
 from app.services.blob_service import get_blob_url
-router=APIRouter(tags=['search'])
+
+router=APIRouter(
+    prefix="/v1",
+    tags=['Search']
+)
 
 @router.get("/search", status_code=status.HTTP_202_ACCEPTED, response_model=sch.SearchResultResponse)
 async def search(searchParams: sch.SearchRequest = Depends(), db: AsyncSession = Depends(db.getDb), currenUser: models.User = Depends(oauth2.getCurrentUser)):

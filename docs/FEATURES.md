@@ -32,6 +32,7 @@
 | [Database & Migrations](#-database--migrations) | PostgreSQL, SQLAlchemy 2.0, Alembic, async sessions |
 | [DevOps & Docker](#-devops--docker) | Docker Compose, multi-service stack, volumes, auto-restart |
 | [API Documentation](#-api-documentation) | Swagger UI, ReDoc, Pydantic schemas |
+| [API Versioning](#-api-versioning) | Semantic versioning (v1, v2) to prevent breaking changes for clients |
 | [Testing](#-testing) | Pytest, isolated test DB, 50+ integration tests |
 | [Observability and Load Testing](#-observability-and-load-testing) | OpenTelemetry, Prometheus, Grafana, and k6 traffic simulation |
 ---
@@ -102,10 +103,10 @@ Built for real traffic, not like a simple crud app. I hardened critical write pa
 A production-grade refresh token system with **family-based revocation** for maximum security.
 
 - **Opaque refresh tokens** — generated via `secrets.token_urlsafe(32)`, not JWTs. Stored securely in PostgreSQL as SHA-256 digests
-- **Token rotation on every refresh** — calling `POST /refresh` issues a new access + refresh token pair and immediately revokes the old refresh token
+- **Token rotation on every refresh** — calling `POST /v1/auth/refresh-token` issues a new access + refresh token pair and immediately revokes the old refresh token
 - **Family-based revocation** — each login session gets a unique `family_id` (UUID). If a revoked token is reused (replay attack), the **entire family** is revoked, forcing re-login on all devices in that session
 - **Configurable expiry** — refresh tokens expire after `REFRESH_TOKEN_EXPIRE_DAYS` (default: 7 days), set via `.env`
-- **Logout nukes all tokens** — `POST /logout` blacklists the access token and revokes every refresh token for that user across all devices
+- **Logout nukes all tokens** — `POST /v1/auth/logout` blacklists the access token and revokes every refresh token for that user across all devices
 - **Password change revokes sessions** — changing your password automatically revokes all refresh tokens, preventing stale sessions from silently refreshing
 
 ---
@@ -143,9 +144,9 @@ Real-time notification system with persistent storage and live delivery.
 - **Persistent storage** — all notifications saved in a dedicated `notifications` table with `owner_id`, `actor_id`, `type`, `entity_id`, `entity_type`, `text`, `is_read`, and `created_at`
 - **Real-time delivery** — if the target user has an active WebSocket connection, the notification is pushed instantly through the connection manager
 - **REST endpoints:**
-  - `GET /me/notifications` — paginated notification list (cached 20s in Redis)
-  - `GET /me/notifications/unread-count` — unread badge count (cached 20s)
-  - `PATCH /me/notifications/read` — mark all as read (invalidates caches)
+  - `GET /v1/users/me/notifications` — paginated notification list (cached 20s in Redis)
+  - `GET /v1/users/me/notifications/unread-count` — unread badge count (cached 20s)
+  - `PATCH /v1/users/me/notifications/read` — mark all as read (invalidates caches)
 - **Automatic cache invalidation** — creating a new notification clears the target user's notification caches so they see fresh data on next request
 - **No self-notifications** — liking your own post or following yourself doesn't generate a notification
 
@@ -253,9 +254,9 @@ The app now pushes slow or repeatable work into a queue instead of doing it in t
 
 - **Personal save collection** — each user can save posts they want to revisit later
 - **Three dedicated endpoints:**
-  - `POST /saved/{post_id}` — save a post
-  - `DELETE /saved/{post_id}` — remove from saved
-  - `GET /saved/me` — list saved posts newest-first
+  - `POST /v1/posts/{post_id}/save` — save a post
+  - `DELETE /v1/posts/{post_id}/unsave` — remove from saved
+  - `GET /v1/users/me/saved-posts` — list saved posts newest-first
 - **Duplicate-safe behavior** — saving the same post twice does not create duplicates (unique `(user_id, post_id)` constraint)
 - **Rich response model** — each saved item returns `saved_at` plus a full `PostDetailResponse` payload
 - **Per-user like context** — saved list includes `is_liked` for each post from the perspective of the current user
@@ -443,6 +444,17 @@ A production-grade 1-on-1 chat system running over a single persistent WebSocket
   - `model_config = ConfigDict(from_attributes=True)` for ORM compatibility
 - **Health check endpoint** — `GET /health` for monitoring and uptime checks
 - **Detailed API guide** — handwritten [`API_GUIDE.md`](./API_GUIDE.md) covering all 55+ REST endpoints and WebSocket message types with examples
+
+---
+
+## 🚦 API Versioning
+
+The API follows a strict versioning policy to ensure stability and backward compatibility for all clients.
+
+- **Global Prefix** — All endpoints are prefixed with their version (e.g., `/v1/auth/login`, `/v1/posts`).
+- **Breaking Change Policy** — We never modify existing versioned endpoints in a way that breaks current clients. Instead, we introduce a new version (e.g., `/v2/`) for significant architectural or schema changes.
+- **Router-Level Isolation** — Each version is managed via separate FastAPI routers, allowing us to maintain multiple versions concurrently without code bloat.
+- **Consistent Documentation** — Both Swagger and the handwritten guides are updated to reflect the current active versions and their specific request/response models.
 
 ---
 

@@ -18,7 +18,10 @@ from app.rate_limiter import login_limiter, forgot_password_limiter, reset_passw
 from app.tasks.email_tasks import send_otp_email as send_otp_email_task
 from app.tasks.email_tasks import send_verification_email as send_verification_email_task
 
-router=APIRouter(tags=['Authentication'])
+router=APIRouter(
+    prefix="/v1/auth",
+    tags=['Authentication']
+)
 
 @router.post("/login",status_code=status.HTTP_202_ACCEPTED)
 # method which log's in user if he has an account
@@ -67,8 +70,8 @@ async def loginUser(userCred:OAuth2PasswordRequestForm=Depends(),db:AsyncSession
         tokenType="bearer"
     )
 
-@router.post("/refresh", status_code=status.HTTP_200_OK)
-async def refresh(payload: sch.RefreshTokenRequest = Body(...), db: AsyncSession = Depends(db.getDb), _: None = Depends(refresh_limiter)):
+@router.post("/refresh-token", status_code=status.HTTP_200_OK)
+async def refresh_token(payload: sch.RefreshTokenRequest = Body(...), db: AsyncSession = Depends(db.getDb), _: None = Depends(refresh_limiter)):
     """
     Exchange a valid refresh token for a new access + refresh token pair.
     The old refresh token is revoked (rotation).
@@ -106,7 +109,7 @@ async def logout(token: str = Depends(oauth2.oauth2_scheme), db: AsyncSession = 
             detail="Invalid token"
         )
 
-@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+@router.post("/password/forgot", status_code=status.HTTP_200_OK)
 async def forgot_password(payload: sch.ForgotPasswordSchema, db: AsyncSession = Depends(db.getDb), _: None = Depends(forgot_password_limiter)):
     result = await db.execute(select(models.User).where(models.User.email == payload.email))
     user = result.scalars().first()
@@ -124,7 +127,7 @@ async def forgot_password(payload: sch.ForgotPasswordSchema, db: AsyncSession = 
     
     return {"message": "An OTP has been sent to your email."}
 
-@router.post("/reset-password", status_code=status.HTTP_200_OK)
+@router.post("/password/reset", status_code=status.HTTP_200_OK)
 async def reset_password(payload: sch.ResetPasswordSchema, db: AsyncSession = Depends(db.getDb), _: None = Depends(reset_password_limiter)):
     # Verify OTP
     if not await otp_service.checkOtp(db, payload.email, payload.otp):
@@ -149,7 +152,7 @@ async def reset_password(payload: sch.ResetPasswordSchema, db: AsyncSession = De
     return {"message": "Password has been reset successfully."}
 
 
-@router.post("/verify-email", status_code=status.HTTP_200_OK)
+@router.post("/email/verify", status_code=status.HTTP_200_OK)
 async def verify_email(payload: sch.VerifyEmailRequest, db: AsyncSession = Depends(db.getDb)):
     async def _verify_email():
         user = await lock_user_row(db, email=payload.email)
@@ -173,7 +176,7 @@ async def verify_email(payload: sch.VerifyEmailRequest, db: AsyncSession = Depen
     return await run_with_transient_retry(lambda: _verify_email(), db=db)
 
 
-@router.post("/resend-verification-otp", status_code=status.HTTP_200_OK)
+@router.post("/email/resend-otp", status_code=status.HTTP_200_OK)
 async def resend_verification_otp(payload: sch.ResendVerificationOtpRequest, db: AsyncSession = Depends(db.getDb), _: None = Depends(forgot_password_limiter)):
     result = await db.execute(select(models.User).where(models.User.email == payload.email))
     user = result.scalars().first()

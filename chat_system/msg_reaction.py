@@ -8,10 +8,13 @@ from app.services import redis_service
 from datetime import datetime
 from typing import List
 import json
-router=APIRouter(tags=['msg reactions'])
+router=APIRouter(
+    prefix="/v1/messaging",
+    tags=['Messaging']
+)
 
 
-@router.get("/msgs/{msg_id}/msg_reaction_info",response_model=List[schemas.ReactedUsers])
+@router.get("/messages/{msg_id}/reactions",response_model=List[schemas.ReactedUsers])
 async def msg_reactions(
     msg_id:int,
     db: AsyncSession = Depends(db.getDb),

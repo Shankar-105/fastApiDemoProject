@@ -3,7 +3,7 @@ from app import db,models,oauth2
 from app.services import token_service
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import app.my_utils.utils as utils
+from app.utils import thread_helpers as utils
 import app.schemas as sch
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError
@@ -11,13 +11,17 @@ from datetime import datetime, timezone
 import app.services.redis_service as redis_service
 import app.services.otp_service as otp_service
 import app.services.email_service as email_service
+from app.config import settings as cg
 from sqlalchemy.orm.exc import StaleDataError
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
 from app.rate_limiter import login_limiter, forgot_password_limiter, reset_password_limiter, refresh_limiter
 from app.tasks.email_tasks import send_otp_email as send_otp_email_task
 from app.tasks.email_tasks import send_verification_email as send_verification_email_task
 
-router=APIRouter(tags=['Authentication'])
+router=APIRouter(
+    prefix="/auth",
+    tags=['Authentication']
+)
 
 @router.post("/login",status_code=status.HTTP_202_ACCEPTED)
 # method which log's in user if he has an account
@@ -39,6 +43,22 @@ async def loginUser(userCred:OAuth2PasswordRequestForm=Depends(),db:AsyncSession
     # the createAccessToken from oauth2 file which generates an jwt token
     tokenData = {"userId": isUserPresent.id, "userName": isUserPresent.username}
     access_token = await oauth2.createAccessToken(tokenData)
+    await redis_service.set_cache(
+        f"auth:user:{access_token}",
+        {
+            "id": isUserPresent.id,
+            "username": isUserPresent.username,
+            "nickname": isUserPresent.nickname,
+            "bio": isUserPresent.bio,
+            "email": isUserPresent.email,
+            "email_verified": isUserPresent.email_verified,
+            "profile_picture": isUserPresent.profile_picture,
+            "created_at": isUserPresent.created_at.isoformat() if isUserPresent.created_at else None,
+            "followers_cnt": isUserPresent.followers_cnt,
+            "following_cnt": isUserPresent.following_cnt,
+        },
+        ttl=cg.access_token_expire_time * 60,
+    )
     # create a refresh token for this login session (new family)
     refresh_token = await token_service.create_refresh_token(db, isUserPresent.id)
     # return both tokens
@@ -50,8 +70,8 @@ async def loginUser(userCred:OAuth2PasswordRequestForm=Depends(),db:AsyncSession
         tokenType="bearer"
     )
 
-@router.post("/refresh", status_code=status.HTTP_200_OK)
-async def refresh(payload: sch.RefreshTokenRequest = Body(...), db: AsyncSession = Depends(db.getDb), _: None = Depends(refresh_limiter)):
+@router.post("/refresh-token", status_code=status.HTTP_200_OK)
+async def refresh_token(payload: sch.RefreshTokenRequest = Body(...), db: AsyncSession = Depends(db.getDb), _: None = Depends(refresh_limiter)):
     """
     Exchange a valid refresh token for a new access + refresh token pair.
     The old refresh token is revoked (rotation).
@@ -62,8 +82,14 @@ async def refresh(payload: sch.RefreshTokenRequest = Body(...), db: AsyncSession
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(token: str = Depends(oauth2.oauth2_scheme), db: AsyncSession = Depends(db.getDb)):
     try:
+        # Decode the token to get the user ID
+        payload = await oauth2.decodeToken(token)
+        user_id = payload.get("userId")
+        
+        # Invalidate user cache (use token as key to match oauth2.py)
+        await redis_service.delete_cache(f"auth:user:{token}")
+        
         # Decode the token to get the expiration time
-        # offloaded to thread pool via oauth2.decodeToken()
         payload = await oauth2.decodeToken(token)
         expire_time = payload.get("expTime")
         if expire_time:
@@ -74,7 +100,6 @@ async def logout(token: str = Depends(oauth2.oauth2_scheme), db: AsyncSession = 
                 await redis_service.add_to_blacklist(token, int(remaining_time))
         # Also revoke all refresh tokens for this user so no
         # device can silently get new access tokens after logout.
-        user_id = payload.get("userId")
         if user_id:
             await token_service.revoke_all_user_tokens(db, user_id)
         return {"message": "Successfully logged out"}
@@ -84,7 +109,7 @@ async def logout(token: str = Depends(oauth2.oauth2_scheme), db: AsyncSession = 
             detail="Invalid token"
         )
 
-@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+@router.post("/password/forgot", status_code=status.HTTP_200_OK)
 async def forgot_password(payload: sch.ForgotPasswordSchema, db: AsyncSession = Depends(db.getDb), _: None = Depends(forgot_password_limiter)):
     result = await db.execute(select(models.User).where(models.User.email == payload.email))
     user = result.scalars().first()
@@ -102,7 +127,7 @@ async def forgot_password(payload: sch.ForgotPasswordSchema, db: AsyncSession = 
     
     return {"message": "An OTP has been sent to your email."}
 
-@router.post("/reset-password", status_code=status.HTTP_200_OK)
+@router.post("/password/reset", status_code=status.HTTP_200_OK)
 async def reset_password(payload: sch.ResetPasswordSchema, db: AsyncSession = Depends(db.getDb), _: None = Depends(reset_password_limiter)):
     # Verify OTP
     if not await otp_service.checkOtp(db, payload.email, payload.otp):
@@ -127,7 +152,7 @@ async def reset_password(payload: sch.ResetPasswordSchema, db: AsyncSession = De
     return {"message": "Password has been reset successfully."}
 
 
-@router.post("/verify-email", status_code=status.HTTP_200_OK)
+@router.post("/email/verify", status_code=status.HTTP_200_OK)
 async def verify_email(payload: sch.VerifyEmailRequest, db: AsyncSession = Depends(db.getDb)):
     async def _verify_email():
         user = await lock_user_row(db, email=payload.email)
@@ -151,7 +176,7 @@ async def verify_email(payload: sch.VerifyEmailRequest, db: AsyncSession = Depen
     return await run_with_transient_retry(lambda: _verify_email(), db=db)
 
 
-@router.post("/resend-verification-otp", status_code=status.HTTP_200_OK)
+@router.post("/email/resend-otp", status_code=status.HTTP_200_OK)
 async def resend_verification_otp(payload: sch.ResendVerificationOtpRequest, db: AsyncSession = Depends(db.getDb), _: None = Depends(forgot_password_limiter)):
     result = await db.execute(select(models.User).where(models.User.email == payload.email))
     user = result.scalars().first()

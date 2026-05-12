@@ -1,9 +1,14 @@
+from sqlalchemy import select
+
+from app import models
+
+
 async def test_login_success(client, create_test_user):
     data = {
         "username": "testuser",
         "password": "testpassword",
     }
-    resp = await client.post("/login", data=data)
+    resp = await client.post("/v1/auth/login", data=data)
     assert resp.status_code == 202
     assert "accessToken" in resp.json()
 
@@ -12,22 +17,29 @@ async def test_login_wrong_password(client, create_test_user):
         "username": "testuser",
         "password": "wrongpassword",
     }
-    resp = await client.post("/login", data=data)
+    resp = await client.post("/v1/auth/login", data=data)
     assert resp.status_code == 401
 
 
-async def test_login_unverified_email_blocked(client):
+async def test_login_unverified_email_blocked(client, db_session_factory):
     payload = {
         "username": "unverified_user",
         "password": "testpassword",
         "nickname": "Unverified",
         "email": "unverified@example.com",
     }
-    resp = await client.post("/user/signup", json=payload)
+    resp = await client.post("/v1/users/register", json=payload)
     assert resp.status_code == 201
 
-    login = await client.post("/login", data={"username": payload["username"], "password": payload["password"]})
+    login = await client.post("/v1/auth/login", data={"username": payload["username"], "password": payload["password"]})
     assert login.status_code == 403
+
+    async with db_session_factory() as db:
+        otp_row = (await db.execute(select(models.OTP).where(models.OTP.email == payload["email"]))).scalars().first()
+
+    assert otp_row is not None
+    assert otp_row.otp != "123456"
+    assert len(otp_row.otp) == 64
 
 
 async def test_verify_email_then_login_works(client):
@@ -37,17 +49,17 @@ async def test_verify_email_then_login_works(client):
         "nickname": "VerifyMe",
         "email": "verify_then_login@example.com",
     }
-    resp = await client.post("/user/signup", json=payload)
+    resp = await client.post("/v1/users/register", json=payload)
     assert resp.status_code == 201
 
-    verify = await client.post("/verify-email", json={"email": payload["email"], "otp": "123456"})
+    verify = await client.post("/v1/auth/email/verify", json={"email": payload["email"], "otp": "123456"})
     assert verify.status_code == 200
 
-    login = await client.post("/login", data={"username": payload["username"], "password": payload["password"]})
+    login = await client.post("/v1/auth/login", data={"username": payload["username"], "password": payload["password"]})
     assert login.status_code == 202
     assert "accessToken" in login.json()
 
 
 async def test_login_missing_password_returns_422(client, create_test_user):
-    resp = await client.post("/login", data={"username": "testuser"})
+    resp = await client.post("/v1/auth/login", data={"username": "testuser"})
     assert resp.status_code == 422

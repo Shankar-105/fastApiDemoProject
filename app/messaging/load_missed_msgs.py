@@ -2,9 +2,10 @@ from fastapi import Depends
 from app import schemas, models, oauth2,db,config
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from app.my_utils.socket_manager import manager
+from sqlalchemy.orm import selectinload
+from app.utils.socket_manager import manager
 from datetime import datetime
-from app.my_utils.time_formatting import format_timestamp
+from app.utils.time_formatting import format_timestamp
 from app.models import Notification
 
 async def load_missed_content(
@@ -13,11 +14,20 @@ async def load_missed_content(
 ):
         claimed_read_at = datetime.utcnow()
         missed_result = await db.execute(
-            select(models.Message).where(
+            select(models.Message)
+            .options(
+                selectinload(models.Message.reactions),
+                selectinload(models.Message.replies_to).selectinload(models.MessageReplies.original_msg).selectinload(models.Message.sender),
+                selectinload(models.Message.reply_to_shared_post).selectinload(models.SharedPost.post),
+                selectinload(models.Message.reply_to_shared_post).selectinload(models.SharedPost.from_user),
+            )
+            .where(
                 models.Message.is_deleted_for_everyone==False,
                 models.Message.receiver_id == user_id,
                 models.Message.is_read == False
-            ).order_by(models.Message.created_at.asc()).with_for_update(skip_locked=True)
+            )
+            .order_by(models.Message.created_at.asc())
+            .with_for_update(skip_locked=True)
         )
         missed_messages = missed_result.scalars().all()
         message_ids = [m.id for m in missed_messages]
@@ -37,11 +47,19 @@ async def load_missed_content(
             read_message_ids = set()
 
         missed_shares_result = await db.execute(
-            select(models.SharedPost).where(
+            select(models.SharedPost)
+            .options(
+                selectinload(models.SharedPost.post),
+                selectinload(models.SharedPost.from_user),
+                selectinload(models.SharedPost.reactions),
+            )
+            .where(
                 models.SharedPost.to_user_id == user_id,
                 models.SharedPost.is_read == False,
                 models.SharedPost.is_deleted_for_everyone == False
-            ).order_by(models.SharedPost.created_at.asc()).with_for_update(skip_locked=True)
+            )
+            .order_by(models.SharedPost.created_at.asc())
+            .with_for_update(skip_locked=True)
         )
         missed_shares = missed_shares_result.scalars().all()
         share_ids = [s.id for s in missed_shares]

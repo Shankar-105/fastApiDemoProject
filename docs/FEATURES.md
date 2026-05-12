@@ -9,7 +9,7 @@
 | Section | What It Covers |
 |---------|---------------|
 | [Async & Non-Blocking Architecture](#-async--non-blocking-architecture) | Event-loop design, thread-pool offloading, async DB & cache |
-| [Concurrency Hardening](#-concurrency-hardening) | 5 production-safe techniques that prevent race conditions and stale writes |
+| [Concurrency Hardening & Database Design](#-concurrency-hardening--database-design) | 5 production-safe techniques and schema choices that prevent race conditions, stale writes, and counter drift |
 | [Authentication & Security](#-authentication--security) | JWT with expiry verification, bcrypt, token blacklist, logout, OTP |
 | [Refresh Token Rotation](#-refresh-token-rotation) | Opaque refresh tokens, family-based revocation, silent re-auth |
 | [Rate Limiting](#-rate-limiting) | IP-based & user-based throttling, configurable per endpoint |
@@ -32,6 +32,7 @@
 | [Database & Migrations](#-database--migrations) | PostgreSQL, SQLAlchemy 2.0, Alembic, async sessions |
 | [DevOps & Docker](#-devops--docker) | Docker Compose, multi-service stack, volumes, auto-restart |
 | [API Documentation](#-api-documentation) | Swagger UI, ReDoc, Pydantic schemas |
+| [API Versioning](#-api-versioning) | Semantic versioning (v1, v2) to prevent breaking changes for clients |
 | [Testing](#-testing) | Pytest, isolated test DB, 50+ integration tests |
 | [Observability and Load Testing](#-observability-and-load-testing) | OpenTelemetry, Prometheus, Grafana, and k6 traffic simulation |
 ---
@@ -52,22 +53,31 @@ The entire backend is built on an **async-first** philosophy — from the first 
 
 ---
 
-## 🧱 Concurrency Hardening
+## 🧱 Concurrency Hardening & Database Design
 
-Built for real traffic, not like a simple crud app. I hardened critical write paths with a layered strategy that keeps data correct even under high concurrent request load.
+Built for real traffic, not like a simple crud app. I hardened critical write paths with a layered strategy that keeps data correct even under high concurrent request load and also pushed schema rules down into PostgreSQL where they belong.
 
-- ⚡ **Atomic SQL Updates** — counters use database-side math (`col = col + 1`, floor-safe decrements) not lanaguage level arthimetic, to prevent ambigous updates.
+- 🧱 **Database-Owned Counters** — hot counts are synchronized by database triggers or single-statement SQL updates, so the app no longer depends on Python-side read-modify-write loops.
 - 🛡️ **Conflict-Safe Inserts** — `ON CONFLICT DO NOTHING` protects follow/vote/save/reaction flows from duplicate-race errors.
 - 🔍 **Optimistic Locking** — `version_id_col` detects stale writes and prevents silent overwrite of profile/auth changes.
 - 🔒 **Pessimistic Locking** — `SELECT ... FOR UPDATE` serializes short critical sections when read-validate-write must be deterministic.
 - 🔁 **Transient Retry** — bounded retry with jitter recovers from PostgreSQL deadlock/serialization aborts (`40P01`, `40001`) without hiding real business errors.
+- 🧩 **Database Design Guardrails** — check constraints, partial indexes, trigram search indexes, and hashed auth secrets keep the schema resilient even when code paths grow.
 
 ### Why this makes the app better
 
 - ✅ More consistent counters and state transitions under heavy load
 - ✅ Safer profile/auth updates across multi-device sessions
 - ✅ Fewer race-condition bugs in chat edit/delete/reply and read-state flows
+- ✅ Less counter drift because the database owns more of the derived state
 - ✅ Better resilience during contention spikes
+
+### Current database design choices in the app
+
+- Derived counters for posts, comments, reactions, followers, and views are synchronized in PostgreSQL, not by hand in Python.
+- Search uses PostgreSQL trigram indexes for username and hashtag matching.
+- Refresh tokens and OTPs are stored hashed at rest.
+- Schema constraints reject invalid counters, invalid media types, and duplicate relational states before they reach application code.
 
 ---
 
@@ -92,11 +102,11 @@ Built for real traffic, not like a simple crud app. I hardened critical write pa
 
 A production-grade refresh token system with **family-based revocation** for maximum security.
 
-- **Opaque refresh tokens** — generated via `secrets.token_urlsafe(32)`, not JWTs. Stored securely in PostgreSQL with bcrypt-hashed values
-- **Token rotation on every refresh** — calling `POST /refresh` issues a new access + refresh token pair and immediately revokes the old refresh token
+- **Opaque refresh tokens** — generated via `secrets.token_urlsafe(32)`, not JWTs. Stored securely in PostgreSQL as SHA-256 digests
+- **Token rotation on every refresh** — calling `POST /v1/auth/refresh-token` issues a new access + refresh token pair and immediately revokes the old refresh token
 - **Family-based revocation** — each login session gets a unique `family_id` (UUID). If a revoked token is reused (replay attack), the **entire family** is revoked, forcing re-login on all devices in that session
 - **Configurable expiry** — refresh tokens expire after `REFRESH_TOKEN_EXPIRE_DAYS` (default: 7 days), set via `.env`
-- **Logout nukes all tokens** — `POST /logout` blacklists the access token and revokes every refresh token for that user across all devices
+- **Logout nukes all tokens** — `POST /v1/auth/logout` blacklists the access token and revokes every refresh token for that user across all devices
 - **Password change revokes sessions** — changing your password automatically revokes all refresh tokens, preventing stale sessions from silently refreshing
 
 ---
@@ -134,9 +144,9 @@ Real-time notification system with persistent storage and live delivery.
 - **Persistent storage** — all notifications saved in a dedicated `notifications` table with `owner_id`, `actor_id`, `type`, `entity_id`, `entity_type`, `text`, `is_read`, and `created_at`
 - **Real-time delivery** — if the target user has an active WebSocket connection, the notification is pushed instantly through the connection manager
 - **REST endpoints:**
-  - `GET /me/notifications` — paginated notification list (cached 20s in Redis)
-  - `GET /me/notifications/unread-count` — unread badge count (cached 20s)
-  - `PATCH /me/notifications/read` — mark all as read (invalidates caches)
+  - `GET /v1/users/me/notifications` — paginated notification list (cached 20s in Redis)
+  - `GET /v1/users/me/notifications/unread-count` — unread badge count (cached 20s)
+  - `PATCH /v1/users/me/notifications/read` — mark all as read (invalidates caches)
 - **Automatic cache invalidation** — creating a new notification clears the target user's notification caches so they see fresh data on next request
 - **No self-notifications** — liking your own post or following yourself doesn't generate a notification
 
@@ -181,7 +191,7 @@ The app now pushes slow or repeatable work into a queue instead of doing it in t
 - **Unfollow a user** — removes the connection, updates counts instantly
 - **Remove a follower** — you can kick someone off your followers list
 - **Follower/following lists** — paginated lists with user info and `is_following` status for each entry
-- **Live counts** — `followers_count` and `following_count` are maintained on the user model and updated on every follow/unfollow action
+- **Live counts** — `followers_count` and `following_count` are maintained in the database and reconciled from the `connections` table
 - **Cascading deletes** — if a user is deleted, all their follow connections are cleaned up automatically
 
 ---
@@ -193,9 +203,9 @@ The app now pushes slow or repeatable work into a queue instead of doing it in t
 - **Media uploads** — supports JPEG, PNG images and MP4 video files via `multipart/form-data`
 - **Unique filenames** — uploaded media gets a UUID-based filename to prevent collisions
 - **File cleanup on delete** — when a post is deleted, its media file is removed from disk
-- **View counter** — tracks unique views per user per post using a dedicated `PostView` table (one view per user, not inflated by refreshes)
-- **Like/dislike counts** — maintained directly on the post for fast retrieval
-- **Comment count** — incremented/decremented as comments are added/removed
+- **View counter** — tracks unique views per user per post using a dedicated `PostView` table and a database-synced post view count
+- **Like/dislike counts** — maintained directly on the post and synchronized from the `votes` table for fast retrieval
+- **Comment count** — synchronized from comment inserts/deletes so it stays aligned with the `comments` table
 - **Enable/disable comments** — post owners can toggle whether comments are allowed
 - **Hashtag support** — posts can include hashtags, searchable via the search endpoint
 - **Post sharing** — any post can be shared into a DM conversation
@@ -207,7 +217,7 @@ The app now pushes slow or repeatable work into a queue instead of doing it in t
 
 - **Full CRUD** — create, edit, and delete comments on any post (if comments are enabled)
 - **Paginated retrieval** — fetch comments on any post with configurable `limit` and `offset`
-- **Like comments** — toggle-based like system for individual comments via a dedicated `CommentVotes` table
+- **Like comments** — toggle-based like system for individual comments via a dedicated `CommentVotes` table with database-synced comment counters
 - **Comment stats** — view your total comment count and the number of unique posts you've commented on
 - **Owner-only edit/delete** — only the comment author can modify or remove their comment
 - **Cascading deletes** — when a post is deleted, all its comments are automatically cleaned up
@@ -226,7 +236,7 @@ The app now pushes slow or repeatable work into a queue instead of doing it in t
   - See your like vs. dislike counts
   - List all your liked posts
   - List all your disliked posts
-- **Atomic count updates** — like/dislike counts on posts and comments are updated in the same transaction as the vote itself
+- **Database-synced count updates** — like/dislike counts on posts and comments are kept in sync by the database while the vote rows remain the source of truth
 
 ---
 
@@ -244,9 +254,9 @@ The app now pushes slow or repeatable work into a queue instead of doing it in t
 
 - **Personal save collection** — each user can save posts they want to revisit later
 - **Three dedicated endpoints:**
-  - `POST /saved/{post_id}` — save a post
-  - `DELETE /saved/{post_id}` — remove from saved
-  - `GET /saved/me` — list saved posts newest-first
+  - `POST /v1/posts/{post_id}/save` — save a post
+  - `DELETE /v1/posts/{post_id}/unsave` — remove from saved
+  - `GET /v1/users/me/saved-posts` — list saved posts newest-first
 - **Duplicate-safe behavior** — saving the same post twice does not create duplicates (unique `(user_id, post_id)` constraint)
 - **Rich response model** — each saved item returns `saved_at` plus a full `PostDetailResponse` payload
 - **Per-user like context** — saved list includes `is_liked` for each post from the perspective of the current user
@@ -256,8 +266,8 @@ The app now pushes slow or repeatable work into a queue instead of doing it in t
 
 ## 🔍 Search
 
-- **User search** — search by username with partial matching (`ILIKE`)
-- **Hashtag search** — prefix query with `#` to search posts by hashtag
+- **User search** — search by username with partial matching (`ILIKE`) backed by a PostgreSQL trigram index
+- **Hashtag search** — prefix query with `#` to search posts by hashtag, ranked with trigram similarity
 - **Order by likes** — hashtag search results can be sorted by like count (`orderBy=likes`)
 - **Paginated results** — both user and post search support `limit` and `offset`
 - **Response type indicator** — the response includes `result_type` ("users" or "posts") so the client knows what it received
@@ -273,7 +283,7 @@ The app now pushes slow or repeatable work into a queue instead of doing it in t
   1. Submit your email → OTP sent (no user enumeration — generic response)
   2. Submit email + OTP + new password → password reset
 - **OTP system:**
-  - 6-digit random OTP stored in the database with expiration time
+  - 6-digit random OTP stored in the database as a SHA-256 digest with expiration time
   - Only one active OTP per email (old ones are deleted)
   - Auto-cleanup of expired OTPs
 - **Email delivery** — OTPs sent via Gmail SMTP using `fastapi-mail` (async, non-blocking)
@@ -390,7 +400,7 @@ A production-grade 1-on-1 chat system running over a single persistent WebSocket
 - **PostgreSQL 16** — production-grade relational database
 - **SQLAlchemy 2.0** — modern ORM with both async (`AsyncSession`) and sync engines
 - **Async database driver** — `asyncpg` for fully non-blocking database I/O
-- **Alembic migrations** — auto-run on container startup (`alembic upgrade head`); version-controlled schema changes
+- **Alembic migrations** — auto-run on container startup (`alembic upgrade head`); version-controlled schema changes, counter triggers, check constraints, and search indexes
 - **Declarative models** — 16+ database tables:
   - `users`, `posts`, `post_views`, `comments`, `votes`, `comment_votes`
   - `connections` (follow system)
@@ -402,6 +412,9 @@ A production-grade 1-on-1 chat system running over a single persistent WebSocket
 - **Eager loading** — `lazy="selectin"` on all relationships to avoid N+1 query problems
 - **Cascading deletes** — `ondelete="CASCADE"` on all foreign keys for automatic cleanup
 - **Unique constraints** — prevents duplicate votes, reactions, deleted message records, etc.
+- **Derived-state sync** — triggers keep post/comment/reaction/follow counters aligned with the source tables
+- **Search support** — PostgreSQL `pg_trgm` indexes speed up username and hashtag search
+- **Secret hardening** — refresh tokens and OTPs are hashed before storage
 
 ---
 
@@ -431,6 +444,17 @@ A production-grade 1-on-1 chat system running over a single persistent WebSocket
   - `model_config = ConfigDict(from_attributes=True)` for ORM compatibility
 - **Health check endpoint** — `GET /health` for monitoring and uptime checks
 - **Detailed API guide** — handwritten [`API_GUIDE.md`](./API_GUIDE.md) covering all 55+ REST endpoints and WebSocket message types with examples
+
+---
+
+## 🚦 API Versioning
+
+The API follows a strict versioning policy to ensure stability and backward compatibility for all clients.
+
+- **Global Prefix** — All endpoints are prefixed with their version (e.g., `/v1/auth/login`, `/v1/posts`).
+- **Breaking Change Policy** — We never modify existing versioned endpoints in a way that breaks current clients. Instead, we introduce a new version (e.g., `/v2/`) for significant architectural or schema changes.
+- **Router-Level Isolation** — Each version is managed via separate FastAPI routers, allowing us to maintain multiple versions concurrently without code bloat.
+- **Consistent Documentation** — Both Swagger and the handwritten guides are updated to reflect the current active versions and their specific request/response models.
 
 ---
 

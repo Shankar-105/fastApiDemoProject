@@ -1,11 +1,5 @@
 # 📸 Benchmark and Deployed Reality
 
-## ✨ At a Glance
-
-1. deployed screenshots for key Grafana panels,
-2. smoke and load test summaries,
-3. clear explanation of infra saturation vs code quality.
-
 > **_This file is the benchmark proof for the deployed app_**.
 
 ## 🎯 Why This File Exists
@@ -42,7 +36,7 @@ Command used:
 k6 run loadtests/smoke.js
 ```
 
-Summary from the deployed run:
+Summary from the deployed run as of (2026-04-12):
 
 1. `http_reqs`: `9321` total (`66.28 req/s`)
 2. `http_req_failed`: `2.00%` (`187 out of 9321`)
@@ -55,7 +49,7 @@ Important context from the same run: repeated transport failures still appeared 
 
 > **Note on variance**: _chart values and summary values can vary slightly between runs, and that is expected_.
 
-## ❌ Load Test Summary (Deployed, Real Run)
+## ❌ Load Test Summary (Deployed, Real Run) as of 2026-04-12
 
 1. `http_reqs`: `30475` total (`86.66 req/s`)
 2. `http_req_failed`: `33.59%` (`10239 out of 30475`)
@@ -70,46 +64,46 @@ No separate stress benchmark is required right now for conclusions.
 The load profile is already failing hard on deployed infra, so stress will only amplify the same saturation pattern.
 
 
-## 🧪 Benchmark Summary (Current)
+## 🧪 Benchmark Summary
 
 From the above smoke,load test runs and the above screenshots, the app currently behaves like this on the current Azure setup:
 
 1. smoke traffic can run in a limited band, but already shows transport instability,
-2. load and stress profiles degrade heavily,
+2. load test degrade heavily,
 3. p95 and failure rate rise sharply,
 4. transport-level failures appear (`timeout`, `EOF`, connection resets, connection attempts failing).
 
 **This is a loud and clear infrastructure saturation signal, not a "weak code" signal.**
 **The backend architecture is async and solid; the current Azure VM/DB sizing is what is being overrun under sustained concurrency.**
 
-## 🧠 Why Deployed Is Currently Limited
+> **Update After (PR #31):** The app shows measurable improvements after the improvments made in PR #31 but no matter what changes it completely depends on the app infra.
 
-If you check [docs/AZURE_DEPLOYMENT.md](./AZURE_DEPLOYMENT.md), the deployed stack is basic-tier and student-budget friendly:
+### 🧠 Why is the deployed VM failing even on medium concurrency ?
 
-1. VM is a burstable class (`Standard_B2ats_v2`),
-2. Postgres is small tier (`B1ms`),
-3. Redis runs on same VM and shares resources with app and Nginx.
+When localhost with 2 workers achieves **2,183.95 req/s** with a **540ms p95 latency**, why does the deployed VM struggle to handle even **500 rps**?
 
-At high concurrency this causes:
+The answer lies in **single-machine consolidation**. As you can see the Azure infra from [`AZURE_DEPLOYMENT.md`](./AZURE_DEPLOYMENT.md), the deployed setup is resource-constrained:
 
-1. CPU/credit pressure on VM,
-2. DB IOPS and latency bottlenecks,
-3. queueing and timeout amplification at proxy/app layers,
-4. internet + TLS overhead that localhost does not have.
+**Architecture breakdown:**
+- **VM Size:** `Standard_B2ats_v2` (burstable, shared CPU with limited sustained performance)
+- **Shared Services on One Machine:**
+  -  **Nginx** — Reverse proxy + HTTPS termination
+  -  **Gunicorn + Uvicorn workers** — FastAPI application
+  -  **PostgreSQL** — Database server (shared I/O)
+  -  **Redis** — Cache & session store
+  -  **RabbitMQ** — Message broker for Celery tasks
+  -  **Celery Worker** — Background job processor
+  -  **Celery Beat** — Periodic task scheduler
 
-So even with Gunicorn + multiple Uvicorn workers, end-to-end throughput can still collapse when infra saturates first.
+**Under sustained load:**
+- All services compete for **limited CPU, memory, and I/O bandwidth**
+- Context switching overhead multiplies with more processes
+- Database locks and I/O contention spike
+- Network buffers fill up, causing backpressure
+- Combined load rapidly saturates the VM
 
-
-## 🚀 What a Strong Azure Setup Would Change
-
-This is not a measured benchmark, just a practical estimatation. Right now the app is already doing about `66 req/s` on the limited Azure setup, and that is the infra talking, not the code. 💡
-
-If the app got a much stronger Azure setup like a bigger VM, a stronger Postgres tier, and Redis on a dedicated machine or managed service, enough storage and network headroom for media + chat traffic, then `500+ req/s` is a reasonable target to expect 😌🚀.
-
-So in short: current infra = about `66 req/s`, better infra = easily a few hundred requests per second more, with much lower latency and fewer failures. ✨
+**Result:** Transport-level failures (`timeout`, `EOF`, `connection reset`) and request queueing appear—not due to code quality, but **infrastructure saturation**.
 
 ## ✅ Honest Conclusion
 
-- Current deployed infra is enough to demonstrate real deployment and moderate traffic.
-- It is not sized for heavy sustained load/stress profiles.
-- **_The async backend architecture is still a solid foundation and is expected to scale much higher on stronger infra tiers and better resource separation._**
+**_The async backend architecture is solid look [`App Performance Result`](./MONITORING_AND_LOAD_TESTING.md#-performance-results-on-different-worker-counts) and is expected to scale much higher on stronger infra tiers and better resource separation._**

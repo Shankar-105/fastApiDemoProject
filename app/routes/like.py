@@ -1,22 +1,24 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter,BackgroundTasks
+from fastapi import status,HTTPException,Depends,Body,APIRouter
 import app.schemas as sch
-from app import models,oauth2
+from app import models,oauth2, config
 from app.db import getDb
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,and_,update,func
+from sqlalchemy import select,and_
 from sqlalchemy.exc import IntegrityError
-from app.services.notification_service import create_notification
 from app.models import NotificationType
-from app.services.redis_service import delete_cache_pattern
+from app.services.redis_service import delete_cache_pattern, increment_cache_version
 from app.tasks.notification_tasks import create_notification_task
 
 router=APIRouter(
-    tags=['likes']
+    prefix="",
+    tags=['Votes']
 )
 
-@router.post("/vote/on_post",status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
+@router.post("/posts/{postId}/votes", status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
 # get the post user that user wants to vote on with which user he is
-async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+async def voteOnPost(postId:int, post:sch.VoteRequest=Body(...), db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    if post.post_id != postId:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path postId and request post_id must match")
     # search for the post he wants to vote on against the db 
     # to firstly check whether that particular post is present or not in the db
     result=await db.execute(select(models.Post).where(models.Post.id==post.post_id))
@@ -36,51 +38,27 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
             if currentVote.action == post.choice:
                 # Same choice again means remove the vote
                 await db.delete(currentVote)
-                # update the same on the posts table also
-                # by removing the vote accordingly (like/dislike)
-                if post.choice:
-                    await db.execute(
-                        update(models.Post)
-                        .where(models.Post.id == post.post_id)
-                        .values(likes=func.greatest(models.Post.likes - 1, 0))
-                    )
-                else:
-                    await db.execute(
-                        update(models.Post)
-                        .where(models.Post.id == post.post_id)
-                        .values(dis_likes=func.greatest(models.Post.dis_likes - 1, 0))
-                    )
                 await db.commit()
-                await db.refresh(queriedPost)
+                # Fetch updated counts instead of refreshing entire object
+                count_result = await db.execute(select(models.Post.likes, models.Post.dis_likes).where(models.Post.id==post.post_id))
+                likes, dislikes = count_result.first()
                 await delete_cache_pattern(f"post:{post.post_id}:*")
-                await delete_cache_pattern("feed:*")
-                return sch.VoteResponse(message="Vote removed successfully", likes=queriedPost.likes, dislikes=queriedPost.dis_likes)
+                # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+                await increment_cache_version("feed:home")
+                await increment_cache_version("feed:explore")
+                return sch.VoteResponse(message="Vote removed successfully", likes=likes, dislikes=dislikes)
             else:
                 # Switching vote (e.g., like to dislike or vice versa)
                 currentVote.action = post.choice
-                if post.choice:
-                    await db.execute(
-                        update(models.Post)
-                        .where(models.Post.id == post.post_id)
-                        .values(
-                            likes=models.Post.likes + 1,
-                            dis_likes=func.greatest(models.Post.dis_likes - 1, 0),
-                        )
-                    )
-                else:
-                    await db.execute(
-                        update(models.Post)
-                        .where(models.Post.id == post.post_id)
-                        .values(
-                            likes=func.greatest(models.Post.likes - 1, 0),
-                            dis_likes=models.Post.dis_likes + 1,
-                        )
-                    )
                 await db.commit()
-                await db.refresh(queriedPost)
+                # Fetch updated counts instead of refreshing entire object
+                count_result = await db.execute(select(models.Post.likes, models.Post.dis_likes).where(models.Post.id==post.post_id))
+                likes, dislikes = count_result.first()
                 await delete_cache_pattern(f"post:{post.post_id}:*")
-                await delete_cache_pattern("feed:*")
-                return sch.VoteResponse(message="Vote switched successfully", likes=queriedPost.likes, dislikes=queriedPost.dis_likes)
+                # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+                await increment_cache_version("feed:home")
+                await increment_cache_version("feed:explore")
+                return sch.VoteResponse(message="Vote switched successfully", likes=likes, dislikes=dislikes)
         else:
             # New vote
             newVote = models.Votes(
@@ -89,24 +67,14 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
                 action=post.choice
             )
             db.add(newVote)
-            # if user choice is true increase likes count
-            if post.choice:
-                await db.execute(
-                    update(models.Post)
-                    .where(models.Post.id == post.post_id)
-                    .values(likes=models.Post.likes + 1)
-                )
-            # or else dilikes count
-            else:
-                await db.execute(
-                    update(models.Post)
-                    .where(models.Post.id == post.post_id)
-                    .values(dis_likes=models.Post.dis_likes + 1)
-                )
             await db.commit()
-            await db.refresh(queriedPost)
+            # Fetch updated counts instead of refreshing entire object
+            count_result = await db.execute(select(models.Post.likes, models.Post.dis_likes).where(models.Post.id==post.post_id))
+            likes, dislikes = count_result.first()
             await delete_cache_pattern(f"post:{post.post_id}:*")
-            await delete_cache_pattern("feed:*")
+            # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+            await increment_cache_version("feed:home")
+            await increment_cache_version("feed:explore")
             # Notify the post owner when someone LIKES their post.
             # Only on new likes (not dislikes, not removals, not self-likes).
             if post.choice and currentUser.id != queriedPost.user_id:
@@ -118,14 +86,16 @@ async def voteOnPost(post:sch.VoteRequest=Body(...),db:AsyncSession=Depends(getD
                     entity_id=post.post_id,
                     entity_type="post",
                 )
-            return sch.VoteResponse(message="New vote added successfully", likes=queriedPost.likes, dislikes=queriedPost.dis_likes)
+            return sch.VoteResponse(message="New vote added successfully", likes=likes, dislikes=dislikes)
     # triggers if any thing goes wrong in db as the logic is solid
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Database error, please try again"
                             )
-@router.post("/vote/on_comment",status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
-async def likeAComment(comment:sch.CommentVoteRequest=Body(...),db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.post("/comments/{commentId}/votes", status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
+async def likeAComment(commentId:int, comment:sch.CommentVoteRequest=Body(...), db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    if comment.comment_id != commentId:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path commentId and request comment_id must match")
     # search for the comment he wants to vote on against the db 
     # to firstly check whether that particular comment is present or not in the db
     result=await db.execute(select(models.Comments).where(models.Comments.id==comment.comment_id))
@@ -145,17 +115,11 @@ async def likeAComment(comment:sch.CommentVoteRequest=Body(...),db:AsyncSession=
             if currentVote.like==comment.choice:
                 # Same choice again means remove the vote
                 await db.delete(currentVote)
-                # update the same on the CommentVotes table also
-                # by removing the vote (like)
-                if comment.choice:
-                    await db.execute(
-                        update(models.Comments)
-                        .where(models.Comments.id == comment.comment_id)
-                        .values(likes=func.greatest(models.Comments.likes - 1, 0))
-                    )
                 await db.commit()
-                await db.refresh(queriedComment)
-                return sch.VoteResponse(message="Vote removed successfully", likes=queriedComment.likes)
+                # Fetch updated count instead of refreshing entire object
+                count_result = await db.execute(select(models.Comments.likes).where(models.Comments.id==comment.comment_id))
+                likes = count_result.scalar()
+                return sch.VoteResponse(message="Vote removed successfully", likes=likes)
         else:
             # New like on a comment
             newVote=models.CommentVotes(
@@ -164,16 +128,11 @@ async def likeAComment(comment:sch.CommentVoteRequest=Body(...),db:AsyncSession=
                 like=comment.choice
             )
             db.add(newVote)
-            # if user choice is true increase likes count
-            if comment.choice:
-                await db.execute(
-                    update(models.Comments)
-                    .where(models.Comments.id == comment.comment_id)
-                    .values(likes=models.Comments.likes + 1)
-                )
             await db.commit()
-            await db.refresh(queriedComment)
-            return sch.VoteResponse(message="New vote added successfully", likes=queriedComment.likes)
+            # Fetch updated count instead of refreshing entire object
+            count_result = await db.execute(select(models.Comments.likes).where(models.Comments.id==comment.comment_id))
+            likes = count_result.scalar()
+            return sch.VoteResponse(message="New vote added successfully", likes=likes)
     # triggers if any thing goes wrong in db as the logic is solid
     except IntegrityError:
         await db.rollback()

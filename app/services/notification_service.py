@@ -6,7 +6,7 @@ from app.db import AsyncSessionLocal
 from app.models import Notification, NotificationType
 from app.services import redis_service
 from app.services.redis_service import delete_cache_pattern
-from app.my_utils.socket_manager import manager
+from app.utils.socket_manager import manager
 
 # -- Patchable session factory --
 # Mirrors exactly what redis_service.py does with redis_client.

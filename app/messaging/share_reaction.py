@@ -1,18 +1,22 @@
 from fastapi import APIRouter,Depends
 from app import schemas, models, oauth2, db
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func
-from app.my_utils.socket_manager import manager
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from app.utils.socket_manager import manager
 from app.services import redis_service
 from typing import List
 import json
 
-router = APIRouter(tags=['shared post reactions'])
+router = APIRouter(
+    prefix="/messaging",
+    tags=['Messaging']
+)
 
 # same as the message_reaction but here the shares are
 # stored in the SharedPosts table so we query that insted of
 # the messages table
-@router.get("/shared/{shared_id}/reactions", response_model=List[schemas.ReactedUsers])
+@router.get("/shares/{shared_id}/reactions", response_model=List[schemas.ReactedUsers])
 async def get_shared_post_reactions(
     shared_id: int,
     db: AsyncSession = Depends(db.getDb),
@@ -30,7 +34,9 @@ async def get_shared_post_reactions(
         return
 
     reactions_result = await db.execute(
-        select(models.SharedPostReaction).where(models.SharedPostReaction.shared_post_id == shared_id)
+        select(models.SharedPostReaction)
+        .options(selectinload(models.SharedPostReaction.user))
+        .where(models.SharedPostReaction.shared_post_id == shared_id)
     )
     reactions = reactions_result.scalars().all()
     return [
@@ -80,27 +86,17 @@ async def react_to_shared_post(
             reaction=reaction.reaction
         )
         db.add(new_reaction)
-        await db.execute(
-            update(models.SharedPost)
-            .where(models.SharedPost.id == reaction.message_id)
-            .values(reaction_cnt=models.SharedPost.reaction_cnt + 1)
-        )
     elif existing.reaction == reaction.reaction:
         isNewRecord=False
         # Toggle off
         await db.delete(existing)
-        await db.execute(
-            update(models.SharedPost)
-            .where(models.SharedPost.id == reaction.message_id)
-            .values(reaction_cnt=func.greatest(models.SharedPost.reaction_cnt - 1, 0))
-        )
     else:
         isNewRecord=True
         # Change reaction
         existing.reaction = reaction.reaction
     # commit any change
     await db.commit()
-    await db.refresh(shared)
+    # No refresh needed - expire_on_commit=False keeps object attributes
     
     payload = {
         "type": "reaction_update",

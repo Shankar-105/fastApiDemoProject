@@ -14,7 +14,7 @@ def _container_to_local_path(container: str) -> str:
     # Keep local folder names aligned with existing static mounts in main.py.
     mapping = {
         "profilepics": "profilepics",
-        "posts-media": settings.media_folder,
+        "posts-media": "posts_media",
         "chat-media": "chat-media",
     }
     return mapping.get(container, container)

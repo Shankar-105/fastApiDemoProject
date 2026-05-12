@@ -1,15 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException,Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,func,desc
+from sqlalchemy import select,func
 from typing import List
 from app import models, schemas, oauth2 , db
 from app.services.redis_service import get_cache, set_cache, delete_cache
 from app.services.blob_service import get_blob_url
 import os
 
-router = APIRouter(tags=["Feed"])
+router = APIRouter(
+    prefix="/feed",
+    tags=["Feed"]
+)
 
-@router.get("/feed/home", response_model=schemas.FeedResponse)
+@router.get("", response_model=schemas.FeedResponse)
 async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
     offset: int = Query(0,ge=0),
     db:AsyncSession=Depends(db.getDb),
@@ -21,62 +24,77 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
     if cached:
         return cached
 
-    # Get users the current user follows via connections table
-    followingResult = await db.execute(
-        select(models.connections.c.followed_id).where(models.connections.c.follower_id == currentUser.id)
+    followed_users = (
+        select(models.connections.c.followed_id)
+        .where(models.connections.c.follower_id == currentUser.id)
     )
-    followed_users = [row[0] for row in followingResult.all()]
-    
-    # Query posts from followed users, recent first
-    countResult = await db.execute(
-        select(func.count()).select_from(models.Post).where(models.Post.user_id.in_(followed_users))
+    is_liked = (
+        select(models.Votes.post_id)
+        .where(
+            models.Votes.post_id == models.Post.id,
+            models.Votes.user_id == currentUser.id,
+            models.Votes.action == True,
+        )
+        .exists()
+        .label("is_liked")
     )
-    total=countResult.scalar()
     
+    # P2.2: Fetch only needed columns (not full Post objects)
+    # P2.3: Use limit+1 to determine has_more without separate COUNT query
     postsResult = await db.execute(
-        select(models.Post).where(models.Post.user_id.in_(followed_users))
+        select(
+            models.Post.id,
+            models.Post.title,
+            models.Post.media_path,
+            models.Post.media_type,
+            models.Post.likes,
+            models.Post.comments_cnt,
+            models.Post.created_at,
+            models.Post.user_id,
+            models.User.username,
+            models.User.profile_picture,
+            is_liked,
+        )
+        .join(models.User, models.User.id == models.Post.user_id)
+        .where(models.Post.user_id.in_(followed_users))
         .order_by(models.Post.created_at.desc())
-        .offset(offset).limit(limit)
+        .offset(offset).limit(limit + 1)  # fetch one extra to determine has_more
     )
-    posts=postsResult.scalars().all()
-    
-    # Get liked post IDs
-    votesResult = await db.execute(
-        select(models.Votes.post_id).where(models.Votes.user_id == currentUser.id, models.Votes.action == True)
-    )
-    liked_post_ids = {row[0] for row in votesResult.all()}
+    rows=postsResult.all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]  # trim to limit
     
     # Build proper feed response
     user_homeFeed = []
-    for post in posts:
+    for row in rows:
         owner = schemas.UserOut(
-            id=post.user_id,
-            username=post.user.username,
-            profile_pic=post.user.profile_picture
+            id=row.user_id,
+            username=row.username,
+            profile_pic=row.profile_picture
         )
         # Build the post item with is_liked
         post_item = schemas.PostListItemResponse(
-            id=post.id,
-            title=post.title,
-            media_url=get_blob_url("posts-media", post.media_path) if post.media_path else None,
-            media_type=post.media_type,
-            likes=post.likes,
-            comments_count=post.comments_cnt,
-            created_at=post.created_at,
-            is_liked=post.id in liked_post_ids
+            id=row.id,
+            title=row.title,
+            media_url=get_blob_url("posts-media", row.media_path) if row.media_path else None,
+            media_type=row.media_type,
+            likes=row.likes,
+            comments_count=row.comments_cnt,
+            created_at=row.created_at,
+            is_liked=bool(row.is_liked)
         )
         
         user_homeFeed.append(schemas.FeedItemResponse(
-            post_id=post.id,
+            post_id=row.id,
             post=post_item,
             owner=owner
         ))
     
-    result = schemas.FeedResponse(feed=user_homeFeed, total=total)
+    result = schemas.FeedResponse(feed=user_homeFeed, total=None)  # omit expensive total count
     await set_cache(cache_key, result.model_dump(mode="json"), ttl=30)
     return result
 
-@router.get("/feed/explore", response_model=schemas.PostListResponse)
+@router.get("/explore", response_model=schemas.PostListResponse)
 async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
     offset: int = Query(0,ge=0),
     db:AsyncSession=Depends(db.getDb),
@@ -89,45 +107,58 @@ async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
         return cached
 
     # For explore, get all posts (or random) - excluding potentially private ones if that existed
-    # Simple implementation: All recent posts
-    countResult = await db.execute(select(func.count()).select_from(models.Post))
-    total = countResult.scalar()
-    
+    # P2.2: Fetch only needed columns
+    # P2.3: Use limit+1 to determine has_more without COUNT
+    is_liked = (
+        select(models.Votes.post_id)
+        .where(
+            models.Votes.post_id == models.Post.id,
+            models.Votes.user_id == currentUser.id,
+            models.Votes.action == True,
+        )
+        .exists()
+        .label("is_liked")
+    )
     postsResult = await db.execute(
-        select(models.Post).order_by(models.Post.created_at.desc())
-        .offset(offset).limit(limit)
+        select(
+            models.Post.id,
+            models.Post.title,
+            models.Post.media_path,
+            models.Post.media_type,
+            models.Post.likes,
+            models.Post.comments_cnt,
+            models.Post.created_at,
+            is_liked
+        ).order_by(models.Post.created_at.desc())
+        .offset(offset).limit(limit + 1)  # fetch one extra
     )
-    posts = postsResult.scalars().all()
-    
-    # Get liked post IDs
-    votesResult = await db.execute(
-        select(models.Votes.post_id).where(models.Votes.user_id == currentUser.id, models.Votes.action == True)
-    )
-    liked_post_ids = {row[0] for row in votesResult.all()}
+    rows = postsResult.all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]  # trim to limit
     
     # helper to format posts specifically for explore (similar to user posts list)
     explore_posts = []
-    for post in posts:
+    for row in rows:
         media_url = None
-        if post.media_path:
-            media_url = get_blob_url("posts-media", post.media_path)
+        if row.media_path:
+            media_url = get_blob_url("posts-media", row.media_path)
             
         explore_posts.append(schemas.PostListItemResponse(
-            id=post.id,
-            title=post.title,
+            id=row.id,
+            title=row.title,
             media_url=media_url,
-            media_type=post.media_type,
-            likes=post.likes,
-            comments_count=post.comments_cnt,
-            created_at=post.created_at,
-            is_liked=post.id in liked_post_ids
+            media_type=row.media_type,
+            likes=row.likes,
+            comments_count=row.comments_cnt,
+            created_at=row.created_at,
+            is_liked=bool(row.is_liked)
         ))
 
     pagination = schemas.PaginationMetadata(
-        total=total,
+        total=None,  # omit expensive total
         limit=limit,
         offset=offset,
-        has_more=(limit+offset)<total
+        has_more=has_more
     )
     
     result = schemas.PostListResponse(posts=explore_posts, pagination=pagination)

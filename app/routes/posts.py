@@ -4,50 +4,54 @@ from app.rate_limiter import create_post_limiter
 from typing import Optional
 from app import models,oauth2
 from app.db import getDb
-from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
+from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern, queue_post_view, increment_cache_version, get_cache_version, build_versioned_feed_cache_key
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,and_,update
+from sqlalchemy import select,and_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import os,uuid
 import asyncio
 from app.config import settings
 from app.services.blob_service import upload_blob, delete_blob, get_blob_url
 router=APIRouter(
+    prefix="/posts",
     tags=['Posts']
 )
 
 # gets a specific post with id -> {postId}
-@router.get("/posts/getPost/{postId}", response_model=sch.PostDetailResponse)
-async def getPost(postId:int,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.get("/{postId}", response_model=sch.PostDetailResponse)
+async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     # Check Redis cache first
     cache_key = f"post:{postId}:{currentUser.id}"
     cached = await get_cache(cache_key)
     if cached:
         return cached
 
-    result=await db.execute(select(models.Post).where(models.Post.id==postId))
+    result=await db.execute(
+        select(models.Post)
+        .options(selectinload(models.Post.user))
+        .where(models.Post.id==postId)
+    )
     reqPost=result.scalars().first()
     if reqPost==None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with id {postId} not found")
-    # Insert view once per user/post and increment views atomically only when inserted.
-    insert_view_stmt = (
-        pg_insert(models.PostView)
-        .values(post_id=postId, user_id=currentUser.id)
-        .on_conflict_do_nothing(index_elements=[models.PostView.post_id, models.PostView.user_id])
-    )
-    insert_result = await db.execute(insert_view_stmt)
-    if insert_result.rowcount and insert_result.rowcount > 0:
-        await db.execute(
-            update(models.Post)
-            .where(models.Post.id == postId)
-            .values(views=models.Post.views + 1)
-        )
-        await db.commit()
-        await db.refresh(reqPost)  # Refresh to get updated post data
+    
+    # This removes the write from the hot read path and significantly reduces latency.
+    await queue_post_view(postId, currentUser.id)
     
     # Check if liked
-    likeResult=await db.execute(select(models.Votes).where(models.Votes.post_id == postId, models.Votes.user_id == currentUser.id, models.Votes.action == True))
-    is_liked = likeResult.scalars().first() is not None
+    likeResult=await db.execute(
+        select(
+            select(models.Votes.post_id)
+            .where(
+                models.Votes.post_id == postId,
+                models.Votes.user_id == currentUser.id,
+                models.Votes.action == True,
+            )
+            .exists()
+        )
+    )
+    is_liked = bool(likeResult.scalar())
     
     # Build proper response with schema
     media_url = None
@@ -82,7 +86,7 @@ async def getPost(postId:int,db:AsyncSession=Depends(getDb),currentUser:models.U
 
 
 # creates a new post using sqlAlchemy
-@router.post("/posts/createPost", status_code=status.HTTP_201_CREATED, response_model=sch.PostDetailResponse)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=sch.PostDetailResponse)
 async def create_post(
     title:str=Form(...),
     content:str=Form(...),
@@ -115,12 +119,14 @@ async def create_post(
     )
     db.add(new_post)
     await db.commit()
-    await db.refresh(new_post)
-    # Invalidate feed and user posts caches
-    await delete_cache_pattern("feed:*")
+    
+    # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+    await increment_cache_version("feed:home")
+    await increment_cache_version("feed:explore")
+    
     await delete_cache_pattern(f"user:posts:{currentUser.id}:*")
     
-    # Build proper response
+    # Build proper response (no refresh needed)
     media_url = None
     if new_post.media_path:
         media_url = get_blob_url("posts-media", new_post.media_path)
@@ -148,8 +154,8 @@ async def create_post(
         owner=owner
     )
 # delets a specific post with the mentioned id -> {id}
-@router.delete("/posts/deletePost/{postId}", response_model=sch.SuccessResponse)
-async def deletePost(postId:int,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@router.delete("/{postId}", response_model=sch.SuccessResponse)
+async def delete_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
     result=await db.execute(select(models.Post).where(and_(models.Post.id==postId,models.Post.user_id==currentUser.id)))
     postToDelete=result.scalars().first()
     if not postToDelete:
@@ -161,15 +167,22 @@ async def deletePost(postId:int,db:AsyncSession=Depends(getDb),currentUser:model
     await db.commit()
     # Invalidate caches for this post, feeds, and user posts
     await delete_cache_pattern(f"post:{postId}:*")
-    await delete_cache_pattern("feed:*")
+    
+    # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+    await increment_cache_version("feed:home")
+    await increment_cache_version("feed:explore")
     await delete_cache_pattern(f"user:posts:{currentUser.id}:*")
     await delete_cache_pattern(f"comments:post:{postId}:*")
     return sch.SuccessResponse(message=f"Post {postToDelete.id} deleted successfully")
 
 # update a specific post with id -> {id}
-@router.put("/posts/editPost/{postId}", response_model=sch.PostDetailResponse)
-async def editPost(postId:int,post:sch.PostUpdateRequest,db:AsyncSession=Depends(getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    result=await db.execute(select(models.Post).where(models.Post.id==postId))
+@router.put("/{postId}", response_model=sch.PostDetailResponse)
+async def update_post(postId:int, post:sch.PostUpdateRequest, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    result=await db.execute(
+        select(models.Post)
+        .options(selectinload(models.Post.user))
+        .where(models.Post.id==postId)
+    )
     postToUpdate=result.scalars().first()
     if not postToUpdate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found")
@@ -182,13 +195,12 @@ async def editPost(postId:int,post:sch.PostUpdateRequest,db:AsyncSession=Depends
         setattr(postToUpdate,key,value)
     # commit those updated changes
     await db.commit()
-    # refresh to qucikly view them below while returing 
-    # if not refreshed below returned postToUpdate will be
-    # sent as {} to the front End
-    await db.refresh(postToUpdate)
+    # No refresh needed - object has updated values and expire_on_commit=False keeps them
     # Invalidate cached post data and feeds
     await delete_cache_pattern(f"post:{postId}:*")
-    await delete_cache_pattern("feed:*")
+    # Use versioned cache keys instead of global feed:* invalidation (always enabled).
+    await increment_cache_version("feed:home")
+    await increment_cache_version("feed:explore")
     
     # Build proper response
     media_url = None

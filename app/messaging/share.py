@@ -7,13 +7,16 @@ from app.db import getDb
 from app.models import SharedPost, Post, User
 from app.schemas import SharePostRequest, SharedPostDetailResponse
 from app.oauth2 import getCurrentUser
-from app.my_utils.socket_manager import manager  # your WebSocket ConnectionManager
-from app.my_utils.time_formatting import format_timestamp
+from app.utils.socket_manager import manager  # your WebSocket ConnectionManager
+from app.utils.time_formatting import format_timestamp
 from app.services import redis_service
 import json
 
 
-router = APIRouter(tags=["Share Post"])
+router = APIRouter(
+    prefix="/messaging",
+    tags=["Messaging"]
+)
 
 @router.post("/share", response_model=SharedPostDetailResponse)
 async def share_post(

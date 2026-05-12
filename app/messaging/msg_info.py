@@ -2,11 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app import models,oauth2,db
-from app.my_utils.time_formatting import format_timestamp
+from app.utils.time_formatting import format_timestamp
 
-router = APIRouter(tags=['Message Info'])
+router = APIRouter(
+    prefix="/messaging",
+    tags=['Messaging']
+)
 
-@router.get("/msgs/{msg_id}/info")
+@router.get("/messages/{msg_id}")
 async def get_message_info(
     msg_id: int,
     db: AsyncSession = Depends(db.getDb),

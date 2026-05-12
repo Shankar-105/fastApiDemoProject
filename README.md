@@ -31,7 +31,7 @@ _Want to run the API, test it, or make your own changes? Start with [`docs/SETUP
 
 ## 📖 How to Use the API — Complete Endpoint Reference
 
-_Now that your setup is running, explore every endpoint this API has to offer! Check out [`docs/API_GUIDE.md`](./docs/API_GUIDE.md) for a detailed walkthrough of all **60+ REST endpoints** and the **real-time WebSocket chat system**._
+_Now that your setup is running, Check out [`docs/API_GUIDE.md`](./docs/API_GUIDE.md) for a detailed walkthrough of all **60+ REST endpoints** and the **real-time WebSocket chat system**._
 
 ---
 
@@ -49,13 +49,13 @@ _All tests use a separate test database—your dev data stays safe! 🛡️_
 ---
 ## 📸 Benchmark Proof — RPS, P95 Graphs and What They Mean
 
-_Real benchmark evidence from deployed runs, with charts + clear conclusions [`docs/BENCHMARK.md`](./docs/BENCHMARK.md)_.
+_Real benchmark evidence for the deployed app, with charts + clear conclusions [`docs/BENCHMARK.md`](./docs/BENCHMARK.md)_.
 
 --- 
 
 ## 📊 Monitoring and Load Testing
 
-_Want to observe real-time performance and run synthetic traffic on API? Start with [`docs/MONITORING_AND_LOAD_TESTING.md`](./docs/MONITORING_AND_LOAD_TESTING.md) for Prometheus, Grafana, OpenTelemetry, and k6 setup._
+_Want to observe app raw performance and run synthetic traffic on API? Start with [`docs/MONITORING_AND_LOAD_TESTING.md`](./docs/MONITORING_AND_LOAD_TESTING.md) for Prometheus, Grafana and k6 setup with app performance reuslts._
 
 ---
 
@@ -68,6 +68,7 @@ _Backend developer? Frontend developer? Either, there's a clear path for you. Se
 ## 👨‍💻 Built by Bhavani Shankar Mukka 🎓
 **ANITS College, Vizag**
 
-> Thanks for checking out the project.
-> If you use this API , let me know—would love to hear you ❤️
+**_Thanks for checking out the project, If you use this API , let me know—would love to hear you_**
+
+> Built with ❤️ using FastAPI, SQLAlchemy, PostgreSQL, Redis, WebSockets, Celery, and RabbitMQ
 ---

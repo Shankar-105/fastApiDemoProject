@@ -1,16 +1,20 @@
 from fastapi import APIRouter, HTTPException ,Depends
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func
-from app.my_utils.socket_manager import manager
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from app.utils.socket_manager import manager
 from app.services import redis_service
 from datetime import datetime
 from typing import List
 import json
-router=APIRouter(tags=['msg reactions'])
+router=APIRouter(
+    prefix="/messaging",
+    tags=['Messaging']
+)
 
 
-@router.get("/msgs/{msg_id}/msg_reaction_info",response_model=List[schemas.ReactedUsers])
+@router.get("/messages/{msg_id}/reactions",response_model=List[schemas.ReactedUsers])
 async def msg_reactions(
     msg_id:int,
     db: AsyncSession = Depends(db.getDb),
@@ -26,7 +30,9 @@ async def msg_reactions(
   if msg.sender_id != currentUser.id and msg.receiver_id != currentUser.id:
         return
   reactions_result = await db.execute(
-      select(models.MessageReaction).where(models.MessageReaction.message_id == msg_id)
+      select(models.MessageReaction)
+      .options(selectinload(models.MessageReaction.user))
+      .where(models.MessageReaction.message_id == msg_id)
   )
   reactions = reactions_result.scalars().all()
   return [
@@ -49,6 +55,10 @@ async def react(
         select(models.Message).where(models.Message.id == reaction.message_id)
     )
     the_msg = result.scalars().first()
+    if not the_msg:
+        return {
+            "status":"Message not found"
+        }
     elgibile=[the_msg.sender_id,the_msg.receiver_id]
     print(user_id,elgibile)
     if user_id not in elgibile:
@@ -71,21 +81,11 @@ async def react(
         isNewRecord=True
         new_reaction=models.MessageReaction(message_id=reaction.message_id,user_id=user_id,reaction=reaction.reaction)
         db.add(new_reaction)
-        await db.execute(
-            update(models.Message)
-            .where(models.Message.id == reaction.message_id)
-            .values(reaction_cnt=models.Message.reaction_cnt + 1)
-        )
     # the msg reaction already exists in that tbale but the
     # user has again sent the same reaction well then remove it 
     elif msg and msg.reaction == reaction.reaction:
         isNewRecord=False
         await db.delete(msg)
-        await db.execute(
-            update(models.Message)
-            .where(models.Message.id == reaction.message_id)
-            .values(reaction_cnt=func.greatest(models.Message.reaction_cnt - 1, 0))
-        )
     # msg exists and the new reation isnt the old one
     # well then he sent a brand new reaciton just change it
     else:

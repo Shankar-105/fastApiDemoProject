@@ -3,7 +3,7 @@ from sqlalchemy import update
 from app import models, schemas
 from app.services import redis_service
 from datetime import datetime
-from app.my_utils.socket_manager import manager
+from app.utils.socket_manager import manager
 import json
 
 async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):

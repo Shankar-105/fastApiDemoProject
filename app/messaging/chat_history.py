@@ -1,17 +1,21 @@
-from app.my_utils.time_formatting import format_timestamp
+from app.utils.time_formatting import format_timestamp
 from fastapi import status,HTTPException,Depends,Body,APIRouter
 import app.schemas as sch
 from app import models,oauth2,config
 from app.db import getDb
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import or_,and_,select
+from sqlalchemy import or_,and_,select,case,func
+from sqlalchemy.orm import selectinload
 from typing import List
 from sqlalchemy.exc import IntegrityError
-from app.my_utils.socket_manager import manager
+from app.utils.socket_manager import manager
 
-router = APIRouter(prefix="/chat", tags=["chat_history"])
+router = APIRouter(
+    prefix="/messaging",
+    tags=["Messaging"]
+)
 
-@router.get("/history/{friend_id}")
+@router.get("/conversations/{friend_id}/messages")
 async def get_chat_history(
     friend_id: int,
     db: AsyncSession = Depends(getDb),
@@ -26,7 +30,14 @@ async def get_chat_history(
     )
     # now let us use that subquery in NOT EXISTS and simply query off the final messages
     messages_result = await db.execute(
-        select(models.Message).where(
+        select(models.Message)
+        .options(
+            selectinload(models.Message.reactions),
+            selectinload(models.Message.replies_to).selectinload(models.MessageReplies.original_msg).selectinload(models.Message.sender),
+            selectinload(models.Message.reply_to_shared_post).selectinload(models.SharedPost.post),
+            selectinload(models.Message.reply_to_shared_post).selectinload(models.SharedPost.from_user),
+        )
+        .where(
             # 1. Not deleted for everyone
             models.Message.is_deleted_for_everyone == False,
             # 2. Is between these two users
@@ -36,7 +47,8 @@ async def get_chat_history(
             ),
             # 3. Not deleted by THIS user (NOT EXISTS)
             ~models.Message.id.in_(subq)
-        ).order_by(models.Message.created_at.desc())
+        )
+        .order_by(models.Message.created_at.desc())
     )
     messages = messages_result.scalars().all()
     # shared posts
@@ -47,7 +59,13 @@ async def get_chat_history(
         .scalar_subquery()
     )
     shared_result = await db.execute(
-        select(models.SharedPost).where(
+        select(models.SharedPost)
+        .options(
+            selectinload(models.SharedPost.post),
+            selectinload(models.SharedPost.from_user),
+            selectinload(models.SharedPost.reactions),
+        )
+        .where(
             models.SharedPost.is_deleted_for_everyone == False,
             or_(
                 and_(models.SharedPost.from_user_id == currentUser.id, models.SharedPost.to_user_id == friend_id),
@@ -125,48 +143,48 @@ async def get_chat_history(
     chat_history.sort(key=lambda x : x.get("timestamp") if "timestamp" in  x else x.get("sent_at"))
     return chat_history  # oldest first
 
-@router.get("/recent-chats")
+@router.get("/conversations")
 async def get_recent_chats(
     db: AsyncSession = Depends(getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser)
 ):
-    all_messages_result = await db.execute(
-        select(models.Message).where(
+    other_user_id = case(
+        (models.Message.sender_id == currentUser.id, models.Message.receiver_id),
+        else_=models.Message.sender_id,
+    ).label("other_user_id")
+    ranked_messages = (
+        select(
+            models.Message.id.label("message_id"),
+            other_user_id,
+            func.row_number()
+            .over(partition_by=other_user_id, order_by=models.Message.created_at.desc())
+            .label("rn"),
+        )
+        .where(
             or_(
                 models.Message.sender_id == currentUser.id,
                 models.Message.receiver_id == currentUser.id
             ),
             models.Message.is_deleted_for_everyone == False
-        ).order_by(models.Message.created_at.desc()).limit(1000)
+        )
+        .subquery()
     )
-    all_messages = all_messages_result.scalars().all()
-    
-    # Process in python to get unique conversations (other_user_id)
-    conversations = {} # other_user_id -> last_message_obj
-    
-    for msg in all_messages:
-        other_id = msg.receiver_id if msg.sender_id == currentUser.id else msg.sender_id
-        if other_id not in conversations:
-            conversations[other_id] = msg
-            
-    # Also fetch users
-    if not conversations:
+
+    recent_result = await db.execute(
+        select(models.Message, models.User)
+        .join(ranked_messages, ranked_messages.c.message_id == models.Message.id)
+        .join(models.User, models.User.id == ranked_messages.c.other_user_id)
+        .where(ranked_messages.c.rn == 1)
+        .order_by(models.Message.created_at.desc())
+    )
+    recent_rows = recent_result.all()
+
+    if not recent_rows:
         return []
-        
-    other_user_ids = list(conversations.keys())
-    users_result = await db.execute(
-        select(models.User).where(models.User.id.in_(other_user_ids))
-    )
-    users = users_result.scalars().all()
-    user_map = {u.id: u for u in users}
-    
+
     # Construct response
     results = []
-    for uid, msg in conversations.items():
-        user = user_map.get(uid)
-        if not user:
-            continue
-            
+    for msg, user in recent_rows:
         results.append({
             "id": user.id,
             "username": user.username,
@@ -182,7 +200,5 @@ async def get_recent_chats(
                 "media_type": msg.media_type
             }
         })
-        
-    results.sort(key=lambda x: conversations[x["id"]].created_at, reverse=True)
-    
+
     return results

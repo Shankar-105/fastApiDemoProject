@@ -1,4 +1,5 @@
 import secrets
+import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -10,6 +11,10 @@ from app import models, oauth2
 from app.config import settings
 
 
+def _hash_refresh_token(token_str: str) -> str:
+    return hashlib.sha256(token_str.encode("utf-8")).hexdigest()
+
+
 async def create_refresh_token(
     db: AsyncSession, user_id: int, family_id: str | None = None
 ) -> str:
@@ -19,7 +24,7 @@ async def create_refresh_token(
         family_id = str(uuid.uuid4())
 
     row = models.RefreshToken(
-        token=token_str,
+        token=_hash_refresh_token(token_str),
         user_id=user_id,
         family_id=family_id,
         expires_at=datetime.now(timezone.utc)
@@ -33,13 +38,16 @@ async def create_refresh_token(
 async def rotate_refresh_token(
     db: AsyncSession, old_token_str: str
 ) -> tuple[str, str]:
-    
+
     from fastapi import HTTPException, status  # local import to avoid circular
+    old_token_hash = _hash_refresh_token(old_token_str)
 
     result = await db.execute(
-        select(models.RefreshToken).where(
-            models.RefreshToken.token == old_token_str
+        select(models.RefreshToken)
+        .where(
+            models.RefreshToken.token == old_token_hash
         )
+        .with_for_update()
     )
     old_row = result.scalars().first()
 

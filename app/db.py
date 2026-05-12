@@ -34,7 +34,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 # ── Sync engine (used ONLY by Alembic migrations + initial create_all) ──
 SYNC_SQL_ALCHEMY_URL = (
-    f"postgresql://{cg.database_user}:{cg.database_password}"
+    f"postgresql+psycopg://{cg.database_user}:{cg.database_password}"
     f"@{cg.database_host}/{cg.database_name}"
 )
 

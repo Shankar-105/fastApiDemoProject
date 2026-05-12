@@ -5,15 +5,18 @@ from fastapi import APIRouter,Depends
 from datetime import datetime
 from app.schemas import CanEditResponse
 from app import oauth2,db,config
-from app.my_utils.socket_manager import manager
+from app.utils.socket_manager import manager
 from app.services import redis_service
 from datetime import datetime,timedelta,timezone
-from app.my_utils.time_formatting import format_timestamp
+from app.utils.time_formatting import format_timestamp
 import json
 
-router=APIRouter(tags=['can_edit'])
+router=APIRouter(
+    prefix="/messaging",
+    tags=['Messaging']
+)
 
-@router.get("/msg/{msg_id}/can_edit", response_model=CanEditResponse)
+@router.get("/messages/{msg_id}/can-edit", response_model=CanEditResponse)
 async def can_edit(msg_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
     result = await db.execute(
         select(models.Message).where(

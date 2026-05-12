@@ -2,17 +2,20 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect,Depends,Query,HTTP
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from app.my_utils.socket_manager import manager
+from app.utils.socket_manager import manager
 from app.services import redis_service
 import json,asyncio
 from datetime import datetime
 
-router=APIRouter(tags=['delete share'])
+router=APIRouter(
+    prefix="/messaging",
+    tags=['Messaging']
+)
 
 # same as the message_reaction but here the shares are
 # stored in the SharedPosts table so we query that insted of
 # the messages table
-@router.post("/delete-share/for-me/{share_id}")
+@router.post("/shares/{share_id}/delete")
 async def deleteForMe(
     share_id: int,
     db: AsyncSession=Depends(db.getDb),

@@ -1,17 +1,20 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from app import schemas, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.my_utils.socket_manager import manager
-from chat_system import delete_msg,delete_shares,dm,edit_msg,load_missed_msgs,msg_reaction,share_reaction,reply_msg,reply_to_share,media_msg,read_receipt
+from app.utils.socket_manager import manager
+from app.messaging import delete_msg,delete_shares,dm,edit_msg,load_missed_msgs,msg_reaction,share_reaction,reply_msg,reply_to_share,media_msg,read_receipt
 import json
 import asyncio
-router = APIRouter(tags=["chat"])
+router = APIRouter(
+    prefix="/messaging",
+    tags=["Messaging"]
+)
 
 PRESENCE_HEARTBEAT_TIMEOUT_SECONDS = 45
 
 # ping_task=None
 
-@router.websocket("/chat/ws/{user_id}")
+@router.websocket("/ws/{user_id}")
 async def chat(
     websocket: WebSocket,
     user_id: int,

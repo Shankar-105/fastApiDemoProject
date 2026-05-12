@@ -2,6 +2,9 @@ import pytest
 import pytest_asyncio
 import asyncio
 import os, sys
+from pathlib import Path
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.exc import ProgrammingError
@@ -15,7 +18,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 # after setting the PYTHONPATH then import any other folders in project dir
 from app.main import app
 import app.main as app_main
-from app.models import Base
 from app.db import getDb
 from app import db as app_db
 from app.config import settings
@@ -34,7 +36,7 @@ app_main.check_redis_connection = _skip_listener_startup
 # Mock OTP generation + email sending for deterministic and fast tests.
 from app.services import otp_service
 from app.services import email_service
-from app.my_utils import utils as password_utils
+from app.utils import thread_helpers as password_utils
 
 def _fixed_otp() -> str:
     return "123456"
@@ -90,9 +92,9 @@ password_utils.verifyPassword = _fast_verify_password
 # more signup / post / comment calls than the production limits allow.
 # We patch _check to a no-op so every dependency returns None immediately.
 # The closures inside ip_rate_limit() and user_rate_limit() call `_check` by
-# looking it up in rate_limiter's global namespace at call-time, so replacing
+# looking it up in rate_limit_service's global namespace at call-time, so replacing
 # the module attribute is all that's needed — same pattern as the fakeredis patch.
-from app import rate_limiter as _rate_limiter
+from app.services import rate_limit_service as _rate_limiter
 async def _noop_check(key: str, max_calls: int, window: int) -> None:
     pass
 _rate_limiter._check = _noop_check
@@ -137,7 +139,7 @@ TEST_DB_NAME = f"{settings.database_name}_test".lower()
 
 # Sync URL (psycopg2 — for creating/dropping the test DB and table management)
 TEST_SYNC_URL = (
-    f"postgresql://{settings.database_user}:{settings.database_password}"
+    f"postgresql+psycopg://{settings.database_user}:{settings.database_password}"
     f"@{TEST_DATABASE_HOST}/{TEST_DB_NAME}"
 )
 
@@ -146,10 +148,12 @@ TEST_ASYNC_URL = (
     f"postgresql+asyncpg://{settings.database_user}:{settings.database_password}"
     f"@{TEST_DATABASE_HOST}/{TEST_DB_NAME}"
 )
+ALEMBIC_INI_PATH = Path(__file__).resolve().parents[1] / "alembic.ini"
+ALEMBIC_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "alembic"
 
 # Debug output to verify detection (helpful for troubleshooting)
 print(f"[TEST] DB Host detected: {TEST_DATABASE_HOST}")
-print(f"[TEST] DB URL: postgresql://***:***@{TEST_DATABASE_HOST}/{TEST_DB_NAME}")
+print(f"[TEST] DB URL: postgresql+psycopg://***:***@{TEST_DATABASE_HOST}/{TEST_DB_NAME}")
 
 # CREATE TEST DATABASE IF IT DOESN'T EXIST
 
@@ -161,7 +165,7 @@ def create_test_database_if_not_exists():
     """
     # Connect to default 'postgres' database to allow DB creation
     default_db_url = (
-        f"postgresql://{settings.database_user}:{settings.database_password}"
+        f"postgresql+psycopg://{settings.database_user}:{settings.database_password}"
         f"@{TEST_DATABASE_HOST}/postgres"
     )
     
@@ -219,14 +223,23 @@ TestingAsyncSessionLocal = async_sessionmaker(
 # production DB which doesn't have the test users, causing FK violations and other errors.
 notification_service._session_factory = TestingAsyncSessionLocal
 
+
+def run_test_migrations() -> None:
+    alembic_cfg = Config(str(ALEMBIC_INI_PATH))
+    alembic_cfg.set_main_option("script_location", str(ALEMBIC_SCRIPT_PATH))
+    alembic_cfg.set_main_option("sqlalchemy.url", TEST_SYNC_URL)
+    command.upgrade(alembic_cfg, "head")
+
 # pytest fixtures very helpful
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
     # Setup: Drop and recreate tables for a clean start (sync — runs before event loop)
-    print("[SETUP] Dropping all existing tables...")
-    Base.metadata.drop_all(bind=sync_test_engine)
-    print("[SETUP] Creating all tables...")
-    Base.metadata.create_all(bind=sync_test_engine)
+    print("[SETUP] Resetting test schema...")
+    with sync_test_engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+    print("[SETUP] Running Alembic migrations...")
+    run_test_migrations()
     print("[SUCCESS] Test database setup complete!")
     yield
     # Teardown: Delete the test database after all tests are finished
@@ -238,7 +251,7 @@ def setup_test_db():
     sync_test_engine.dispose()
     # Connect to the default 'postgres' database to perform the drop
     cleanup_db_url = (
-        f"postgresql://{settings.database_user}:{settings.database_password}"
+        f"postgresql+psycopg://{settings.database_user}:{settings.database_password}"
         f"@{TEST_DATABASE_HOST}/postgres"
     )
     cleanup_engine = create_engine(cleanup_db_url, isolation_level="AUTOCOMMIT")
@@ -287,11 +300,11 @@ async def create_test_user(client):
         "nickname": "TestUser",
         "email": "testuser@example.com",
     }
-    resp = await client.post("/user/signup", json=user_data)
+    resp = await client.post("/v1/users/register", json=user_data)
     assert resp.status_code in (201, 409)  # 201=created, 409=already exists
 
     verify = await client.post(
-        "/verify-email",
+        "/v1/auth/email/verify",
         json={"email": user_data["email"], "otp": "123456"},
     )
     assert verify.status_code in (200, 404)
@@ -305,7 +318,7 @@ async def get_token(client, create_test_user):
         "username": create_test_user["username"],
         "password": create_test_user["password"]
     }
-    resp = await client.post("/login", data=data)
+    resp = await client.post("/v1/auth/login", data=data)
     assert resp.status_code == 202
     token = resp.json()["accessToken"]
     return token

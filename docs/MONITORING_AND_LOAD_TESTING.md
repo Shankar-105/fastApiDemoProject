@@ -1,191 +1,208 @@
-# 📊 Monitoring and Load Testing
+# 📊 App Raw Performance Testing & Monitoring
 
-> This is performance room: generate traffic with k6, inspect metrics in Prometheus, and read live behavior in Grafana.
+> Generate realistic load with k6, inspect live traffic in Grafana, and use worker-count testing to find the best performance balance intentionally loadtests are performed on localhost to test the app raw performance.
 
-## ✨ At a Glance
+For deployed app performance, see [`docs/BENCHMARK.md`](./BENCHMARK.md).
 
-1. run the stack,
-2. run smoke/load/stress traffic,
-3. observe request rate, p95, and failures,
-4. compare local baseline vs deployed behavior.
 
-This guide is for new contributors who open the repo and want to understand:
+The results below were collected on an ASUS VivoBook X1502ZA with a 12th Gen Intel Core i5-1235U (10 physical cores, 12 logical processors). 
 
-1. what observability tools are used here,
-2. how to run the stack,
-3. how to run smoke, load, and stress tests,
-4. and how to read results when things go good or bad.
+**Best Result:** p95 of **347.33ms** with an RPS of **3,306.17 req/s** and **0% failed checks** ✨
 
-You do not need to manually wire Prometheus or Grafana. They are already configured in Docker Compose for this project.
+For a laptop with a U-series i5 processor, hitting 3,300+ requests per second with p95 under 500ms is not just fine—it's impressive. 💪
 
-## ✅ Before You Start
+**Note:** Results will vary on your machine based on CPU architecture, core count, background processes, and storage speed. However, the **shape of the curve** remains useful for comparing worker counts and identifying optimal code performance.
 
-1. Complete the project setup from [docs/SETUP.md](docs/SETUP.md).
-2. Start the stack with Docker Compose.
-3. Install k6 separately on your machine (k6 is not currently packaged inside this repo Docker Compose stack).
+This guide covers:
 
-Important:
+1. Setting up Prometheus and Grafana for real-time observability
+2. Running k6 load tests against localhost
+3. Testing different worker counts to find optimal throughput
+4. Understanding what localhost performance tells us about endpoint efficiency
 
-1. Prometheus and Grafana are optional for running k6.
-2. k6 can run against any reachable base URL even if Prometheus or Grafana are down.
-3. Prometheus and Grafana help you observe behavior, but they are not required for traffic generation.
+Prometheus and Grafana are already configured in Docker Compose, so no manual setup is required.
 
-## 🚀 Run Everything
+### Prerequisites ✅
 
-### 1) Start services
+1. Complete the setup from [`SETUP.md`](./SETUP.md)
+2. Verify you're logged into the **Grafana dashboard** (`http://localhost:3000`)
+3. Ensure **k6 is installed**, Check this out if not installed [`k6 Installation`](./SETUP.md#install-k6)
+
+### What You'll Mainly Use
+
+- **Grafana** (`http://localhost:3000`): live dashboards and visualization
+- **k6** (`installed locally`): load testing framework
+- **API** (`http://localhost:8000`): FastAPI application under test
+---
+- **Prometheus** (`http://localhost:9090`): Query interface for deep-diving into metrics (highly optional now unless you're already familiar with PromQL and wanna see the exxact metrics!)
+
+---
+
+## 🚀 Quick Start
+
+### 1) Start the Services
+
+Before starting the services, know these things:
+
+#### Set BENCHMARK_MODE_ENABLED to true
+
+When `BENCHMARK_MODE_ENABLED=true`, the startup path changes:
+
+1. The Dockerfile entrypoint runs `docker_entrypoint.sh` which reads from `app.config.Settings` and sees `BENCHMARK_MODE_ENABLED=true`.
+2. `docker_entrypoint.sh` selects `startup_benchmark.sh`.
+3. `startup_benchmark.sh` runs `alembic upgrade head` first.
+4. It then starts `gunicorn` with the tuned worker class.
+5. `app/main.py` sees benchmark mode is enabled and skips `configure_observability(...)`.
+6. FastAPI tracing, SQLAlchemy instrumentation, Prometheus instrumentation, and the request-timing middleware are not added.
+7. `startup_benchmark.sh` also sends access logs to `/dev/null`, so only error output remains.
+
+**Bottom line:** When benchmark mode is `true`, observability overhead is stripped to measure raw application throughput accurately with k6.
+
+#### What Worker Count Means
+
+- `GUNICORN_WORKERS` in `.env` sets the number of parallel Uvicorn workers.
+- More workers can improve concurrency.
+- Too many workers can increase context switching, memory use, and queueing overhead.
+- The right value depends on the machine and workload.
+
+#### Test Methodology 🧪
+
+1. Change `GUNICORN_WORKERS` in `.env` (test with: 1, 2, 4, 6, 8, 10 and so on based on your machine Core Count)
+2. Restart containers: `docker compose down && docker compose up -d`
+3. Run the load test: `k6 run loadtests/load.js`
+4. Record the **p95 latency**, **throughput (req/s)**, and **request failure percentage**
+5. Repeat for each worker count
+
+Using the same test script (`load.js`) across all runs allows you to identify:
+- Where throughput peaks
+- When latency starts to degrade
+- Signs of machine saturation at higher worker counts
+
+#### Other Gunicorn & Uvicorn Fields ⚙️
+
+These are secondary tuning values already optimized in `.env`. You typically don't need to change them, but you may tune them based on your system:
+
+| Setting | Purpose |
+|---------|----------|
+| `GUNICORN_TIMEOUT` | Request timeout before worker is recycled |
+| `GUNICORN_KEEPALIVE` | How long Gunicorn keeps HTTP connections open for reuse |
+| `GUNICORN_BACKLOG` | Pending connection queue size |
+| `UVICORN_LOOP` | Async event loop choice for Uvicorn workers |
+| `UVICORN_HTTP` | HTTP parser choice for Uvicorn workers |
+| `UVICORN_TIMEOUT_KEEP_ALIVE` | Uvicorn keep-alive timeout |
+
+
+**Now start the services in benchmark mode** 🚀
 
 ```powershell
 docker compose up -d
 ```
 
-Useful URLs after startup:
-
-1. API health: http://localhost:8000/health
-2. Prometheus: http://localhost:9090
-3. Grafana: http://localhost:3000
-
-Tip:
-
-1. Prometheus and Grafana are for observing behavior.
-2. k6 still works even if those two are down, as long as your API target URL is reachable.
-
-## 🖥️ How to Use Grafana and Prometheus After k6
-
-After starting a k6 run, keep Grafana and Prometheus open in browser tabs.
-
-### Grafana walkthrough
-
-1. Open http://localhost:3000 and sign in.
-2. Go to Dashboards.
-3. Open folder: Observability.
-4. Open dashboard: Social API Observability.
-5. Watch these panels while load is running:
-	1. Requests per second,
-	2. p95 latency,
-	3. error rate,
-	4. 4xx and 5xx counts,
-	5. top slow endpoints.
-
-This gives the fastest visual story of how the API behaves under traffic.
-
-### Prometheus walkthrough
-
-1. Open http://localhost:9090.
-2. Prometheus is not primarily for pretty charts.
-3. It is the metrics database + query UI.
-4. Run PromQL queries to inspect raw metric series.
-
-Starter queries:
-
-```promql
-up
-sum(http_requests_total)
-rate(http_requests_total[1m])
-histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
-```
-
-If you want visual dashboards, use Grafana.
-If you want direct metric queries/debugging, use Prometheus UI.
-
-## 🌍 Local vs Deployed: Why Deployed Can Look Worse
-
-### 🧪 Local baseline first (recommended)
-
-For local baseline testing:
-
-1. Keep `BASE_URL` in [loadtests/common.js](../loadtests/common.js) pointed to localhost.
-2. Run:
+**Verify all services are running** ✅
 
 ```powershell
+docker compose ps
+```
+
+This will display all running services in Docker Compose.
+
+### 2) Open Monitoring Dashboards
+
+Grafana is best for real-time visual feedback while k6 runs.
+
+Before running k6, open these in separate browser tabs:
+
+**Grafana**
+1. Open http://localhost:3000
+2. Dashboards → Observability folder → Social API Observability
+
+**Key Panels to Watch**
+- Requests per second
+- p95 latency
+- Top slow endpoints
+
+### 3) Start the k6 Tests 🎬
+
+Focus on [`load.js`](../loadtests/load.js) for comprehensive performance testing. The setup supports `smoke.js` and `stress.js` as well, but the results below are from `load.js` runs.
+
+**Run k6 load test** 📊
+
+```bash:disable-run
 k6 run loadtests/load.js
 ```
 
-> After k6 finishes, **the app sustains roughly ~500 req/sec with near-zero transport failures and 0% request failure** rate on that run, even with a **single Uvicorn process**. That is a strong baseline.
+**While the test runs:**
+- Keep Grafana open in your browser
+- Watch panels update in real-time
+- Identify bottlenecks and anomalies as virtual users (VU's) increase
 
-### ✅ Local run snapshot (real output)
+---
 
-Local `k6 run loadtests/load.js` summary from this project:
+## 📊 Performance Results On Different Worker Counts
 
-1. `http_reqs`: `141339` total (`468.37 req/s`)
-2. `http_req_failed`: `0.00%` (`0 out of 141339`)
-3. `iterations`: `11778`
-4. `interrupted iterations`: `0`
-5. `p95 latency`: `2.71s` (threshold `p(95)<2500` narrowly crossed)
-6. endpoint checks: `100%` passed (`141339/141339`)
+The values below come from the [`load.js`](../loadtests/load.js) k6 runs on the machine described above.
 
-> **Confidence signal**: _even with one Uvicorn process in local path, the app handled high throughput with stable success behavior_.
+| Worker Count | p95 Latency | Throughput | Failed Requests | Checks | Interpretation |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 3.44s | 812.55 req/s | 0.00% | 100% | Underpowered. The latency target is missed by a wide margin. |
+| 2 | 538.88ms | 2183.95 req/s | 0.00% | 100% | Big improvement in both throughput and latency. |
+| 4 | 363.67ms | 3084.44 req/s | 0.00% | 100% | Strong balance of speed and stability. |
+| 6 | 347.33ms | 3,306.17 req/s | 0.00% | 100% | ⭐ Best overall balance |
+| 8 | 380.67ms | 3,324.03 req/s | 0.00% | 100% | Highest throughput, but diminishing gains |
+| 10 | 394.15ms | 3,095.82 req/s | 0.00% | 100% | Efficiency regression 📉 |
 
-### ☁️ Now run the same test against deployed URL
+### Analysis 🔍
 
-After local baseline, run the exact same test for deployed app.
+Yes, finding the 'perfect' worker count on your local developer laptop is useless, as it's not the production environment. However, the value isn't the number rather it's about mastering this analysis process. This same methodology is what you will use for your actual cloud-hosted production instances.
 
-1. In [loadtests/common.js](../loadtests/common.js), set `BASE_URL` to:
 
-```javascript
-https://fastapi-social-vm.centralindia.cloudapp.azure.com
-```
+**_So Diving into the Performance Analysis, I've generated a dual-axis curve for the above data._**
 
-2. Run the same command:
+![Performance Curve](../loadtests/results/performanceCurve.png)
 
-```powershell
-k6 run loadtests/load.js
-```
 
-> **At first glance**, you may expect more throughput because deployment uses **_Gunicorn + 2 Uvicorn workers_**, **so it feels like it should do maybe close to 1000 req/sec**.
+1. **1 worker is underpowered**. The 3.44s p95 is far outside the target, even though failures stayed at 0%.
+2. **2 workers gives the biggest jump**. Latency drops sharply and throughput nearly triples versus 1 worker.
+3. **4 and 6 workers are the practical sweet spot**. Throughput keeps climbing, but latency stays low and stable.
+4. **8 workers reaches the high-water mark**. It gives the highest throughput, but the gain over 6 workers is small as the latency increased.
+5. **10 workers shows regression**. The extra worker pressure starts to hurt both throughput and latency.
 
-In real runs, it can still perform **worse than local**.
+For this 10-physical-core CPU, **6 workers** is the optimal choice.
 
-### ❌ Deployed run snapshot (real output)
+Why not 8?
 
-Deployed `k6 run loadtests/load.js` summary from this project:
+- 8 workers gives the highest single throughput number, but the latency improvement is not meaningful enough to justify moving away from the more stable 6-worker run.
 
-1. `http_reqs`: `30475` total (`86.66 req/s`)
-2. `http_req_failed`: `33.59%` (`10239 out of 30475`)
-3. `iterations`: `2242`
-4. `interrupted iterations`: `592`
-5. `p95 latency`: `58.91s` (threshold failure)
-6. repeated transport errors: `request timeout`, `EOF`, `connection reset`, `connect timeout`
+Why not 10?
 
-> **Confidence signal**: this is not a tiny variance. It is a clear saturation pattern difference between local and deployed path.
+- 10 workers is clearly worse than 8.
+- The regression suggests the machine is already near the saturation zone.
+- Extra workers are now adding scheduling overhead rather than useful work.
+---
 
-### 🧠 Why deployed VM can be worse than local even with 2 workers
+## 📝 Understanding Localhost Performance
 
-Two workers are not enough by themselves.
-Worker count is only one layer.
+### What Localhost Testing Reveals ✅
 
-Real throughput depends on the full end-to-end path:
+- Endpoint bottlenecks
+- Database query inefficiencies
+- Memory/resource leaks under sustained load
+- Worker count vs. throughput tradeoffs
 
-1. Nginx,
-2. Gunicorn/Uvicorn worker behavior,
-3. app code and query shape,
-4. Redis,
-5. Postgres over network,
-6. Azure infrastructure limits.
+### What It Does NOT Reveal ❌
 
-If you check [docs/AZURE_DEPLOYMENT.md](./AZURE_DEPLOYMENT.md), the deployed profile is resource-constrained for heavy sustained traffic:
+- Network latency
+- Geolocation-specific issues
+- Real-world concurrent user behavior at scale
+- Production infrastructure bottlenecks (see [`BENCHMARK.md`](./BENCHMARK.md) for deployed app performance)
 
-1. VM: `Standard_B2ats_v2` (burstable class),
-2. Postgres: `B1ms` tier (small tier),
-3. Redis runs on same VM and competes for CPU/RAM with app and Nginx.
+### Real-World Implications 🌍
 
-What this means under load:
+> **Localhost performance is the foundation for production readiness.**
 
-1. Burstable VM can throttle when CPU credits drain,
-2. remote DB latency and IOPS limits dominate at high concurrency,
-3. this k6 script is heavy per iteration (many endpoints each loop),
-4. Nginx/Gunicorn backlog and timeout behavior can amplify drops,
-5. TLS + public internet overhead exists in deployed path but not localhost.
+- Localhost testing validates application efficiency *before* cloud deployment
+- Production numbers are usually lower due to network and infrastructure overhead
+- If localhost performance is poor, production will be worse
+- Always optimize localhost performance first—it's your early warning system
 
-That is why you can see timeout/EOF/connect errors and lower req/s in deployed runs even when worker count appears better on paper.
-
-### 📉 Failure pattern you usually see when deployed starts saturating
-
-1. p95 rises sharply,
-2. request timeouts and EOF increase,
-3. interrupted iterations increase,
-4. overall req/s flattens or drops.
-
-### 📌 Takeaway
-
-Workers increase app capacity, but they do not remove infrastructure bottlenecks.
-If DB, VM, or network saturates first, p95 latency and timeout/EOF failures will rise even when worker count looks more.
+For production performance of the app on the Azure infrastructure, see [`BENCHMARK.md`](./BENCHMARK.md).

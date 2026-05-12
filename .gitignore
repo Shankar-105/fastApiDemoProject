@@ -66,6 +66,8 @@ CONCURRENCY_HARDENING.md
 CONCURRENCY_SERVICE_EXPLANATION.md
 ENDPOINT_CONCURRENCY_AUDIT.md
 CELERY_RABBITMQ_GUIDE.md
+DB_DESIGN.md
+best_practices.md
 # avoid ui-ux-promax agent
 .agent
 
@@ -74,10 +76,11 @@ CELERY_RABBITMQ_GUIDE.md
 
 # ignore deployment artifacts
 deploy.zip
-*.sh
 vm.env
-create_db.py
-
+setup_nginx.sh
+setup_vm_background_services.sh
+startup_prod.sh
+setup_service.sh
 # ignore VS Code, visual studio folders
 .vscode/
 .vs/

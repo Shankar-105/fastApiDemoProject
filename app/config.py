@@ -29,8 +29,7 @@ class Settings(BaseSettings):
     email_server: str
     # base url
     base_url:str
-    # posts media folder
-    media_folder:str
+    # posts media folder handled as a fixed local path (posts_media)
     # maximum edit time
     max_edit_time:int
     # redis config
@@ -66,10 +65,21 @@ class Settings(BaseSettings):
     rl_follow_window: int = 60
     # observability toggles
     otel_console_exporter_enabled: bool = False
-    observability_log_enabled: bool = True
+    # Disables expensive logging/otel,promethus instrumentors during benchmark
+    benchmark_mode_enabled: bool = True
+    
+    # Runtime tuning parameters (loaded from .env, used by startup scripts)
+    gunicorn_workers: int = 4
+    gunicorn_timeout: int = 120
+    gunicorn_keepalive: int = 5
+    gunicorn_backlog: int = 2048
+    uvicorn_loop: str = "auto"  # "auto" | "asyncio" | "uvloop"
+    uvicorn_http: str = "httptools"  # "auto" | "httptools" | "h11"
+    uvicorn_timeout_keep_alive: int = 5
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore",
     )
 
 settings = Settings()

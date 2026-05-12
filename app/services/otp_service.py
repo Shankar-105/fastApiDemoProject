@@ -1,8 +1,15 @@
 from datetime import datetime, timedelta  # For time stuff
+import hashlib
+import secrets
+import random
+
 from app import models
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
-import random 
+
+
+def _hash_otp(raw_otp: str) -> str:
+    return hashlib.sha256(raw_otp.encode("utf-8")).hexdigest()
 
 def generateOtp():
     otp = str(random.randint(100000, 999999))
@@ -14,7 +21,7 @@ async def saveOtp(db:AsyncSession,email:str,otp:str,minutes:int=2):
     # calculate the expire time from now + 2 mins
     expire_time = datetime.now() + timedelta(minutes=minutes)
     # create an object to store
-    currOtp=models.OTP(email=email,otp=otp,expires_at=expire_time)
+    currOtp=models.OTP(email=email,otp=_hash_otp(otp),expires_at=expire_time)
     # save the info to the otps table in db 
     db.add(currOtp)
     # commit the changes 
@@ -35,9 +42,9 @@ async def checkOtp(db:AsyncSession,email:str,user_otp:str) -> bool:
         await db.commit()
         return False
     # if matches?
-    if otp_record.otp == user_otp:
+    if secrets.compare_digest(otp_record.otp, _hash_otp(user_otp)):
         # remove it and return true indicating correct otp
         await db.delete(otp_record)
         await db.commit()
         return True
-    return False  # or else wrong otp 
+    return False  # or else wrong otp

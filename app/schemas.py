@@ -8,7 +8,7 @@ from fastapi import Query
 
 class PaginationMetadata(BaseModel):
     """Reusable pagination metadata"""
-    total: int
+    total: Optional[int] = None
     limit: int
     offset: int
     has_more: bool
@@ -97,7 +97,7 @@ class TokenModel(BaseModel):
     tokenType: str
 
 class RefreshTokenRequest(BaseModel):
-    """Request body for POST /refresh"""
+    """Request body for POST /v1/auth/refresh-token"""
     refresh_token: str
 
 
@@ -273,7 +273,7 @@ class FeedItemResponse(BaseModel):
 class FeedResponse(BaseModel):
     """Feed response with pagination"""
     feed: List[FeedItemResponse]
-    total: int
+    total: Optional[int] = None
 
 # PASSWORD & OTP SCHEMAS
 
@@ -487,7 +487,7 @@ class ActorBasic(BaseModel):
 
 class NotificationResponse(BaseModel):
     """
-    Single notification as returned by GET /me/notifications.
+    Single notification as returned by GET /v1/users/me/notifications.
     The client uses entity_id + entity_type to decide which screen to open
     when the user taps the notification.
     """

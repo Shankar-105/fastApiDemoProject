@@ -3,9 +3,9 @@ from app import schemas, models, oauth2,db,config
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
-from app.my_utils.socket_manager import manager
+from app.utils.socket_manager import manager
 from datetime import datetime
-from app.my_utils.time_formatting import format_timestamp
+from app.utils.time_formatting import format_timestamp
 from app.models import Notification
 
 async def load_missed_content(

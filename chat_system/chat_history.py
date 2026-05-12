@@ -1,4 +1,4 @@
-from app.my_utils.time_formatting import format_timestamp
+from app.utils.time_formatting import format_timestamp
 from fastapi import status,HTTPException,Depends,Body,APIRouter
 import app.schemas as sch
 from app import models,oauth2,config
@@ -8,7 +8,7 @@ from sqlalchemy import or_,and_,select,case,func
 from sqlalchemy.orm import selectinload
 from typing import List
 from sqlalchemy.exc import IntegrityError
-from app.my_utils.socket_manager import manager
+from app.utils.socket_manager import manager
 
 router = APIRouter(prefix="/chat", tags=["chat_history"])
 

@@ -64,29 +64,46 @@ No separate stress benchmark is required right now for conclusions.
 The load profile is already failing hard on deployed infra, so stress will only amplify the same saturation pattern.
 
 
-## 🧪 Benchmark Summary (Current)
+## 🧪 Benchmark Summary
 
 From the above smoke,load test runs and the above screenshots, the app currently behaves like this on the current Azure setup:
 
 1. smoke traffic can run in a limited band, but already shows transport instability,
-2. load and stress profiles degrade heavily,
+2. load test degrade heavily,
 3. p95 and failure rate rise sharply,
 4. transport-level failures appear (`timeout`, `EOF`, connection resets, connection attempts failing).
 
 **This is a loud and clear infrastructure saturation signal, not a "weak code" signal.**
 **The backend architecture is async and solid; the current Azure VM/DB sizing is what is being overrun under sustained concurrency.**
 
-> **Update (PR #31):** The app shows measurable improvements after the improvments made in PR #31.
+> **Update After (PR #31):** The app shows measurable improvements after the improvments made in PR #31 but no matter what changes it completely depends on the app infra.
 
+### 🧠 Why is the deployed VM failing even on medium concurrency ?
 
-## 🚀 What a Strong Azure Setup Would Change
+When localhost with 2 workers achieves **2,183.95 req/s** with a **540ms p95 latency**, why does the deployed VM struggle to handle even **500 rps**?
 
-This is not a measured benchmark, just a practical estimatation. Right now the app is already doing about `66 req/s` on the limited Azure setup, and that is the infra talking, not the code. 💡
+The answer lies in **single-machine consolidation**. As you can see the Azure infra from [`AZURE_DEPLOYMENT.md`](./AZURE_DEPLOYMENT.md), the deployed setup is resource-constrained:
 
-If the app got a much stronger Azure setup like a bigger VM, a stronger Postgres tier, and Redis on a dedicated machine or managed service, enough storage and network headroom for media + chat traffic, then `500+ req/s` is a reasonable target to expect 😌🚀.
+**Architecture breakdown:**
+- **VM Size:** `Standard_B2ats_v2` (burstable, shared CPU with limited sustained performance)
+- **Shared Services on One Machine:**
+  -  **Nginx** — Reverse proxy + HTTPS termination
+  -  **Gunicorn + Uvicorn workers** — FastAPI application
+  -  **PostgreSQL** — Database server (shared I/O)
+  -  **Redis** — Cache & session store
+  -  **RabbitMQ** — Message broker for Celery tasks
+  -  **Celery Worker** — Background job processor
+  -  **Celery Beat** — Periodic task scheduler
 
-So in short: current infra = about `66 req/s`, better infra = easily a few hundred requests per second more, with much lower latency and fewer failures. ✨
+**Under sustained load:**
+- All services compete for **limited CPU, memory, and I/O bandwidth**
+- Context switching overhead multiplies with more processes
+- Database locks and I/O contention spike
+- Network buffers fill up, causing backpressure
+- Combined load rapidly saturates the VM
+
+**Result:** Transport-level failures (`timeout`, `EOF`, `connection reset`) and request queueing appear—not due to code quality, but **infrastructure saturation**.
 
 ## ✅ Honest Conclusion
 
-**_The async backend architecture is still a solid foundation and is expected to scale much higher on stronger infra tiers and better resource separation._**
+**_The async backend architecture is solid look [`App Performance Result`](./MONITORING_AND_LOAD_TESTING.md#-performance-results-on-different-worker-counts) and is expected to scale much higher on stronger infra tiers and better resource separation._**

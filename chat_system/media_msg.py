@@ -3,11 +3,11 @@ from uuid import uuid4
 from app import oauth2
 from app.services.blob_service import upload_blob
 from app.services import redis_service
-from app.my_utils.socket_manager import manager
+from app.utils.socket_manager import manager
 from app.db import getDb
 from sqlalchemy.ext.asyncio import AsyncSession
 from app import models
-from app.my_utils.time_formatting import format_timestamp
+from app.utils.time_formatting import format_timestamp
 import json
 
 router = APIRouter()

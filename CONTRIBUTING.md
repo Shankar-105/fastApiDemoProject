@@ -18,7 +18,7 @@ Welcome — contributions are open to everyone. Whether you're extending the bac
 
 ### 1. Get the project running locally
 
-Follow [docs/SETUP.md](./docs/SETUP.md) — the fastest way is Docker Compose (spins up API + PostgreSQL + Redis and all the other services in one command).
+Follow [`SETUP.md`](./docs/SETUP.md) — the fastest way is Docker Compose (spins up API + PostgreSQL + Redis and all the other services in one command).
 
 
 ### 2. Adding a new feature — typical flow
@@ -33,7 +33,7 @@ Follow [docs/SETUP.md](./docs/SETUP.md) — the fastest way is Docker Compose (s
 7. Run tests: docker compose exec api pytest pytests/ -v
 ```
 
-Tests use a separate `fastapi_test` database — your dev data is never touched. See [docs/TESTS.md](./docs/TESTS.md) for the full guide.
+Tests use a separate `fastapi_test` database — your dev data is never touched. See [`TESTS.md`](./docs/TESTS.md) for the full guide.
 
 ---
 
@@ -52,7 +52,7 @@ Both results the same response. So instead of `http://localhost:8000/login` you 
 
 ### Your API Reference
 
-All endpoints are documented in [docs/API_GUIDE.md](./docs/API_GUIDE.md) — every REST route and the WebSocket chat system with request/response examples.
+All endpoints are documented in [`API_GUIDE.md`](./docs/API_GUIDE.md) — every REST route and the WebSocket chat system with request/response examples.
 
 > **Swagger UI** is live too use it as a reference if you would like too, click the link in Repo About.
 
@@ -60,9 +60,8 @@ All endpoints are documented in [docs/API_GUIDE.md](./docs/API_GUIDE.md) — eve
 
 ## 🚀 Submitting a PR
 
-1. Fork the repo, branch off `main` → `git checkout -b feat/your-feature-name`
-2. Make Sure all the tests pass before you push — broken tests won't be merged.
-3. Write clear commits: example `add hashtag filtering` not `update stuff`
+1. Fork the repo, branch off `main` → `git checkout -b your-feature-name`
+2. Make Sure all the tests pass before you push — broken tests won't be merged!
 
 I'll review and comment directly on the PR. If it looks good, I'll merge it.
 

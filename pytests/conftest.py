@@ -36,7 +36,7 @@ app_main.check_redis_connection = _skip_listener_startup
 # Mock OTP generation + email sending for deterministic and fast tests.
 from app.services import otp_service
 from app.services import email_service
-from app.my_utils import utils as password_utils
+from app.utils import thread_helpers as password_utils
 
 def _fixed_otp() -> str:
     return "123456"
@@ -92,9 +92,9 @@ password_utils.verifyPassword = _fast_verify_password
 # more signup / post / comment calls than the production limits allow.
 # We patch _check to a no-op so every dependency returns None immediately.
 # The closures inside ip_rate_limit() and user_rate_limit() call `_check` by
-# looking it up in rate_limiter's global namespace at call-time, so replacing
+# looking it up in rate_limit_service's global namespace at call-time, so replacing
 # the module attribute is all that's needed — same pattern as the fakeredis patch.
-from app import rate_limiter as _rate_limiter
+from app.services import rate_limit_service as _rate_limiter
 async def _noop_check(key: str, max_calls: int, window: int) -> None:
     pass
 _rate_limiter._check = _noop_check

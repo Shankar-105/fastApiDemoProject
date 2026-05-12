@@ -11,7 +11,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import WebSocket
 from app import models, schemas
-from app.my_utils.socket_manager import ConnectionManager
+from app.utils.socket_manager import ConnectionManager
 
 
 @pytest.fixture

@@ -9,10 +9,12 @@ echo "────────────────────────�
 # Run migrations
 alembic upgrade head
 
+UVICORN_LOOP=$(python3 -c "from app.config import settings; print(settings.uvicorn_loop)")
+
 echo "Settings:"
 echo "  Mode: Development (observability enabled)"
 echo "  Workers: 1"
-echo "  Loop: auto"
+echo "  Loop: $UVICORN_LOOP"
 echo "  HTTP: httptools"
 echo "────────────────────────────────────────"
 

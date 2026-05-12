@@ -1,6 +1,6 @@
 # 📖 API Guide — Complete Endpoint Reference
 
-> **Your one-stop reference for every REST and WebSocket endpoint in the SocialMediaApi.**
+> **Your one-stop reference for every REST and WebSocket endpoint in the Social-Media-Api Project.**
 
 ### 📊 At a Glance
 
@@ -16,11 +16,10 @@
 
 Before calling **any** endpoint, make sure you have:
 
-1. ✅ Completed the full **[SETUP.md](./SETUP.md)** — cloned the repo, configured `.env`, and prepared local folders.
+1. ✅ Completed the full **[`SETUP.md`](./SETUP.md)** — cloned the repo, configured `.env`.
 2. ✅ Docker containers are **running** — `docker compose up -d` and verified via `http://localhost:8000/health`.
-3. ✅ A tool to make HTTP requests — **[Postman](https://www.postman.com/)**, **[Insomnia](https://insomnia.rest/)**, **cURL**, **HTTPie**, or the built-in **Swagger UI** at `http://localhost:8000/docs`.
+3. ✅ A tool to make HTTP requests — **[`Postman`](https://www.postman.com/)**, **[`Insomnia`](https://insomnia.rest/)**, **`cURL`**, **`HTTPie`**.
 
-> 📦 **Media storage note:** For local clones, leaving Azure Blob env values empty will store uploads in local folders (`profilepics/`, `posts_media/`, `chat-media/`). Hosted deployment uses Azure Blob Storage.
 
 > 💡 **Tip:** FastAPI auto-generates interactive API docs. Visit **`http://localhost:8000/docs`** (Swagger UI) or **`http://localhost:8000/redoc`** (ReDoc) to explore and test endpoints right from your browser.
 
@@ -2017,7 +2016,3 @@ These endpoints are for Celery/RabbitMQ observability and operator control.
 - **For WebSocket testing**, use **Postman** (WebSocket tab), the **[websocat](https://github.com/nickel-org/websocat)** CLI tool, or the browser DevTools console.
 - **Rate limits on edit**: Message editing is time-limited (default 15 minutes). Always check `/msg/{msg_id}/can_edit` first.
 - **Refresh token reuse is dangerous**: If you reuse an old refresh token after rotation, the entire token family is revoked as a security measure.
-
----
-
-> Built with ❤️ using FastAPI, SQLAlchemy, PostgreSQL, Redis, WebSockets, Celery, and RabbitMQ

@@ -12,11 +12,11 @@ from app.routes import changepassword, posts,users,auth,like,connect,comment,sea
 from app.routes import notifications
 from app.routes import celery_tasks
 from app.services.redis_service import check_redis_connection
-from app.my_utils.socket_manager import manager
+from app.utils.socket_manager import manager
 from chat_system import chat,chat_history,share,delete_msg,delete_shares,edit_msg,msg_info,msg_reaction,share_reaction,media_msg,clear_chat
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from app.my_utils.observability import configure_observability
+from app.utils.observability import configure_observability
 
 
 # install the pg_trgm extension before creating the tables
@@ -107,7 +107,7 @@ else:
 # without mount the uvicorn server running at http://127.0.0.1:8000 
 # wouldn"t be able to render that image and give a 404 error
 app.mount("/profilepics",StaticFiles(directory="profilepics"),name="profilepics")
-app.mount(f"/{config.settings.media_folder}",StaticFiles(directory=f"{config.settings.media_folder}"),name=f"{config.settings.media_folder}")
+app.mount("/posts_media", StaticFiles(directory="posts_media"), name="posts_media")
 app.mount("/chat-media",StaticFiles(directory="chat-media"),name="chat-media")
 app.mount("/favicon", StaticFiles(directory="favicon"), name="favicon")
 # Favicon: prefer file at /favicon/favicon.png,

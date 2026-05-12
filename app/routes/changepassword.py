@@ -4,7 +4,7 @@ from sqlalchemy import select
 from app import models,schemas,db,oauth2
 from app.services import email_service, otp_service, token_service
 from app.services.redis_service import delete_cache
-from app.my_utils import utils
+from app.utils import thread_helpers
 from sqlalchemy.orm.exc import StaleDataError
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
 from app.rate_limiter import change_password_limiter, reset_password_auth_limiter
@@ -34,13 +34,13 @@ async def reset_password(request:schemas.PasswordResetRequest=Body(...),db:Async
     async def _reset_password():
         locked_user = await lock_user_row(db, user_id=currentUser.id)
         # first check whether the user entered the correct current password
-        if not await utils.verifyPassword(request.old_password, locked_user.password):
+        if not await thread_helpers.verifyPassword(request.old_password, locked_user.password):
             await db.rollback()
             raise HTTPException(status_code=403,detail="your old password is incorrect")
         # then, check if it is a valid otp before letting user change password
         await verifyOtp(db,request.otp,locked_user)
         # Hash new password (offloaded to thread pool)
-        locked_user.password = await utils.hashPassword(request.new_password)
+        locked_user.password = await thread_helpers.hashPassword(request.new_password)
         try:
             await db.commit()
         except StaleDataError:

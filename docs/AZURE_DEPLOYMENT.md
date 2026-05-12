@@ -8,6 +8,10 @@ The app is deployed on an Azure Linux virtual machine in Central India and is pu
 
 - `https://fastapi-social-vm.centralindia.cloudapp.azure.com`
 
+## BenchMark Proof 📷
+
+Ran several tests against the deployed app and found infra bottlenecks and explained in clear what does that mean check that out here [`BENCHMARK.md`](./BENCHMARK.md)
+
 ## What I Set Up
 
 ### 1. Azure Linux VM
@@ -33,12 +37,12 @@ The app is deployed on an Azure Linux virtual machine in Central India and is pu
   - `chat-media`
 - Purpose: stores uploaded profile images, post media, and chat media outside the VM filesystem
 
-### 4. Redis on the VM
+### 4. Redis on the same VM
 
 - Redis runs on the same Ubuntu VM
 - Purpose: caching, rate limiting, token blacklisting, and real-time notification delivery support
 
-### 5. RabbitMQ + Celery on the VM
+### 5. RabbitMQ + Celery on the same VM
 
 - RabbitMQ runs on the same Ubuntu VM and acts as the Celery broker
 - Celery worker runs as a separate systemd service and executes background jobs
@@ -65,4 +69,4 @@ Seeing the app live on Azure felt like a real milestone for me as a student devl
 
 ## For Frontend Contributors ✨
 
-If you want to build a frontend on top of this API, start with the endpoint reference in [API_GUIDE.md](./API_GUIDE.md). It covers the REST routes, authentication flow, media handling, and WebSocket chat behavior.
+If you want to build a frontend on top of this API, start with the endpoint reference in [`API_GUIDE.md`](./API_GUIDE.md). It covers the REST routes, authentication flow, media handling, and WebSocket chat behavior.

@@ -2,8 +2,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect,Depends,Query
 from app import schemas, models, oauth2,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update
-from app.my_utils.socket_manager import manager
-from app.my_utils.time_formatting import format_timestamp
+from app.utils.socket_manager import manager
+from app.utils.time_formatting import format_timestamp
 from app.services import redis_service
 from datetime import datetime
 import json

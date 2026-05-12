@@ -4,7 +4,7 @@ import app.schemas as sch
 from app import models,db,oauth2
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func
-import app.my_utils.utils as utils
+from app.utils import thread_helpers as utils
 import os
 from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
 from app.rate_limiter import signup_limiter

@@ -3,7 +3,7 @@ from app import db,models,oauth2
 from app.services import token_service
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import app.my_utils.utils as utils
+from app.utils import thread_helpers as utils
 import app.schemas as sch
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError

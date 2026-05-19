@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_,func
 from app import oauth2,models,db,schemas as sch, config
 from app.models import NotificationType
-from app.rate_limiter import comment_limiter
+from app.services.rate_limit_service import comment_limiter
 from app.services.redis_service import get_cache, set_cache, delete_cache_pattern, increment_cache_version
 from app.tasks.notification_tasks import create_notification_task
 import logging

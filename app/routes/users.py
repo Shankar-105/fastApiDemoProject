@@ -8,7 +8,7 @@ from app.utils import thread_helpers as utils
 import os
 import logging
 from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
-from app.rate_limiter import signup_limiter
+from app.services.rate_limit_service import signup_limiter
 from app.services.blob_service import get_blob_url
 import app.services.otp_service as otp_service
 import app.services.email_service as email_service

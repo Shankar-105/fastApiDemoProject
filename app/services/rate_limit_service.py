@@ -43,7 +43,7 @@ def user_rate_limit(endpoint_id: str, max_calls: int, window: int):
 
 
 # Pre-configured dependency instances
-# Routes import these directly:  from app.rate_limiter import login_limiter
+# Routes import these directly:  from app.services.rate_limit_service import login_limiter
 
 # ip level rate limiters
 login_limiter = ip_rate_limit("login",settings.rl_login_max,settings.rl_login_window)

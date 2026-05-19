@@ -14,7 +14,7 @@ import app.services.email_service as email_service
 from app.config import settings as cg
 from sqlalchemy.orm.exc import StaleDataError
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
-from app.rate_limiter import login_limiter, forgot_password_limiter, reset_password_limiter, refresh_limiter
+from app.services.rate_limit_service import login_limiter, forgot_password_limiter, reset_password_limiter, refresh_limiter
 from app.tasks.email_tasks import send_otp_email as send_otp_email_task
 from app.tasks.email_tasks import send_verification_email as send_verification_email_task
 import logging

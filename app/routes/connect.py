@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from typing import List
 from app.services.redis_service import delete_cache, delete_cache_pattern
 from app.models import NotificationType
-from app.rate_limiter import follow_limiter
+from app.services.rate_limit_service import follow_limiter
 from app.tasks.notification_tasks import create_notification_task
 import logging
 

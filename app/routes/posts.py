@@ -1,6 +1,6 @@
 from fastapi import status,HTTPException,Depends,APIRouter,Form,UploadFile,File
 import app.schemas as sch
-from app.rate_limiter import create_post_limiter
+from app.services.rate_limit_service import create_post_limiter
 from typing import Optional
 from app import models,oauth2
 from app.db import getDb

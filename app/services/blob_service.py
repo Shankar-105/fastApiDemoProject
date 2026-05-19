@@ -1,7 +1,11 @@
 import asyncio
 import os
+import logging
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from app.config import settings
+
+
+logger = logging.getLogger("app")
 
 _client: BlobServiceClient | None = None
 
@@ -44,6 +48,7 @@ def get_blob_url(container: str, blob_name: str) -> str:
 
 async def upload_blob(container: str, blob_name: str, data: bytes, content_type: str) -> str:
     """Upload bytes to blob storage and return the public URL."""
+    logger.info("Uploading blob", extra={"extra_info": {"container": container, "blob_name": blob_name, "content_type": content_type}})
     client = _get_client()
     if client is None:
         local_dir = _container_to_local_path(container)
@@ -51,16 +56,19 @@ async def upload_blob(container: str, blob_name: str, data: bytes, content_type:
         local_path = os.path.join(local_dir, local_blob)
         _ensure_parent_dir(local_path)
         await asyncio.to_thread(_write_bytes, local_path, data)
+        logger.info("Blob uploaded locally", extra={"extra_info": {"container": container, "blob_name": blob_name}})
         return get_blob_url(container, blob_name)
 
     blob_client = client.get_blob_client(container=container, blob=blob_name)
     cs = ContentSettings(content_type=content_type)
     await asyncio.to_thread(blob_client.upload_blob, data, overwrite=True, content_settings=cs)
+    logger.info("Blob uploaded to Azure", extra={"extra_info": {"container": container, "blob_name": blob_name}})
     return get_blob_url(container, blob_name)
 
 
 async def delete_blob(container: str, blob_name: str) -> None:
     """Delete a blob silently (no-op if missing)."""
+    logger.info("Deleting blob", extra={"extra_info": {"container": container, "blob_name": blob_name}})
     client = _get_client()
     if client is None:
         local_dir = _container_to_local_path(container)

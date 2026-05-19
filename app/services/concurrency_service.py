@@ -2,6 +2,7 @@ import asyncio
 import random
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
+import logging
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -9,6 +10,9 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models
+
+
+logger = logging.getLogger("app")
 
 T = TypeVar("T")
 
@@ -42,12 +46,20 @@ async def run_with_transient_retry(
             return await operation()
         except OperationalError as error:
             if not is_transient_db_error(error) or attempt == attempts:
+                logger.warning(
+                    "Transient retry exhausted or non-transient DB error encountered",
+                    extra={"extra_info": {"attempt": attempt, "attempts": attempts, "error": str(error)}},
+                )
                 raise
             last_error = error
             if db is not None:
                 await db.rollback()
             delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
             delay *= 0.5 + random.random()
+            logger.warning(
+                "Retrying transient DB operation",
+                extra={"extra_info": {"attempt": attempt, "attempts": attempts, "delay": delay}},
+            )
             await asyncio.sleep(delay)
     if last_error is not None:
         raise last_error

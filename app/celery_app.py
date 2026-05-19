@@ -35,7 +35,7 @@ celery_app.conf.task_routes = {
     "app.tasks.*": {"queue": "celery", "routing_key": "celery"},
 }
 
-# Declare dead-letter exchange and queue so RabbitMQ will persist failed tasks
+# Declare dead-letter exchange queue so RabbitMQ will persist failed tasks
 dead_letter_exchange = Exchange("dead_letter_exchange", type="direct", durable=True)
 dead_letter_queue = Queue(
     "dead_letter_queue", exchange=dead_letter_exchange, routing_key="dead_letter", durable=True
@@ -45,7 +45,10 @@ celery_queue = Queue(
     "celery",
     Exchange("celery", type="direct"),
     routing_key="celery",
-    queue_arguments={"x-dead-letter-exchange": "dead_letter_exchange"},
+    queue_arguments={
+        "x-dead-letter-exchange": "dead_letter_exchange",
+        "x-dead-letter-routing-key": "dead_letter",
+    },
 )
 
 celery_app.conf.task_queues = (celery_queue, dead_letter_queue)

@@ -5,6 +5,10 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.utils.exceptions import AppException, DatabaseException
 from app.utils.logging import request_id_ctx
+from sqlalchemy.exc import (
+    SQLAlchemyError, 
+    OperationalError
+)
 
 logger = logging.getLogger("app")
 
@@ -64,6 +68,33 @@ def register_exception_handlers(app: FastAPI):
             content={
                 "error_code": "INTERNAL_SERVER_ERROR",
                 "message": "An unexpected error occurred. Please try again later.",
+                "request_id": request_id_ctx.get()
+            }
+        )
+    
+    @app.exception_handler(SQLAlchemyError)
+    async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
+        logger.error(f"SQLAlchemyError: {str(exc)}", exc_info=True)  # Full traceback
+        # You can do smart mapping here
+        if isinstance(exc, IntegrityError):
+            integrity_exception_handler(request=request,exc=exc)  # let the more specific handler take precedence
+        return JSONResponse(
+            status_code=400 if "unique" in str(exc).lower() else 500,
+            content={
+                "error_code": "DATABASE_ERROR",
+                "message": "Database operation failed.",
+                "request_id": request_id_ctx.get()
+            }
+        )
+
+    @app.exception_handler(OperationalError)
+    async def operational_error_handler(request: Request, exc: OperationalError):
+        logger.error(f"OperationalError (possible deadlock/timeout): {str(exc.orig)}", exc_info=True)
+        return JSONResponse(
+            status_code=503,  # Service Unavailable for transient issues
+            content={
+                "error_code": "DATABASE_TEMPORARY_ERROR",
+                "message": "Temporary database issue. Please retry.",
                 "request_id": request_id_ctx.get()
             }
         )

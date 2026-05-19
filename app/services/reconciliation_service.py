@@ -1,12 +1,17 @@
 from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
 
 from app import models
+
+
+logger = logging.getLogger("app")
 
 
 async def reconcile_denormalized_counters(db: AsyncSession) -> dict[str, int]:
     """Repair denormalized counters from source-of-truth tables."""
     repaired: dict[str, int] = {}
+    logger.info("Starting denormalized counter reconciliation")
 
     following_count = (
         select(func.count())
@@ -119,4 +124,5 @@ async def reconcile_denormalized_counters(db: AsyncSession) -> dict[str, int]:
     repaired["post_dislikes"] = dislikes_result.rowcount or 0
 
     await db.commit()
+    logger.info("Completed denormalized counter reconciliation", extra={"extra_info": repaired})
     return repaired

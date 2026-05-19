@@ -6,6 +6,10 @@ from app.utils.socket_manager import manager
 from app.services import redis_service
 import json,asyncio
 from datetime import datetime
+import logging
+
+
+logger = logging.getLogger("app")
 
 router=APIRouter(
     prefix="/messaging",
@@ -41,7 +45,7 @@ async def delete_share_for_everyone(
     sender_id: int,
     receiver_id: int,
     ):
-    print(f"Message ID {share_id} Sender ID {sender_id} Recv ID {receiver_id}")
+    logger.info("Deleting shared post for everyone", extra={"extra_info": {"share_id": share_id, "sender_id": sender_id, "receiver_id": receiver_id}})
     update_result = await db.execute(
         update(models.SharedPost)
         .where(
@@ -52,7 +56,7 @@ async def delete_share_for_everyone(
         .values(is_deleted_for_everyone=True)
     )
     if not update_result.rowcount:
-        print("Message Not Found")
+        logger.warning("Delete-share failed: shared post not found", extra={"extra_info": {"share_id": share_id, "sender_id": sender_id}})
         return
 
     await db.commit()
@@ -63,16 +67,16 @@ async def delete_share_for_everyone(
         "is_deleted_for_everyone":True,
         "receiver_id": receiver_id
     }
-    print(f"Sender ID {sender_id} Receiver ID {receiver_id}")
+    logger.debug("Prepared delete-share payload", extra={"extra_info": {"share_id": share_id, "sender_id": sender_id, "receiver_id": receiver_id}})
     
     sender_payload = dict(payload)
     sender_payload["receiver_id"] = sender_id
     try:
         await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
         await redis_service.redis_client.publish("chat:messages", json.dumps(payload))
-        print("Share deletion published to Redis for cross-process delivery (receiver+sender)")
+        logger.info("Share deletion published to Redis", extra={"extra_info": {"share_id": share_id, "sender_id": sender_id, "receiver_id": receiver_id}})
     except Exception as e:
-        print(f"Failed to publish to Redis: {e}")
+        logger.warning("Failed to publish share deletion to Redis", extra={"extra_info": {"share_id": share_id, "sender_id": sender_id, "receiver_id": receiver_id, "error": str(e)}})
         try:
             await manager.send_json_to_user(payload, receiver_id)
         except Exception:

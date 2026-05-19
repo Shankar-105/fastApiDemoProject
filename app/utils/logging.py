@@ -3,7 +3,6 @@ import sys
 from typing import Any, Dict, Optional
 import json
 from datetime import datetime
-from app.config import settings
 from opentelemetry import trace
 from contextvars import ContextVar
 
@@ -13,7 +12,7 @@ request_id_ctx: ContextVar[Optional[str]] = ContextVar("request_id", default=Non
 
 class StructuredJSONFormatter(logging.Formatter):
     """
-    JSON formatter for structured logging.
+    JSON formatter for structured production logging.
     """
     def format(self, record: logging.LogRecord) -> str:
         span = trace.get_current_span()
@@ -29,7 +28,6 @@ class StructuredJSONFormatter(logging.Formatter):
             "line_no": record.lineno,
         }
 
-        # Inject request context
         user_id = user_id_ctx.get()
         if user_id:
             log_data["user_id"] = user_id
@@ -38,16 +36,13 @@ class StructuredJSONFormatter(logging.Formatter):
         if request_id:
             log_data["request_id"] = request_id
 
-        # Inject OpenTelemetry trace context
         if span_context and span_context.is_valid:
             log_data["trace_id"] = format(span_context.trace_id, "032x")
             log_data["span_id"] = format(span_context.span_id, "016x")
 
-        # Include extra data if present
         if hasattr(record, "extra_info"):
             log_data.update(record.extra_info)
 
-        # Include exception info if present
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
 
@@ -78,7 +73,6 @@ class PrettyConsoleFormatter(logging.Formatter):
         
         message = formatter.format(record)
         
-        # Append context info if available
         context_parts = []
         user_id = user_id_ctx.get()
         if user_id:
@@ -93,36 +87,64 @@ class PrettyConsoleFormatter(logging.Formatter):
             
         return message
 
-def setup_logging():
+def setup_production_logging():
     """
-    Configures the root logger and specific application loggers.
+    Configures structured JSON logging for production environment.
     """
+    from app.config import settings
+    
     root_logger = logging.getLogger()
     
-    # Clear existing handlers
     if root_logger.handlers:
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
 
     handler = logging.StreamHandler(sys.stdout)
-    
-    # Use JSON in prod (non-benchmark), Pretty in dev
-    if settings.benchmark_mode_enabled:
-        # Minimal logging in benchmark mode
-        root_logger.setLevel(logging.WARNING)
-        handler.setFormatter(logging.Formatter("%(message)s"))
-    elif hasattr(settings, "env") and settings.env == "production":
-        root_logger.setLevel(logging.INFO)
-        handler.setFormatter(StructuredJSONFormatter())
-    else:
-        root_logger.setLevel(logging.DEBUG)
-        handler.setFormatter(PrettyConsoleFormatter())
-
+    root_logger.setLevel(logging.INFO)
+    handler.setFormatter(StructuredJSONFormatter())
     root_logger.addHandler(handler)
     
-    # Suppress noisy loggers
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    
+    return root_logger
+
+def setup_development_logging():
+    """
+    Configures pretty console logging for development environment.
+    """
+    from app.config import settings
+    
+    root_logger = logging.getLogger()
+    
+    if root_logger.handlers:
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+
+    handler = logging.StreamHandler(sys.stdout)
+    root_logger.setLevel(logging.DEBUG)
+    handler.setFormatter(PrettyConsoleFormatter())
+    root_logger.addHandler(handler)
+    
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    
+    return root_logger
+
+def setup_benchmark_logging():
+    """
+    Disables logging completely for benchmark mode.
+    """
+    root_logger = logging.getLogger()
+    
+    if root_logger.handlers:
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(PrettyConsoleFormatter())
+    root_logger.addHandler(handler)
+    root_logger.setLevel(logging.ERROR)
     
     return root_logger
 

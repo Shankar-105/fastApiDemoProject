@@ -76,8 +76,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-if not config.settings.benchmark_mode_enabled:
-    configure_observability(app, async_engine)
+configure_observability(app, async_engine)
 
 # -- Exception Handlers --
 register_exception_handlers(app)

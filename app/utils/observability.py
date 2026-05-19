@@ -11,10 +11,23 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from prometheus_fastapi_instrumentator import Instrumentator
-from app.utils.logging import request_id_ctx, user_id_ctx, setup_logging
 
-# Initialize structured logging
-setup_logging()
+from app.utils.logging import (
+    request_id_ctx,
+    user_id_ctx,
+    setup_production_logging,
+    setup_development_logging,
+    setup_benchmark_logging
+)
+
+# Initialize logging based on environment
+if settings.benchmark_mode_enabled and not settings.production_mode:
+    setup_benchmark_logging()
+elif settings.production_mode:
+    setup_production_logging()
+else:
+    setup_development_logging()
+
 logger = logging.getLogger("app")
 
 class LoggingASGIMiddleware:
@@ -77,7 +90,6 @@ class LoggingASGIMiddleware:
             # Reset context variables
             request_id_ctx.reset(request_id_token)
             user_id_ctx.reset(user_id_token)
-
 
 def configure_observability(app: FastAPI, async_engine) -> None:
     trace.set_tracer_provider(

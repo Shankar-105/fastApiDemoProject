@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func
 from app.utils import thread_helpers as utils
 import os
+import logging
 from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
 from app.rate_limiter import signup_limiter
 from app.services.blob_service import get_blob_url
@@ -17,14 +18,14 @@ router=APIRouter(
     tags=['Users']
 )
 
+logger = logging.getLogger("app")
+
 @router.get("/{user_id}", status_code=status.HTTP_200_OK, response_model=sch.UserProfileResponse)
 async def get_user_profile(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    # Phase A: Check cache FIRST before doing expensive is_following query.
-    # This avoids DB queries on cache hits even for user-specific data.
+    logger.debug(f"Fetching profile for user_id: {user_id}, requested by: {currentUser.id}")
     cache_key = f"user_profile:{user_id}"
     cached = await get_cache(cache_key)
     if cached:
-        # Cache HIT -> compute only the user-specific is_following field
         is_following_query = await db.execute(
             select(
                 select(models.connections.c.followed_id)
@@ -36,15 +37,15 @@ async def get_user_profile(user_id:int, db:AsyncSession=Depends(db.getDb), curre
             )
         )
         cached["is_following"] = bool(is_following_query.scalar())
+        logger.info(f"User profile {user_id} retrieved from cache for user: {currentUser.id}")
         return cached
 
-    # Cache MISS -> query the database
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()
     if not user:
+        logger.warning(f"User profile not found: {user_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="User not found")
     
-    # Compute is_following only for cache miss
     is_following_query = await db.execute(
         select(
             select(models.connections.c.followed_id)
@@ -57,7 +58,6 @@ async def get_user_profile(user_id:int, db:AsyncSession=Depends(db.getDb), curre
     )
     is_following = bool(is_following_query.scalar())
     
-    # Count posts via query instead of len(user.posts) for efficiency
     posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==user_id))
     posts_count = posts_count_result.scalar()
     
@@ -74,19 +74,20 @@ async def get_user_profile(user_id:int, db:AsyncSession=Depends(db.getDb), curre
         created_at=user.created_at
     )
 
-    #  Store in Redis for 120 seconds
     await set_cache(cache_key, result_response.model_dump(mode="json"), ttl=120)
+    logger.info(f"User profile {user_id} retrieved from DB for user: {currentUser.id}")
     return result_response
 
 @router.get("/{user_id}/avatar", status_code=status.HTTP_200_OK, response_model=sch.MediaInfo)
 async def get_user_avatar(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    # get the current users profile pic
+    logger.debug(f"Fetching avatar for user_id: {user_id}")
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()
     profilePicturePath = user.profile_picture
-    # if he doesnt have a porfile pic return 404
     if not profilePicturePath:
+        logger.warning(f"No profile picture for user_id: {user_id}")
         raise HTTPException(status_code=404, detail="No profile picture")
+    logger.info(f"Avatar retrieved for user_id: {user_id}")
     return sch.MediaInfo(
         url=get_blob_url("profilepics", profilePicturePath),
         type="image"
@@ -94,12 +95,12 @@ async def get_user_avatar(user_id:int, db:AsyncSession=Depends(db.getDb), curren
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=sch.UserResponse)
 async def register_user(userData:sch.UserSignupRequest=Body(...), db:AsyncSession=Depends(db.getDb), _:None=Depends(signup_limiter)):
-    # prevent duplicate emails to keep OTP verification deterministic per user
+    logger.info(f"Registration attempt for username: {userData.username}, email: {userData.email}")
     existing_email = await db.execute(select(models.User).where(models.User.email == userData.email))
     if existing_email.scalars().first():
+        logger.warning(f"Registration failed - email already exists: {userData.email}")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
-    # hash the password using the bcrypt lib (offloaded to thread pool)
     hashedPw=await utils.hashPassword(userData.password)
     userData.password=hashedPw
     user_payload = userData.model_dump()
@@ -109,44 +110,43 @@ async def register_user(userData:sch.UserSignupRequest=Body(...), db:AsyncSessio
     await db.commit()
     await db.refresh(newUser)
 
-    # send signup verification OTP
     otp = otp_service.generateOtp()
     await otp_service.saveOtp(db, userData.email, otp, minutes=5)
     
     send_verification_email_task.delay(to_email=userData.email, otp=otp)
 
-    # Invalidate the all_users cache because a new user was added
     await delete_cache("all_users")
+    logger.info(f"User registered successfully: {newUser.username}, id: {newUser.id}")
     return newUser
 
 @router.get("", status_code=status.HTTP_200_OK, response_model=List[sch.UserResponse])
 async def list_users(db:AsyncSession=Depends(db.getDb)):
-    # Check the cache first
+    logger.debug("Listing all users")
     cached = await get_cache("all_users")
     if cached:
-        return cached   # cache HIT
+        logger.info("Users list retrieved from cache")
+        return cached
 
-    #  Cache MISS -> hit DB
     result=await db.execute(
         select(models.User.id, models.User.username, models.User.created_at)
     )
     rows=result.all()
 
-    # Build serializable list & cache it for 60 seconds
     users_data = [
         sch.UserResponse(id=row.id, username=row.username, created_at=row.created_at).model_dump(mode="json")
         for row in rows
     ]
     await set_cache("all_users", users_data, ttl=60)
-
+    logger.info(f"Users list retrieved from DB, count: {len(users_data)}")
     return [sch.UserResponse(**item) for item in users_data]
 
 @router.get("/{user_id}/followers", status_code=status.HTTP_200_OK, response_model=List[sch.UserBasicResponse])
 async def get_followers(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    # Check Redis cache
+    logger.debug(f"Fetching followers for user_id: {user_id}")
     cache_key = f"followers:{user_id}"
     cached = await get_cache(cache_key)
     if cached:
+        logger.info(f"Followers for user_id: {user_id} retrieved from cache")
         return cached
 
     follower_link = models.connections.alias("follower_link")
@@ -159,8 +159,8 @@ async def get_followers(user_id:int, db:AsyncSession=Depends(db.getDb), currentU
     if not followers:
         exists_result=await db.execute(select(models.User.id).where(models.User.id == user_id))
         if not exists_result.first():
+            logger.warning(f"User not found when fetching followers: {user_id}")
             raise HTTPException(status_code=404,detail="User not found")
-    # Build proper response
     followers_response = []
     for follower in followers:
         followers_response.append(sch.UserBasicResponse(
@@ -170,14 +170,16 @@ async def get_followers(user_id:int, db:AsyncSession=Depends(db.getDb), currentU
             profile_pic=follower.profile_picture
         ))
     await set_cache(cache_key, [f.model_dump(mode="json") for f in followers_response], ttl=120)
+    logger.info(f"Followers for user_id: {user_id} retrieved from DB, count: {len(followers_response)}")
     return followers_response
 
 @router.get("/{user_id}/following", status_code=status.HTTP_200_OK, response_model=List[sch.UserBasicResponse])
 async def get_following(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    # Check Redis cache
+    logger.debug(f"Fetching following for user_id: {user_id}")
     cache_key = f"following:{user_id}"
     cached = await get_cache(cache_key)
     if cached:
+        logger.info(f"Following for user_id: {user_id} retrieved from cache")
         return cached
 
     following_link = models.connections.alias("following_link")
@@ -190,8 +192,8 @@ async def get_following(user_id:int, db:AsyncSession=Depends(db.getDb), currentU
     if not following:
         exists_result=await db.execute(select(models.User.id).where(models.User.id == user_id))
         if not exists_result.first():
+            logger.warning(f"User not found when fetching following: {user_id}")
             raise HTTPException(status_code=404,detail="User not found")
-    # Build proper response
     following_response = []
     for followed_user in following:
         following_response.append(sch.UserBasicResponse(
@@ -201,14 +203,16 @@ async def get_following(user_id:int, db:AsyncSession=Depends(db.getDb), currentU
             profile_pic=followed_user.profile_picture
         ))
     await set_cache(cache_key, [f.model_dump(mode="json") for f in following_response], ttl=120)
+    logger.info(f"Following for user_id: {user_id} retrieved from DB, count: {len(following_response)}")
     return following_response
 
 @router.get("/{user_id}/posts", response_model=sch.PostListResponse)
 async def get_user_posts(user_id:int, limit:int=Query(10, ge=1, le=100), offset: int = Query(0, ge=0), db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    # Check Redis cache
+    logger.debug(f"Fetching posts for user_id: {user_id}, limit: {limit}, offset: {offset}")
     cache_key = f"user:posts:{user_id}:{offset}:{limit}"
     cached = await get_cache(cache_key)
     if cached:
+        logger.info(f"Posts for user_id: {user_id} retrieved from cache")
         return cached
 
     is_liked = (
@@ -232,7 +236,6 @@ async def get_user_posts(user_id:int, limit:int=Query(10, ge=1, le=100), offset:
     has_more = len(paginatedPosts) > limit
     paginatedPosts = paginatedPosts[:limit]
 
-    # Build proper response
     posts = []
     for post, liked in paginatedPosts:
         media_url = None
@@ -261,4 +264,5 @@ async def get_user_posts(user_id:int, limit:int=Query(10, ge=1, le=100), offset:
         pagination=pagination
     )
     await set_cache(cache_key, result.model_dump(mode="json"), ttl=60)
+    logger.info(f"Posts for user_id: {user_id} retrieved from DB, count: {len(posts)}")
     return result

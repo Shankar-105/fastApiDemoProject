@@ -67,7 +67,8 @@ class Settings(BaseSettings):
     otel_console_exporter_enabled: bool = False
     # Disables expensive logging/otel,promethus instrumentors during benchmark
     benchmark_mode_enabled: bool = False
-    
+    # toggle to true in production
+    production_mode : bool = False
     # Runtime tuning parameters (loaded from .env, used by startup scripts)
     gunicorn_workers: int = 4
     gunicorn_timeout: int = 120

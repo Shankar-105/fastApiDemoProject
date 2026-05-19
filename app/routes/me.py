@@ -13,17 +13,21 @@ from fastapi import UploadFile,File
 from app.services.redis_service import delete_cache
 from app.services.blob_service import upload_blob, delete_blob, get_blob_url
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
+import logging
 
 router=APIRouter(
     prefix="/users/me",
     tags=['Current User']
 )
 
+logger = logging.getLogger("app")
+
 @router.get("/profile", status_code=status.HTTP_200_OK, response_model=sch.UserProfileResponse)
 async def myProfile(db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    # Count posts via query for accuracy
+    logger.debug(f"Fetching profile for current user: {currentUser.id}")
     posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))
     posts_count = posts_count_result.scalar()
+    logger.info(f"Profile retrieved for user: {currentUser.id}")
     return sch.UserProfileResponse(
         id=currentUser.id,
         username=currentUser.username,
@@ -38,17 +42,20 @@ async def myProfile(db:AsyncSession=Depends(db.getDb),currentUser:models.User=De
 
 @router.get("/avatar", status_code=status.HTTP_200_OK, response_model=sch.MediaInfo)
 async def get_current_user_avatar(db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    # get the current users profile pic
+    logger.debug(f"Fetching avatar for current user: {currentUser.id}")
     profilePicturePath = currentUser.profile_picture
-    # if he doesnt have a porfile pic return 404
     if not profilePicturePath:
+        logger.warning(f"No profile picture for user: {currentUser.id}")
         raise HTTPException(status_code=404, detail="No profile picture")
+    logger.info(f"Avatar retrieved for user: {currentUser.id}")
     return sch.MediaInfo(
         url=get_blob_url("profilepics", profilePicturePath),
         type="image"
     )
+
 @router.delete("/avatar", status_code=status.HTTP_200_OK, response_model=sch.SuccessResponse)
 async def delete_profile_picture(db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    logger.info(f"User {currentUser.id} deleting profile picture")
     async def _remove_picture():
         locked_user = await lock_user_row(db, user_id=currentUser.id)
         profilePic = locked_user.profile_picture
@@ -66,15 +73,14 @@ async def delete_profile_picture(db:AsyncSession=Depends(db.getDb), currentUser:
     currentUser, old_profile_pic = await run_with_transient_retry(lambda: _remove_picture(), db=db)
     if old_profile_pic:
         await delete_blob("profilepics", old_profile_pic)
-    # profile changed - bust the cached profile for this user
     await delete_cache(f"user_profile:{currentUser.id}")
+    logger.info(f"Profile picture removed for user: {currentUser.id}")
     return sch.SuccessResponse(message="Profile picture removed successfully")
 
 # retrives all posts using sqlAlchemy
 @router.get("/posts", response_model=sch.PostListResponse)
 async def get_current_user_posts(limit:int=Query(10, ge=1, le=100), offset: int = Query(0, ge=0), db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    # P2.2: Fetch only needed columns
-    # P2.3: Use limit+1 instead of COUNT
+    logger.debug(f"Fetching posts for current user: {currentUser.id}, limit: {limit}, offset: {offset}")
     is_liked = (
         select(models.Votes.post_id)
         .where(
@@ -99,13 +105,12 @@ async def get_current_user_posts(limit:int=Query(10, ge=1, le=100), offset: int 
         .where(models.Post.user_id==currentUser.id)
         .order_by(models.Post.created_at.desc())
         .offset(offset)
-        .limit(limit + 1)  # fetch one extra
+        .limit(limit + 1)
     )
     paginatedPosts=postsResult.all()
     has_more = len(paginatedPosts) > limit
     paginatedPosts = paginatedPosts[:limit]
     
-    # Build proper response
     posts = []
     for row in paginatedPosts:
         media_url = None
@@ -123,12 +128,13 @@ async def get_current_user_posts(limit:int=Query(10, ge=1, le=100), offset: int 
         ))
     
     pagination = sch.PaginationMetadata(
-        total=None,  # omit expensive count
+        total=None,
         limit=limit,
         offset=offset,
         has_more=has_more
     )
     
+    logger.info(f"Posts retrieved for user: {currentUser.id}, count: {len(posts)}")
     return sch.PostListResponse(
         posts=posts,
         pagination=pagination
@@ -140,6 +146,7 @@ async def get_current_user_posts(limit:int=Query(10, ge=1, le=100), offset: int 
 # so made everything to be passed via Form only
 @router.patch("", status_code=status.HTTP_200_OK, response_model=sch.UserProfileResponse)
 async def update_current_user_profile(username:str=Form(None), bio:str=Form(None), profile_picture:UploadFile=File(None), db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser), token: str = Depends(oauth2.oauth2_scheme)):
+    logger.info(f"User {currentUser.id} updating profile")
     if not any([username, bio, profile_picture]):
         posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))
         posts_count = posts_count_result.scalar()
@@ -199,14 +206,12 @@ async def update_current_user_profile(username:str=Form(None), bio:str=Form(None
         return locked_user
 
     currentUser = await run_with_transient_retry(lambda: _update_profile(), db=db)
-    # Invalidate auth cache so next request gets updated user data
     await delete_cache(f"auth:user:{token}")
     
-    # Count posts for response
     posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))
     posts_count = posts_count_result.scalar()
     
-    # Build proper response
+    logger.info(f"User {currentUser.id} profile updated successfully")
     return sch.UserProfileResponse(
         id=currentUser.id,
         username=currentUser.username,

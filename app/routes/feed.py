@@ -6,11 +6,14 @@ from app import models, schemas, oauth2 , db
 from app.services.redis_service import get_cache, set_cache, delete_cache
 from app.services.blob_service import get_blob_url
 import os
+import logging
 
 router = APIRouter(
     prefix="/feed",
     tags=["Feed"]
 )
+
+logger = logging.getLogger("app")
 
 @router.get("", response_model=schemas.FeedResponse)
 async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
@@ -18,10 +21,11 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser)
     ):
-    # Check Redis cache first (per-user, per-page)
+    logger.debug(f"Fetching home feed for user: {currentUser.id}, limit: {limit}, offset: {offset}")
     cache_key = f"feed:home:{currentUser.id}:{offset}:{limit}"
     cached = await get_cache(cache_key)
     if cached:
+        logger.info(f"Home feed retrieved from cache for user: {currentUser.id}")
         return cached
 
     followed_users = (
@@ -39,8 +43,6 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
         .label("is_liked")
     )
     
-    # P2.2: Fetch only needed columns (not full Post objects)
-    # P2.3: Use limit+1 to determine has_more without separate COUNT query
     postsResult = await db.execute(
         select(
             models.Post.id,
@@ -58,13 +60,12 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
         .join(models.User, models.User.id == models.Post.user_id)
         .where(models.Post.user_id.in_(followed_users))
         .order_by(models.Post.created_at.desc())
-        .offset(offset).limit(limit + 1)  # fetch one extra to determine has_more
+        .offset(offset).limit(limit + 1)
     )
     rows=postsResult.all()
     has_more = len(rows) > limit
-    rows = rows[:limit]  # trim to limit
+    rows = rows[:limit]
     
-    # Build proper feed response
     user_homeFeed = []
     for row in rows:
         owner = schemas.UserOut(
@@ -72,7 +73,6 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
             username=row.username,
             profile_pic=row.profile_picture
         )
-        # Build the post item with is_liked
         post_item = schemas.PostListItemResponse(
             id=row.id,
             title=row.title,
@@ -90,8 +90,9 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
             owner=owner
         ))
     
-    result = schemas.FeedResponse(feed=user_homeFeed, total=None)  # omit expensive total count
+    result = schemas.FeedResponse(feed=user_homeFeed, total=None)
     await set_cache(cache_key, result.model_dump(mode="json"), ttl=30)
+    logger.info(f"Home feed retrieved from DB for user: {currentUser.id}, items: {len(user_homeFeed)}")
     return result
 
 @router.get("/explore", response_model=schemas.PostListResponse)
@@ -100,15 +101,13 @@ async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser)
     ):
-    # Check Redis cache (per-user because is_liked differs per user)
+    logger.debug(f"Fetching explore feed for user: {currentUser.id}, limit: {limit}, offset: {offset}")
     cache_key = f"feed:explore:{currentUser.id}:{offset}:{limit}"
     cached = await get_cache(cache_key)
     if cached:
+        logger.info(f"Explore feed retrieved from cache for user: {currentUser.id}")
         return cached
 
-    # For explore, get all posts (or random) - excluding potentially private ones if that existed
-    # P2.2: Fetch only needed columns
-    # P2.3: Use limit+1 to determine has_more without COUNT
     is_liked = (
         select(models.Votes.post_id)
         .where(
@@ -130,13 +129,12 @@ async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
             models.Post.created_at,
             is_liked
         ).order_by(models.Post.created_at.desc())
-        .offset(offset).limit(limit + 1)  # fetch one extra
+        .offset(offset).limit(limit + 1)
     )
     rows = postsResult.all()
     has_more = len(rows) > limit
-    rows = rows[:limit]  # trim to limit
+    rows = rows[:limit]
     
-    # helper to format posts specifically for explore (similar to user posts list)
     explore_posts = []
     for row in rows:
         media_url = None
@@ -155,7 +153,7 @@ async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
         ))
 
     pagination = schemas.PaginationMetadata(
-        total=None,  # omit expensive total
+        total=None,
         limit=limit,
         offset=offset,
         has_more=has_more
@@ -163,4 +161,5 @@ async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
     
     result = schemas.PostListResponse(posts=explore_posts, pagination=pagination)
     await set_cache(cache_key, result.model_dump(mode="json"), ttl=60)
+    logger.info(f"Explore feed retrieved from DB for user: {currentUser.id}, items: {len(explore_posts)}")
     return result

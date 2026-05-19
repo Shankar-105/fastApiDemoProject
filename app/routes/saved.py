@@ -4,11 +4,14 @@ from sqlalchemy import select
 
 from app import db, models, oauth2, schemas as sch
 from app.services.blob_service import get_blob_url
+import logging
 
 router = APIRouter(
     prefix="",
     tags=["Saved Posts"]
 )
+
+logger = logging.getLogger("app")
 
 
 def _build_post_detail(post: models.Post, is_liked: bool) -> sch.PostDetailResponse:
@@ -43,9 +46,11 @@ async def save_post(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
 ):
+    logger.info(f"User {current_user.id} saving post {post_id}")
     post_result = await db_session.execute(select(models.Post).where(models.Post.id == post_id))
     post = post_result.scalars().first()
     if not post:
+        logger.warning(f"Save post failed - post {post_id} not found")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
 
     existing_result = await db_session.execute(
@@ -56,12 +61,13 @@ async def save_post(
     )
     existing = existing_result.scalars().first()
     if existing:
+        logger.info(f"User {current_user.id} post {post_id} already saved")
         return sch.SuccessResponse(message="Post already saved")
 
     saved = models.SavedPost(user_id=current_user.id, post_id=post_id)
     db_session.add(saved)
     await db_session.commit()
-
+    logger.info(f"User {current_user.id} saved post {post_id}")
     return sch.SuccessResponse(message="Post saved")
 
 
@@ -71,6 +77,7 @@ async def unsave_post(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
 ):
+    logger.info(f"User {current_user.id} unsaving post {post_id}")
     saved_result = await db_session.execute(
         select(models.SavedPost).where(
             models.SavedPost.user_id == current_user.id,
@@ -79,10 +86,12 @@ async def unsave_post(
     )
     saved = saved_result.scalars().first()
     if not saved:
+        logger.warning(f"Unsave post failed - saved post {post_id} not found for user {current_user.id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved post not found")
 
     await db_session.delete(saved)
     await db_session.commit()
+    logger.info(f"User {current_user.id} unsaved post {post_id}")
     return sch.SuccessResponse(message="Saved post removed")
 
 
@@ -91,6 +100,7 @@ async def get_saved_posts(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
 ):
+    logger.debug(f"Fetching saved posts for user {current_user.id}")
     is_liked = (
         select(models.Votes.post_id)
         .where(
@@ -132,6 +142,7 @@ async def get_saved_posts(
     saved_rows = saved_result.all()
 
     if not saved_rows:
+        logger.info(f"No saved posts found for user {current_user.id}")
         return sch.SavedPostsResponse(saved=[])
 
     payload = []
@@ -169,5 +180,6 @@ async def get_saved_posts(
             )
         )
 
+    logger.info(f"Retrieved {len(payload)} saved posts for user {current_user.id}")
     return sch.SavedPostsResponse(saved=payload)
 

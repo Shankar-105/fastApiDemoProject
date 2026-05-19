@@ -1,6 +1,6 @@
 from fastapi import status,HTTPException,Depends,APIRouter,Form,UploadFile,File
 import app.schemas as sch
-from app.rate_limiter import create_post_limiter
+from app.services.rate_limit_service import create_post_limiter
 from typing import Optional
 from app import models,oauth2
 from app.db import getDb
@@ -11,20 +11,26 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import os,uuid
 import asyncio
+import logging
 from app.config import settings
 from app.services.blob_service import upload_blob, delete_blob, get_blob_url
+from app.utils.exceptions import ResourceNotFoundException, ValidationException
+
 router=APIRouter(
     prefix="/posts",
     tags=['Posts']
 )
 
+logger = logging.getLogger("app")
+
 # gets a specific post with id -> {postId}
 @router.get("/{postId}", response_model=sch.PostDetailResponse)
 async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    # Check Redis cache first
+    logger.debug(f"Fetching post {postId} for user {currentUser.id}")
     cache_key = f"post:{postId}:{currentUser.id}"
     cached = await get_cache(cache_key)
     if cached:
+        logger.info(f"Post {postId} retrieved from cache for user {currentUser.id}")
         return cached
 
     result=await db.execute(
@@ -34,12 +40,11 @@ async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:model
     )
     reqPost=result.scalars().first()
     if reqPost==None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with id {postId} not found")
+        logger.warning(f"Post {postId} not found")
+        raise ResourceNotFoundException(resource="Post", identifier=postId)
     
-    # This removes the write from the hot read path and significantly reduces latency.
     await queue_post_view(postId, currentUser.id)
     
-    # Check if liked
     likeResult=await db.execute(
         select(
             select(models.Votes.post_id)
@@ -53,7 +58,6 @@ async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:model
     )
     is_liked = bool(likeResult.scalar())
     
-    # Build proper response with schema
     media_url = None
     if reqPost.media_path:
         media_url = get_blob_url("posts-media", reqPost.media_path)
@@ -82,6 +86,7 @@ async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:model
         owner=owner
     )
     await set_cache(cache_key, result_response.model_dump(mode="json"), ttl=120)
+    logger.info(f"Post {postId} retrieved from DB for user {currentUser.id}")
     return result_response
 
 
@@ -95,15 +100,13 @@ async def create_post(
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     _:None=Depends(create_post_limiter),
 ):
-    # set to None change if uploaded later
+    logger.info(f"User {currentUser.id} creating new post")
     media_path = None
     media_type = None
     if media:
-        # ensure the file type is in bounds
         if media.content_type not in ["image/jpeg", "image/png", "video/mp4"]:
-            raise HTTPException(400, "Only JPG, PNG, MP4 allowed")
-        # Generate unique filename
-        # using uuid Universally unique ID which generates a 36 characters
+            logger.warning(f"User {currentUser.id} attempted invalid media type: {media.content_type}")
+            raise ValidationException("Only JPG, PNG, MP4 allowed")
         ext=media.filename.split(".")[-1]
         filename=f"{uuid.uuid4()}.{ext}"
         content_bytes = await media.read()
@@ -120,13 +123,11 @@ async def create_post(
     db.add(new_post)
     await db.commit()
     
-    # Use versioned cache keys instead of global feed:* invalidation (always enabled).
     await increment_cache_version("feed:home")
     await increment_cache_version("feed:explore")
     
     await delete_cache_pattern(f"user:posts:{currentUser.id}:*")
     
-    # Build proper response (no refresh needed)
     media_url = None
     if new_post.media_path:
         media_url = get_blob_url("posts-media", new_post.media_path)
@@ -138,6 +139,7 @@ async def create_post(
         profile_pic=currentUser.profile_picture
     )
     
+    logger.info(f"User {currentUser.id} created post {new_post.id}")
     return sch.PostDetailResponse(
         id=new_post.id,
         title=new_post.title,
@@ -156,28 +158,29 @@ async def create_post(
 # delets a specific post with the mentioned id -> {id}
 @router.delete("/{postId}", response_model=sch.SuccessResponse)
 async def delete_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    logger.info(f"User {currentUser.id} attempting to delete post {postId}")
     result=await db.execute(select(models.Post).where(and_(models.Post.id==postId,models.Post.user_id==currentUser.id)))
     postToDelete=result.scalars().first()
     if not postToDelete:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found")
-    # Fix bug: construct path before checking existence
+        logger.warning(f"User {currentUser.id} failed to delete post {postId} - not found or no permission")
+        raise ResourceNotFoundException(resource="Post", identifier=postId)
     if postToDelete.media_path:
         await delete_blob("posts-media", postToDelete.media_path)
     await db.delete(postToDelete)
     await db.commit()
-    # Invalidate caches for this post, feeds, and user posts
     await delete_cache_pattern(f"post:{postId}:*")
     
-    # Use versioned cache keys instead of global feed:* invalidation (always enabled).
     await increment_cache_version("feed:home")
     await increment_cache_version("feed:explore")
     await delete_cache_pattern(f"user:posts:{currentUser.id}:*")
     await delete_cache_pattern(f"comments:post:{postId}:*")
+    logger.info(f"User {currentUser.id} successfully deleted post {postId}")
     return sch.SuccessResponse(message=f"Post {postToDelete.id} deleted successfully")
 
 # update a specific post with id -> {id}
 @router.put("/{postId}", response_model=sch.PostDetailResponse)
 async def update_post(postId:int, post:sch.PostUpdateRequest, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    logger.info(f"User {currentUser.id} attempting to update post {postId}")
     result=await db.execute(
         select(models.Post)
         .options(selectinload(models.Post.user))
@@ -185,24 +188,16 @@ async def update_post(postId:int, post:sch.PostUpdateRequest, db:AsyncSession=De
     )
     postToUpdate=result.scalars().first()
     if not postToUpdate:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found")
-    # from our argument of post we exclude the None values
-    # and just pick up the set values and store into a dict update_data
+        logger.warning(f"User {currentUser.id} failed to update post {postId} - not found")
+        raise ResourceNotFoundException(resource="Post", identifier=postId)
     update_data = post.dict(exclude_unset=True)
-    # now we traverse thorugh the update_data and put that data
-    # in our postToUpdate
     for key, value in update_data.items():
         setattr(postToUpdate,key,value)
-    # commit those updated changes
     await db.commit()
-    # No refresh needed - object has updated values and expire_on_commit=False keeps them
-    # Invalidate cached post data and feeds
     await delete_cache_pattern(f"post:{postId}:*")
-    # Use versioned cache keys instead of global feed:* invalidation (always enabled).
     await increment_cache_version("feed:home")
     await increment_cache_version("feed:explore")
     
-    # Build proper response
     media_url = None
     if postToUpdate.media_path:
         media_url = get_blob_url("posts-media", postToUpdate.media_path)
@@ -214,6 +209,7 @@ async def update_post(postId:int, post:sch.PostUpdateRequest, db:AsyncSession=De
         profile_pic=postToUpdate.user.profile_picture
     )
     
+    logger.info(f"User {currentUser.id} successfully updated post {postId}")
     return sch.PostDetailResponse(
         id=postToUpdate.id,
         title=postToUpdate.title,

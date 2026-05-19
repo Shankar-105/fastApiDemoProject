@@ -8,6 +8,10 @@ from app.services import redis_service
 from datetime import datetime
 from typing import List
 import json
+import logging
+
+
+logger = logging.getLogger("app")
 router=APIRouter(
     prefix="/messaging",
     tags=['Messaging']
@@ -20,27 +24,29 @@ async def msg_reactions(
     db: AsyncSession = Depends(db.getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser)
 ):
-  result = await db.execute(
-      select(models.Message).where(models.Message.id == msg_id)
-  )
-  msg = result.scalars().first()
-  if not msg:
+    logger.debug("Fetching message reactions", extra={"extra_info": {"message_id": msg_id, "user_id": currentUser.id}})
+    result = await db.execute(
+        select(models.Message).where(models.Message.id == msg_id)
+    )
+    msg = result.scalars().first()
+    if not msg:
         raise HTTPException(404, "Message not found")
-    # veryyy Optional highly impossible
-  if msg.sender_id != currentUser.id and msg.receiver_id != currentUser.id:
+
+    if msg.sender_id != currentUser.id and msg.receiver_id != currentUser.id:
         return
-  reactions_result = await db.execute(
-      select(models.MessageReaction)
-      .options(selectinload(models.MessageReaction.user))
-      .where(models.MessageReaction.message_id == msg_id)
-  )
-  reactions = reactions_result.scalars().all()
-  return [
+
+    reactions_result = await db.execute(
+        select(models.MessageReaction)
+        .options(selectinload(models.MessageReaction.user))
+        .where(models.MessageReaction.message_id == msg_id)
+    )
+    reactions = reactions_result.scalars().all()
+    return [
         {
             "user_id": r.user.id,
             "username": r.user.username,
             "profile_pic": r.user.profile_picture,
-            "reaction": r.reaction
+            "reaction": r.reaction,
         }
         for r in reactions
     ]
@@ -51,20 +57,20 @@ async def react(
     user_id:int,
     db: AsyncSession
 ): 
+    logger.info("Handling message reaction", extra={"extra_info": {"message_id": reaction.message_id, "user_id": user_id, "reaction": reaction.reaction}})
     result = await db.execute(
         select(models.Message).where(models.Message.id == reaction.message_id)
     )
     the_msg = result.scalars().first()
     if not the_msg:
         return {
-            "status":"Message not found"
+            "status": "Message not found"
         }
-    elgibile=[the_msg.sender_id,the_msg.receiver_id]
-    print(user_id,elgibile)
+    elgibile = [the_msg.sender_id, the_msg.receiver_id]
     if user_id not in elgibile:
-        print("working")
+        logger.warning("Message reaction rejected: unauthorized user", extra={"extra_info": {"message_id": reaction.message_id, "user_id": user_id}})
         return {
-            "status":"Unknown User"
+            "status": "Unknown User"
         }
     existing_result = await db.execute(
         select(models.MessageReaction).where(
@@ -109,9 +115,9 @@ async def react(
     try:
         await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
         await redis_service.redis_client.publish("chat:messages", json.dumps(payload))
-        print("Reaction published to Redis for cross-process delivery (receiver+sender)")
+        logger.info("Reaction published to Redis", extra={"extra_info": {"message_id": the_msg.id, "user_id": user_id}})
     except Exception as e:
-        print(f"Failed to publish to Redis: {e}")
+        logger.warning("Failed to publish message reaction to Redis", extra={"extra_info": {"message_id": the_msg.id, "user_id": user_id, "error": str(e)}})
         # Fallback local sends
         try:
             await manager.send_personal_message(sender_payload, the_msg.sender_id)

@@ -2,6 +2,7 @@ import secrets
 import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
+import logging
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,9 @@ from sqlalchemy.future import select
 
 from app import models, oauth2
 from app.config import settings
+
+
+logger = logging.getLogger("app")
 
 
 def _hash_refresh_token(token_str: str) -> str:
@@ -19,6 +23,7 @@ async def create_refresh_token(
     db: AsyncSession, user_id: int, family_id: str | None = None
 ) -> str:
 
+    logger.info("Creating refresh token", extra={"extra_info": {"user_id": user_id}})
     token_str = secrets.token_urlsafe(32)  # 43-char cryptographically random
     if family_id is None:
         family_id = str(uuid.uuid4())
@@ -41,6 +46,7 @@ async def rotate_refresh_token(
 
     from fastapi import HTTPException, status  # local import to avoid circular
     old_token_hash = _hash_refresh_token(old_token_str)
+    logger.info("Rotating refresh token")
 
     result = await db.execute(
         select(models.RefreshToken)
@@ -53,6 +59,7 @@ async def rotate_refresh_token(
 
     # ── Token not found at all ──
     if old_row is None:
+        logger.warning("Refresh token rotation failed: token not found")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token.",
@@ -62,6 +69,7 @@ async def rotate_refresh_token(
     # Someone (attacker or real user) is replaying an old token.
     # Revoke the ENTIRE family to cut off both parties.
     if old_row.revoked:
+        logger.warning("Refresh token reuse detected; revoking family", extra={"extra_info": {"family_id": old_row.family_id}})
         await revoke_family(db, old_row.family_id)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -72,6 +80,7 @@ async def rotate_refresh_token(
     if old_row.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         old_row.revoked = True
         await db.commit()
+        logger.warning("Refresh token expired", extra={"extra_info": {"user_id": old_row.user_id}})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token expired. Please log in again.",
@@ -93,12 +102,14 @@ async def rotate_refresh_token(
     access_token = await oauth2.createAccessToken(
         {"userId": user.id, "userName": user.username}
     )
+    logger.info("Refresh token rotated successfully", extra={"extra_info": {"user_id": old_row.user_id}})
 
     return access_token, new_refresh
 
 
 async def revoke_family(db: AsyncSession, family_id: str) -> None:
     """Mark ALL tokens in this family as revoked (reuse detection response)."""
+    logger.info("Revoking refresh token family", extra={"extra_info": {"family_id": family_id}})
     await db.execute(
         update(models.RefreshToken)
         .where(models.RefreshToken.family_id == family_id)
@@ -109,6 +120,7 @@ async def revoke_family(db: AsyncSession, family_id: str) -> None:
 
 async def revoke_all_user_tokens(db: AsyncSession, user_id: int) -> None:
     """Revoke every refresh token for a user (called on password change)."""
+    logger.info("Revoking all refresh tokens for user", extra={"extra_info": {"user_id": user_id}})
     await db.execute(
         update(models.RefreshToken)
         .where(models.RefreshToken.user_id == user_id)

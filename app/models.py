@@ -212,7 +212,7 @@ class User(Base):
         id=Column(Integer,primary_key=True,nullable=False)
         username=Column(String,nullable=False,unique=True)
         password=Column(String,nullable=False)
-        nickname=Column(String,nullable=False)
+        nickname=Column(String,nullable=True)
         bio=Column(String,nullable=True)
         email=Column(String,nullable=True)
         email_verified=Column(Boolean, default=False, server_default="false", nullable=False)

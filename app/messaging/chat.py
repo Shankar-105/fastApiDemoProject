@@ -5,6 +5,10 @@ from app.utils.socket_manager import manager
 from app.messaging import delete_msg,delete_shares,dm,edit_msg,load_missed_msgs,msg_reaction,share_reaction,reply_msg,reply_to_share,media_msg,read_receipt
 import json
 import asyncio
+import logging
+
+
+logger = logging.getLogger("app")
 router = APIRouter(
     prefix="/messaging",
     tags=["Messaging"]
@@ -50,7 +54,10 @@ async def chat(
         try:
             await websocket.send_json(item)
         except Exception:
-            print("WebSocket broken during missed content delivery")
+            logger.warning(
+                "WebSocket broken during missed content delivery",
+                extra={"extra_info": {"user_id": current_user.id}},
+            )
             break
 
     def _safe_int(value):
@@ -204,7 +211,7 @@ async def chat(
         manager.disconnect(user_id, client_initiated=True, last_seen_at=seen_at)
         await manager.broadcast_presence_update(db, user_id, online=False, last_seen_at=seen_at)
     except Exception as e:
-        print(e)
+        logger.exception("Unhandled websocket error", extra={"extra_info": {"user_id": user_id, "error": str(e)}})
         seen_at = await manager.mark_last_seen(db, user_id)
         manager.disconnect(user_id, client_initiated=False, last_seen_at=seen_at)
         await manager.broadcast_presence_update(db, user_id, online=False, last_seen_at=seen_at)

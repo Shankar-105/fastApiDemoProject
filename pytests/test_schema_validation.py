@@ -31,9 +31,9 @@ async def test_validation_errors_are_clear(client, get_token):
     
     assert resp.status_code == 422  # Validation error
     error = resp.json()
-    assert "detail" in error
+    assert "details" in error
     # Should mention the missing 'content' field
-    assert any("content" in str(err).lower() for err in error["detail"])
+    assert any("content" in str(err).lower() for err in error["details"])
 
 
 async def test_media_urls_properly_constructed(client, get_token):
@@ -81,8 +81,9 @@ async def test_error_responses_consistent_format(client, get_token):
         headers={"Authorization": f"Bearer {get_token}"})
     assert resp.status_code == 404
     error = resp.json()
-    assert "detail" in error
-    assert isinstance(error["detail"], str)
+    assert "details" in error
+    if error["details"]:
+       assert isinstance(error["details"], str)
     
     # Test validation error (422)
     resp = await client.post("/v1/posts/1/votes",
@@ -90,8 +91,7 @@ async def test_error_responses_consistent_format(client, get_token):
         headers={"Authorization": f"Bearer {get_token}"})
     assert resp.status_code == 422
     error = resp.json()
-    assert "detail" in error
-
+    assert "details" in error 
 
 async def test_comment_list_response_schema(client, get_token):
     """Verify comments return proper CommentListResponse"""

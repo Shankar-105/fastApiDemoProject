@@ -7,7 +7,7 @@ from app.services.redis_service import delete_cache
 from app.utils import thread_helpers
 from sqlalchemy.orm.exc import StaleDataError
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
-from app.rate_limiter import change_password_limiter, reset_password_auth_limiter
+from app.services.rate_limit_service import change_password_limiter, reset_password_auth_limiter
 from app.tasks.email_tasks import send_otp_email as send_otp_email_task
 
 router = APIRouter(

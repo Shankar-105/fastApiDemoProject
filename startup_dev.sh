@@ -19,7 +19,6 @@ echo "  HTTP: httptools"
 echo "────────────────────────────────────────"
 
 # Use direct uvicorn for the best dev experience (auto-reload)
-# We pass the settings manually or let uvicorn pick up defaults
 exec uvicorn app.main:app \
   --host 0.0.0.0 \
   --port 8000 \

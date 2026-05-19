@@ -66,8 +66,9 @@ class Settings(BaseSettings):
     # observability toggles
     otel_console_exporter_enabled: bool = False
     # Disables expensive logging/otel,promethus instrumentors during benchmark
-    benchmark_mode_enabled: bool = True
-    
+    benchmark_mode_enabled: bool = False
+    # contributors, dont care about this flag
+    production_mode : bool = False
     # Runtime tuning parameters (loaded from .env, used by startup scripts)
     gunicorn_workers: int = 4
     gunicorn_timeout: int = 120

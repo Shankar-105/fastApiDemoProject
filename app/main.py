@@ -16,7 +16,6 @@ from app.utils.socket_manager import manager
 from fastapi.middleware.cors import CORSMiddleware
 from app.utils.observability import configure_observability
 
-
 # -- Database Setup --
 models.Base.metadata.create_all(bind=sync_engine)
 
@@ -66,6 +65,8 @@ async def lifespan(app: FastAPI):
     if _notification_listener_task:
         _notification_listener_task.cancel()
 
+from app.utils.exception_handlers import register_exception_handlers
+
 # -- App Instance --
 app = FastAPI(
     title="Social Media API",
@@ -74,17 +75,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-if not config.settings.benchmark_mode_enabled:
-    configure_observability(app, async_engine)
+configure_observability(app, async_engine)
 
 # -- Exception Handlers --
-@app.exception_handler(IntegrityError)
-async def integrity_exception_handler(request: Request, exc: IntegrityError):
-    """Global handler for database integrity errors (unique constraints, etc.)"""
-    return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": "Database integrity error. This might be a duplicate record."},
-    )
+register_exception_handlers(app)
 
 # -- Static Files & Middleware --
 app.mount("/profilepics", StaticFiles(directory="profilepics"), name="profilepics")
@@ -203,5 +197,53 @@ def root_home() -> str:
     """
 
 @app.get("/health", status_code=200)
-def health_check():
-    return {"status": "healthy", "version": "1.0.0"}
+async def health_check():
+    """
+    Comprehensive health check for the API and its dependencies.
+    """
+    health_status = {
+        "status": "healthy",
+        "version": "1.0.0",
+        "dependencies": {
+            "database": "unknown",
+            "redis": "unknown",
+            "rabbitmq": "unknown"
+        }
+    }
+    
+    # 1. Check Database
+    try:
+        async with async_engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        health_status["dependencies"]["database"] = "connected"
+    except Exception as e:
+        health_status["status"] = "unhealthy"
+        health_status["dependencies"]["database"] = f"error: {str(e)}"
+
+    # 2. Check Redis
+    try:
+        if await _redis_svc.redis_client.ping():
+            health_status["dependencies"]["redis"] = "connected"
+        else:
+            health_status["status"] = "unhealthy"
+            health_status["dependencies"]["redis"] = "failed ping"
+    except Exception as e:
+        health_status["status"] = "unhealthy"
+        health_status["dependencies"]["redis"] = f"error: {str(e)}"
+
+    # 3. Check RabbitMQ (via Celery Broker connection)
+    try:
+        from app.celery_app import celery_app
+        # This checks if we can connect to the broker defined in celery_app
+        with celery_app.connection_for_read() as conn:
+            conn.ensure_connection(max_retries=1)
+        health_status["dependencies"]["rabbitmq"] = "connected"
+    except Exception as e:
+        # We don't mark the whole app unhealthy if only RabbitMQ is down, 
+        # as the web API can still serve requests, but background tasks will fail.
+        health_status["dependencies"]["rabbitmq"] = f"error: {str(e)}"
+
+    if health_status["status"] != "healthy":
+        return JSONResponse(content=health_status, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+    return health_status

@@ -139,7 +139,7 @@ async def test_invalid_token_returns_401(client):
     
     assert resp.status_code == 401
     error = resp.json()
-    assert "detail" in error
+    assert "details" in error
 
 
 async def test_comment_create_response(client, get_token):

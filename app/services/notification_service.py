@@ -1,4 +1,5 @@
 import json
+import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
@@ -29,6 +30,9 @@ _NOTIFICATION_TEXT = {
 _NOTIFICATION_CHANNEL = "notifications:messages"
 
 
+logger = logging.getLogger("app")
+
+
 async def create_notification(
     actor_id: int,
     owner_id: int,
@@ -37,6 +41,18 @@ async def create_notification(
     entity_id: int | None = None,
     entity_type: str | None = None,
 ) -> None:
+    logger.info(
+        "Creating notification",
+        extra={
+            "extra_info": {
+                "actor_id": actor_id,
+                "owner_id": owner_id,
+                "notif_type": notif_type.value,
+                "entity_id": entity_id,
+                "entity_type": entity_type,
+            }
+        },
+    )
     # Belt-and-suspenders self-notification guard.
     # The caller already checks this, but if this function is ever called from
     # anywhere else we never want a user to get their own notification.
@@ -86,9 +102,17 @@ async def create_notification(
                 _NOTIFICATION_CHANNEL,
                 json.dumps(payload),
             )
+            logger.info(
+                "Notification published to Redis",
+                extra={"extra_info": {"notification_id": notif.id, "owner_id": owner_id}},
+            )
         except Exception:
             # Redis is the cross-worker delivery path; fall back to the local
             # socket manager only if pub/sub is unavailable.
+            logger.warning(
+                "Redis publish failed for notification; falling back to socket manager",
+                extra={"extra_info": {"notification_id": notif.id, "owner_id": owner_id}},
+            )
             await manager.send_personal_message(payload, owner_id)
 
 # -- REST helper functions --
@@ -102,6 +126,10 @@ async def get_notifications(
     offset: int = 0,
 ) -> list[Notification]:
     """Return paginated notifications for a user, newest first."""
+    logger.debug(
+        "Fetching notifications",
+        extra={"extra_info": {"user_id": user_id, "limit": limit, "offset": offset}},
+    )
     result = await db.execute(
         select(Notification)
         .where(Notification.owner_id == user_id)
@@ -113,6 +141,7 @@ async def get_notifications(
 
 async def get_unread_count(db: AsyncSession, user_id: int) -> int:
     """Return the count of unread notifications - used for the badge number."""
+    logger.debug("Fetching unread notification count", extra={"extra_info": {"user_id": user_id}})
     result = await db.execute(
         select(func.count())
         .select_from(Notification)
@@ -122,6 +151,7 @@ async def get_unread_count(db: AsyncSession, user_id: int) -> int:
 
 async def mark_all_read(db: AsyncSession, user_id: int) -> None:
     """Bulk-mark every unread notification for a user as read."""
+    logger.info("Marking all notifications read", extra={"extra_info": {"user_id": user_id}})
     await db.execute(
         update(Notification)
         .where(Notification.owner_id == user_id, Notification.is_read == False)    # noqa: E712

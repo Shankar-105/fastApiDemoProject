@@ -17,15 +17,18 @@ A **fully async, non-blocking** social media backend built to handle **thousands
 ![Celery](https://img.shields.io/badge/Celery-37814A?style=for-the-badge&logo=celery&logoColor=white)
 ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)
 ![WebSockets](https://img.shields.io/badge/WebSockets-010101?style=for-the-badge&logo=socket.io&logoColor=white)
-## 🌟 Features — Everything Inside
-
-_This API packs **a lot**. For the full breakdown of every feature — async architecture, auth, chat, caching, media, DevOps, and more — see [`docs/FEATURES.md`](./docs/FEATURES.md)._ 
 
 ---
 
-## 🚦 Getting Started — Simplified with Docker!
+## 🌟 Features — Everything Inside
 
-_Want to run the API, test it, or make your own changes? Start with [`docs/SETUP.md`](./docs/SETUP.md) to clone the repository and set up the environment._
+_This API packs **a lot**. For the full breakdown of every feature — async architecture, chat, caching, DevOps, and more — see [`docs/FEATURES.md`](./docs/FEATURES.md)._ 
+
+---
+
+## 🚦 Setup On Your Local Machine — Simplified with Docker!
+
+_Want to run the API, test it, or make your own changes? Start with [`docs/SETUP.md`](./docs/SETUP.md) to clone the repository and set up the environment in your machine._
 
 ---
 
@@ -35,7 +38,7 @@ _Now that your setup is running, Check out [`docs/API_GUIDE.md`](./docs/API_GUID
 
 ---
 
-## ☁️ Azure Deployment — How the app is hosted
+## ☁️ Azure Deployment — How the app is hosted in the cloud
 
 _Want to know how this project runs in the cloud? Read [`docs/AZURE_DEPLOYMENT.md`](./docs/AZURE_DEPLOYMENT.md) for the Azure VM, PostgreSQL, Blob Storage, Redis, and CI/CD setup behind the live deployment._
 
@@ -66,9 +69,9 @@ _Backend developer? Frontend developer? Either, there's a clear path for you. Se
 ---
 
 ## 👨‍💻 Built by Bhavani Shankar Mukka 🎓
-**ANITS College, Vizag**
+**From [`ANITS Engineering College`](https://anits.org/)**
 
 **_Thanks for checking out the project, If you use this API , let me know—would love to hear you_**
 
-> Built with ❤️ using FastAPI, SQLAlchemy, PostgreSQL, Redis, WebSockets, Celery, and RabbitMQ
+### _Built with ❤️ using FastAPI, SQLAlchemy, PostgreSQL, Redis, WebSockets, Celery, and RabbitMQ_
 ---

@@ -35,6 +35,7 @@
 | [API Versioning](#-api-versioning) | Semantic versioning (v1, v2) to prevent breaking changes for clients |
 | [Testing](#-testing) | Pytest, isolated test DB, 50+ integration tests |
 | [Observability and Load Testing](#-observability-and-load-testing) | OpenTelemetry, Prometheus, Grafana, and k6 traffic simulation |
+| [Logging & Monitoring](#-logging--monitoring) | Structured JSON logging in production vs pretty console in local, persistent journald |
 ---
 
 ## ⚡ Async & Non-Blocking Architecture
@@ -487,5 +488,15 @@ The API follows a strict versioning policy to ensure stability and backward comp
 - **k6 load scripts** — smoke, load, and stress scenarios are included under `loadtests/` for repeatable performance validation.
 - **Route-aware checks** — k6 scripts validate endpoint reachability with expected status handling for protected and heavy routes.
 - **Performance bottleneck discovery** — setup is designed to reveal latency tail growth, timeout behavior, and transport-level failures (EOF/connect timeout) under pressure.
+
+---
+
+## 📝 Logging & Monitoring
+
+- **Dual-Mode Logging** — the app automatically switches its logging format based on the environment:
+- **Local Development** — uses `PrettyConsoleFormatter` with colors and human-readable timestamps for easy debugging in the terminal.
+- **Production (Azure)** — uses `StructuredJSONFormatter` which outputs logs in a machine-readable JSON format. This includes `trace_id`, `span_id`, `user_id`, and `request_id` context for distributed tracing.
+- **Systemd Journal Integration** — all `stdout` and `stderr` output from the FastAPI and Celery services are captured by `journald`.
+- **Persistent Journaling** — `journald` is configured in **persistent mode** on the Azure VM. Logs are stored in `/var/log/journal/`, meaning they survive VM reboots and maintenance cycles.
 
 ---

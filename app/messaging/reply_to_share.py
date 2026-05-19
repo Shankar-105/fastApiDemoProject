@@ -8,11 +8,16 @@ from app.services import redis_service
 from datetime import datetime
 from app.utils.time_formatting import format_timestamp
 import json
+import logging
+
+
+logger = logging.getLogger("app")
 async def reply_share(
     payload:schemas.ReplyToShareSchema,
     user_id:int,
     db: AsyncSession
 ):
+    logger.info("Creating reply-to-share message", extra={"extra_info": {"shared_post_id": payload.shared_post_id, "sender_id": user_id, "receiver_id": payload.to}})
     # Optional: Validate that shared_post exists and belongs to this chat
     result = await db.execute(
         select(models.SharedPost).where(models.SharedPost.id == payload.shared_post_id)
@@ -20,7 +25,7 @@ async def reply_share(
     shared_post = result.scalars().first()
 
     if not shared_post:
-        print("Invalid or inaccessible shared post")
+        logger.warning("Invalid or inaccessible shared post", extra={"extra_info": {"shared_post_id": payload.shared_post_id, "sender_id": user_id}})
         return
 
     # Create the reply message
@@ -79,9 +84,9 @@ async def reply_share(
     try:
         await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
         await redis_service.redis_client.publish("chat:messages", json.dumps(reply_payload))
-        print("Reply to share message published to Redis for cross-process delivery (receiver+sender)")
+        logger.info("Reply to share message published to Redis", extra={"extra_info": {"message_id": reply_msg.id, "sender_id": user_id, "receiver_id": payload.to}})
     except Exception as e:
-        print(f"Failed to publish to Redis: {e}")
+        logger.warning("Failed to publish reply-to-share message to Redis", extra={"extra_info": {"message_id": reply_msg.id, "sender_id": user_id, "receiver_id": payload.to, "error": str(e)}})
         # fallback local send
         try:
             if payload.to in manager.active_connections:

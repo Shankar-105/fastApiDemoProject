@@ -18,8 +18,12 @@
 
 import redis.asyncio as aioredis
 import json
+import logging
 from typing import Any, Optional
 from app.config import settings
+
+
+logger = logging.getLogger("app")
 
 #  1. CREATE THE ASYNC REDIS CLIENT 
 # This is similar to how db.py creates the SQLAlchemy engine.
@@ -141,11 +145,13 @@ async def check_redis_connection() -> bool:
     Returns True if connected, False otherwise.
     """
     if await ping_redis():
-        print("✅ Redis connection successful!")
+        logger.info("Redis connection successful")
         return True
     else:
-        print("❌ Redis connection FAILED — caching and rate-limiting will be disabled.")
-        print(f"   Tried connecting to {settings.redis_host}:{settings.redis_port}")
+        logger.error(
+            "Redis connection failed; caching and rate-limiting will be disabled",
+            extra={"extra_info": {"redis_host": settings.redis_host, "redis_port": settings.redis_port}},
+        )
         return False
 
 async def add_to_blacklist(token: str, ttl: int):

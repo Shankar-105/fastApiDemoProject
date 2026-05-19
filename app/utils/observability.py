@@ -1,6 +1,7 @@
 import logging
 import sys
 import time
+import uuid
 from app.config import settings
 from fastapi import FastAPI
 from opentelemetry import trace
@@ -11,33 +12,29 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from app.utils.logging import (
+    request_id_ctx,
+    user_id_ctx,
+    setup_production_logging,
+    setup_development_logging,
+    setup_benchmark_logging
+)
 
-def _configure_observability_logger() -> logging.Logger:
-    logger = logging.getLogger("observability")
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
+# Initialize logging based on environment
+if settings.benchmark_mode_enabled and not settings.production_mode:
+    setup_benchmark_logging()
+elif settings.production_mode:
+    setup_production_logging()
+else:
+    setup_development_logging()
 
-    if logger.handlers:
-        return logger
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.INFO)
-    handler.setFormatter(
-        logging.Formatter(
-            "\033[96m[OBS]\033[0m %(asctime)s | %(levelname)s | %(message)s",
-            datefmt="%H:%M:%S",
-        )
-    )
-    logger.addHandler(handler)
-    return logger
-
+logger = logging.getLogger("app")
 
 class LoggingASGIMiddleware:
     """Lightweight ASGI middleware that logs request timing and injects X-Trace-Id."""
 
     def __init__(self, app: FastAPI):
         self.app = app
-        self.logger = _configure_observability_logger()
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
@@ -51,6 +48,13 @@ class LoggingASGIMiddleware:
         start = time.perf_counter()
         status_code = None
         trace_id = "0" * 32
+        
+        # Generate or extract request ID
+        request_id = req.headers.get("X-Request-Id", str(uuid.uuid4()))
+        request_id_token = request_id_ctx.set(request_id)
+        
+        # User ID context will be set by a separate dependency/middleware after auth
+        user_id_token = user_id_ctx.set(None)
 
         async def send_wrapper(message):
             nonlocal status_code, trace_id
@@ -63,20 +67,29 @@ class LoggingASGIMiddleware:
                     format(span_ctx.trace_id, "032x") if span_ctx and span_ctx.trace_id else "0" * 32
                 )
                 headers.append("X-Trace-Id", trace_id)
+                headers.append("X-Request-Id", request_id)
             await send(message)
 
-        await self.app(scope, receive, send_wrapper)
-
-        duration_ms = (time.perf_counter() - start) * 1000
-        self.logger.info(
-            "method=%s path=%s status=%s duration_ms=%.2f trace_id=%s",
-            req.method,
-            req.url.path,
-            status_code or "-",
-            duration_ms,
-            trace_id,
-        )
-
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            duration_ms = (time.perf_counter() - start) * 1000
+            logger.info(
+                "Request processed",
+                extra={
+                    "extra_info": {
+                        "method": req.method,
+                        "path": req.url.path,
+                        "status": status_code or "-",
+                        "duration_ms": round(duration_ms, 2),
+                        "trace_id": trace_id,
+                        "request_id": request_id
+                    }
+                }
+            )
+            # Reset context variables
+            request_id_ctx.reset(request_id_token)
+            user_id_ctx.reset(user_id_token)
 
 def configure_observability(app: FastAPI, async_engine) -> None:
     trace.set_tracer_provider(

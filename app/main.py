@@ -66,6 +66,8 @@ async def lifespan(app: FastAPI):
     if _notification_listener_task:
         _notification_listener_task.cancel()
 
+from app.utils.exception_handlers import register_exception_handlers
+
 # -- App Instance --
 app = FastAPI(
     title="Social Media API",
@@ -78,13 +80,7 @@ if not config.settings.benchmark_mode_enabled:
     configure_observability(app, async_engine)
 
 # -- Exception Handlers --
-@app.exception_handler(IntegrityError)
-async def integrity_exception_handler(request: Request, exc: IntegrityError):
-    """Global handler for database integrity errors (unique constraints, etc.)"""
-    return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": "Database integrity error. This might be a duplicate record."},
-    )
+register_exception_handlers(app)
 
 # -- Static Files & Middleware --
 app.mount("/profilepics", StaticFiles(directory="profilepics"), name="profilepics")

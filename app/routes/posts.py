@@ -18,6 +18,8 @@ router=APIRouter(
     tags=['Posts']
 )
 
+from app.utils.exceptions import ResourceNotFoundException, ValidationException
+
 # gets a specific post with id -> {postId}
 @router.get("/{postId}", response_model=sch.PostDetailResponse)
 async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
@@ -34,9 +36,9 @@ async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:model
     )
     reqPost=result.scalars().first()
     if reqPost==None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with id {postId} not found")
+        raise ResourceNotFoundException(resource="Post", identifier=postId)
     
-    # This removes the write from the hot read path and significantly reduces latency.
+    # ... rest of the function ...
     await queue_post_view(postId, currentUser.id)
     
     # Check if liked
@@ -101,7 +103,7 @@ async def create_post(
     if media:
         # ensure the file type is in bounds
         if media.content_type not in ["image/jpeg", "image/png", "video/mp4"]:
-            raise HTTPException(400, "Only JPG, PNG, MP4 allowed")
+            raise ValidationException("Only JPG, PNG, MP4 allowed")
         # Generate unique filename
         # using uuid Universally unique ID which generates a 36 characters
         ext=media.filename.split(".")[-1]
@@ -159,7 +161,7 @@ async def delete_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:mo
     result=await db.execute(select(models.Post).where(and_(models.Post.id==postId,models.Post.user_id==currentUser.id)))
     postToDelete=result.scalars().first()
     if not postToDelete:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found")
+        raise ResourceNotFoundException(resource="Post", identifier=postId)
     # Fix bug: construct path before checking existence
     if postToDelete.media_path:
         await delete_blob("posts-media", postToDelete.media_path)
@@ -185,7 +187,7 @@ async def update_post(postId:int, post:sch.PostUpdateRequest, db:AsyncSession=De
     )
     postToUpdate=result.scalars().first()
     if not postToUpdate:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {postId} not Found")
+        raise ResourceNotFoundException(resource="Post", identifier=postId)
     # from our argument of post we exclude the None values
     # and just pick up the set values and store into a dict update_data
     update_data = post.dict(exclude_unset=True)

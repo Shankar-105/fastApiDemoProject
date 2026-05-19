@@ -123,35 +123,36 @@ async def verifyAccesstoken(token:str,credentials_exception,dbs:AsyncSession):
         raise credentials_exception
     return user
 
+from app.utils.logging import user_id_ctx
+from app.utils.exceptions import AuthenticationException
+
 # Get current user (for protected routes)
 # in the parentheses the Depends(oauth2_scheme) returns the
 # JWT Token which is stored in the token variable below
 # and sent to the verifyAccesstoken() mtd
 async def getCurrentUser(token: str = Depends(oauth2_scheme), dbs: AsyncSession = Depends(db.getDb)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
     # Single Redis roundtrip: check blacklist + token-scoped user cache.
     blacklisted, cached = await redis_service.get_auth_cache_and_blacklist(token)
     if blacklisted:
-        raise credentials_exception
+        raise AuthenticationException()
 
     # Cache hit: token was not blacklisted and user snapshot is available.
     # TTL on auth:user:{token} is bounded by token expiry, so we can skip DB lookup.
     if cached is not None:
-        return _build_user_from_cache(cached)
+        user = _build_user_from_cache(cached)
+        user_id_ctx.set(user.id)
+        return user
 
     # Cache miss: validate JWT claims/signature and then query DB once.
     cache_key = f"auth:user:{token}"
-    payload = await _validate_access_token(token, credentials_exception)
+    payload = await _validate_access_token(token, AuthenticationException())
 
     # Not cached - get user from DB, then cache it for the remaining token lifetime.
     result = await dbs.execute(select(models.User).where(models.User.id == payload.get("userId")))
     user = result.scalars().first()
     if user is None:
-        raise credentials_exception
+        raise AuthenticationException()
 
+    user_id_ctx.set(user.id)
     await redis_service.set_cache(cache_key, _build_user_cache_payload(user), ttl=_get_access_token_ttl_seconds(payload))
     return user

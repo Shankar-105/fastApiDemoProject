@@ -66,9 +66,9 @@ _Backend developer? Frontend developer? Either, there's a clear path for you. Se
 ---
 
 ## 👨‍💻 Built by Bhavani Shankar Mukka 🎓
-**ANITS College, Vizag**
+**From [`ANITS Engineering College`](https://anits.org/)**
 
 **_Thanks for checking out the project, If you use this API , let me know—would love to hear you_**
 
-> Built with ❤️ using FastAPI, SQLAlchemy, PostgreSQL, Redis, WebSockets, Celery, and RabbitMQ
+### _Built with ❤️ using FastAPI, SQLAlchemy, PostgreSQL, Redis, WebSockets, Celery, and RabbitMQ_
 ---

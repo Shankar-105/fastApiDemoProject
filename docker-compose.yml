@@ -87,13 +87,22 @@ services: # all the current services
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-remote-write-receiver"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
-    depends_on:
-      - api
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:latest
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo UI
     restart: unless-stopped
 
   grafana:
@@ -111,26 +120,33 @@ services: # all the current services
     depends_on:
       - prometheus
       - loki
+      - tempo
     restart: unless-stopped
 
   loki:
     image: grafana/loki:latest
     ports:
       - "3100:3100"
-    command: -config.file=/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/loki.yaml
     volumes:
-      - ./loki/loki-config.yml:/etc/loki/local-config.yaml
+      - ./loki/loki.yml:/etc/loki/loki.yaml
     restart: unless-stopped
 
   alloy:
     image: grafana/alloy:latest
     ports:
-      - "12345:12345"
+      - "12345:12345" # UI
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
     command: run --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+    depends_on:
+      - loki
+      - prometheus
+      - tempo
     restart: unless-stopped
 
   flower:
@@ -150,3 +166,4 @@ volumes:
   postgres_data:
   prometheus_data:
   grafana_data:
+  tempo_data:

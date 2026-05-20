@@ -1,10 +1,12 @@
 import logging
+import os
 import sys
 import time
 import uuid
 from app.config import settings
 from fastapi import FastAPI
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -92,9 +94,19 @@ class LoggingASGIMiddleware:
             user_id_ctx.reset(user_id_token)
 
 def configure_observability(app: FastAPI, async_engine) -> None:
-    trace.set_tracer_provider(
-        TracerProvider(resource=Resource.create({SERVICE_NAME: "social-media-api"}))
+    resource = Resource.create({SERVICE_NAME: "social-media-api"})
+    trace.set_tracer_provider(TracerProvider(resource=resource))
+    
+    # NEW: Export traces to Alloy's OTLP receiver
+    # In Docker local, 'alloy' is the hostname. On VM, it might be 'localhost'.
+    alloy_endpoint = "alloy:4317" if os.getenv("DOCKER_MODE") else "localhost:4317"
+    
+    otlp_exporter = OTLPSpanExporter(
+        endpoint=f"http://{alloy_endpoint}",
+        insecure=True
     )
+    trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(otlp_exporter))
+
     if settings.otel_console_exporter_enabled:
        trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
 

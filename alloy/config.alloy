@@ -1,16 +1,18 @@
-// discovery.docker "linux" discovers all containers running on the host.
+// --- LOGS PIPELINE (Loki) ---
+
+// Discover Docker containers
 discovery.docker "linux" {
   host = "unix:///var/run/docker.sock"
 }
 
-// loki.source.docker.targets scrapes logs from the containers discovered by discovery.docker.linux.
+// Scrape logs from discovered containers
 loki.source.docker "local_logs" {
   host       = "unix:///var/run/docker.sock"
   targets    = discovery.docker.linux.targets
   forward_to = [loki.process.structured_logs.receiver]
 }
 
-// loki.process.structured_logs parses the JSON logs and extracts fields as labels.
+// Process and Parse JSON fields
 loki.process "structured_logs" {
   forward_to = [loki.write.local_loki.receiver]
 
@@ -25,7 +27,7 @@ loki.process "structured_logs" {
     }
   }
 
-  // Attach extracted fields as searchable labels in Loki.
+  // Attach extracted fields as searchable labels
   stage.labels {
     values = {
       level    = null,
@@ -37,25 +39,70 @@ loki.process "structured_logs" {
   }
 }
 
-// loki.write.local_loki sends the processed logs to the Loki instance.
+// Ship to Loki
 loki.write "local_loki" {
   endpoint {
     url = "http://loki:3100/loki/api/v1/push"
   }
 }
 
-// --- Metrics Scraping (Integration with existing Prometheus) ---
-// This part allows Alloy to also scrape metrics if needed in the future, 
-// replacing the need for separate prometheus scraper jobs.
-prometheus.scrape "app_metrics" {
+// --- METRICS PIPELINE (Prometheus) ---
+
+// Scrape metrics from FastAPI
+prometheus.scrape "fastapi" {
   targets = [
     {"__address__" = "api:8000"},
   ]
-  forward_to = [prometheus.remote_write.local_prom.receiver]
+  metrics_path = "/metrics"
+  forward_to   = [prometheus.remote_write.local_prometheus.receiver]
 }
 
-prometheus.remote_write "local_prom" {
+// Scrape metrics from Alloy itself
+prometheus.scrape "alloy" {
+  targets = [
+    {"__address__" = "localhost:12345"},
+  ]
+  forward_to = [prometheus.remote_write.local_prometheus.receiver]
+}
+
+// Ship to Prometheus via Remote Write
+prometheus.remote_write "local_prometheus" {
   endpoint {
     url = "http://prometheus:9090/api/v1/write"
+  }
+}
+
+// --- TRACES PIPELINE (Tempo) ---
+
+// Receive OTLP traces from Python app.
+// We enable both gRPC (4317) and HTTP (4318) for maximum compatibility.
+// Our FastAPI app specifically uses gRPC on 4317.
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    traces  = [otelcol.processor.batch.default.input]
+  }
+}
+
+// Batch traces for efficiency
+otelcol.processor.batch "default" {
+  output {
+    traces  = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+// Ship to Tempo
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls {
+      insecure = true
+    }
   }
 }

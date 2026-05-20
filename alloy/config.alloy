@@ -1,0 +1,61 @@
+// discovery.docker "linux" discovers all containers running on the host.
+discovery.docker "linux" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// loki.source.docker.targets scrapes logs from the containers discovered by discovery.docker.linux.
+loki.source.docker "local_logs" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.linux.targets
+  forward_to = [loki.process.structured_logs.receiver]
+}
+
+// loki.process.structured_logs parses the JSON logs and extracts fields as labels.
+loki.process "structured_logs" {
+  forward_to = [loki.write.local_loki.receiver]
+
+  stage.json {
+    expressions = {
+      level      = "level",
+      msg        = "message",
+      req_id     = "request_id",
+      user_id    = "user_id",
+      trace_id   = "trace_id",
+      err_code   = "error_code",
+    }
+  }
+
+  // Attach extracted fields as searchable labels in Loki.
+  stage.labels {
+    values = {
+      level    = null,
+      req_id   = null,
+      user_id  = null,
+      trace_id = null,
+      err_code = null,
+    }
+  }
+}
+
+// loki.write.local_loki sends the processed logs to the Loki instance.
+loki.write "local_loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// --- Metrics Scraping (Integration with existing Prometheus) ---
+// This part allows Alloy to also scrape metrics if needed in the future, 
+// replacing the need for separate prometheus scraper jobs.
+prometheus.scrape "app_metrics" {
+  targets = [
+    {"__address__" = "api:8000"},
+  ]
+  forward_to = [prometheus.remote_write.local_prom.receiver]
+}
+
+prometheus.remote_write "local_prom" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}

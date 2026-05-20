@@ -122,13 +122,15 @@ services: # all the current services
       - ./loki/loki-config.yml:/etc/loki/local-config.yaml
     restart: unless-stopped
 
-  promtail:
-    image: grafana/promtail:latest
+  alloy:
+    image: grafana/alloy:latest
+    ports:
+      - "12345:12345"
     volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - ./promtail/promtail-config.yml:/etc/promtail/config.yml
       - /var/run/docker.sock:/var/run/docker.sock
-    command: -config.file=/etc/promtail/config.yml
+    command: run --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
     restart: unless-stopped
 
   flower:

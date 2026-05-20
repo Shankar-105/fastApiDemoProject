@@ -61,9 +61,8 @@ When `BENCHMARK_MODE_ENABLED=false`, the startup path is:
 2. So `docker_entrypoint.sh` selects `startup_dev.sh`.
 3. `startup_dev.sh` runs `alembic upgrade head` first.
 4. It then starts single `uvicorn` process with hot reload.
-5. `app/main.py` sees benchmark mode is disabled and triggers `configure_observability(...)`.
-6. So FastAPI tracing, SQLAlchemy instrumentation, Prometheus instrumentation, and the request-timing middleware are added and logs will be printed to console.
-7. `OTEL_CONSOLE_EXPORTER_ENABLED` — keep this also `false` unless you already know how OpenTelemetry console spans work and how to interpret them or to track each request response end to end.
+5. `app/main.py` sees benchmark mode is disabled, So it sets the logging level to debug, which means everything is logged to conolse as this is dev mode!
+6. `OTEL_CONSOLE_EXPORTER_ENABLED` — keep this `false` unless you already know how OpenTelemetry console spans work and how to interpret them or to track each request response end to end.
 
 - If you want to know what happens when this is `true` and how it relates to raw app performance testing, see [`docs/MONITORING_AND_LOAD_TESTING.md`](./MONITORING_AND_LOAD_TESTING.md).
 ---
@@ -82,8 +81,11 @@ This project uses **Docker Compose** for an easy multi-service setup with **dock
 5. **Celery Worker**  — Background job processor
 6. **Celery Beat**  — Scheduler for periodic jobs
 7. **Flower**  — Celery task monitor (optional, for debugging async tasks)
-8. **Prometheus**  — Metrics collection in its Time Series DB
-9. **Grafana**  — Visualization and dashboards for collected metrics
+8. **Prometheus**  — Metrics storage and alerting
+9. **Loki** — Centralized log storage and searching
+10. **Tempo** — Distributed tracing backend
+11. **Grafana Alloy** — The central collector that orchestrates all logs, metrics, and traces
+12. **Grafana**  — Visualization and dashboards for the entire LGTM stack
 
 #### Service Login Details
 
@@ -94,7 +96,26 @@ These are the credentials that matter when you open the local dashboards. Use th
 | **Grafana** | `http://localhost:3000` | **username:** `admin`<br>**password:** `admin` |
 | **RabbitMQ Management** | `http://localhost:15672` | **username:** `guest`<br>**password:** `guest` |
 
-Prometheus does not require a login for the local setup, and Flower is typically opened directly without a separate login in this compose stack.
+Prometheus,Loki,Tempo, Grafana Alloy does not require a login for the local setup, and Flower is typically opened directly without a separate login in this compose stack.
+
+<details>
+
+<summary><b>ℹ️ About the LGTM Observability Stack</b></summary>
+
+The LGTM stack (Loki, Grafana, Tempo, Prometheus) is primarily used for production-grade observability. For standard local development, you won't need to use these monitoring tools heavily: the application is already configured with debug-level logging in development mode, which surfaces all relevant logs directly to your console.
+
+If you ever need to deep-dive into historical logs, or track requests end-to-end via distributed traces, you can leverage the local Grafana dashboard to explore this data:
+
+- Use **Loki** in Grafana to search and filter through full historical logs, Open Grafana and then navigate to :
+
+_**Dashboards → Observability folder → Social API Logs (Loki)**_ 
+
+- Use **Tempo** to visualize complete request traces and debug each request.
+For accessing that dashboard, Open Grafana and then navigate to :
+
+_**Dashboards → Observability folder → Social API Traces (Tempo)**_ 
+
+</details>
 
 #### Prerequisites to use Docker
 - Ensure Docker Desktop is installed and running.
@@ -148,7 +169,7 @@ docker compose build
 ```bash:disable-run
 docker compose up -d
 ```
-- What happens: Compose starts all the services. Alembic migrations run automatically on startup so the postgres tables are upto date.
+- What happens: Compose starts all the services, including the **LGTM observability stack**. Alembic migrations run automatically on startup so the postgres tables are up to date.
 
 3. **Verify** ✅
 Lists all running services:

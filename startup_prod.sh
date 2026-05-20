@@ -2,7 +2,7 @@
 # Production/default startup script — balanced for real-world traffic
 set -e
 
-# Activate virtual environment if available
+# Activate virtual environment
 if [ -f "/app/venv/bin/activate" ]; then
   source /app/venv/bin/activate
 elif [ -f "./venv/bin/activate" ]; then

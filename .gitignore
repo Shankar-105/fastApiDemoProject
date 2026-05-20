@@ -55,20 +55,7 @@ seed.py
 # avoid my personal guides and frontend
 my-mini-frontend/
 social_media_app-main/
-docs/FastAPI_to_Express_Guide.md
-docs/ASYNC_MIGRATION.md
-docs/DATABASE_CONNECTIONS.md
-docs/EXTRA_FEATURES.md
-docs/SSH_GUIDE.md
-docs/AZURE_INTEGRATION.md
-docs/MONITORING_LOAD_TESTING_GUIDE.md
-docs/CONCURRENCY_HARDENING.md
-docs/CONCURRENCY_SERVICE_EXPLANATION.md
-docs/ENDPOINT_CONCURRENCY_AUDIT.md
-docs/CELERY_RABBITMQ_GUIDE.md
-docs/DB_DESIGN.md
-docs/BEST_PRACTICES.md
-docs/LINUX_SYSTEMD_GUIDE.md
+guides/
 # avoid ui-ux-promax agent
 .agent
 

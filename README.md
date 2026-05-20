@@ -1,7 +1,7 @@
 # 🚀 Social Media Api
 **Modern Social Media Backend + Real-time Chat – Scalable, Fast, and Beginner-Friendly**
 
-A **fully async, non-blocking** social media backend built to handle **thousands of concurrent connections** without breaking a sweat. The stack is designed around **_FastAPI, async SQLAlchemy, PostgreSQL, Redis, WebSockets, RabbitMQ, Celery, Prometheus, Grafana, k6, and pytest_** so every layer has a clear job: API requests stay fast, database access stays async, background work stays off the request path, and observability stays visible. Production-grade, real-time, and built for scale.
+A **fully async, non-blocking** social media backend built to handle **thousands of concurrent connections** without breaking a sweat. The stack is designed around **_FastAPI, async SQLAlchemy, PostgreSQL, Redis, WebSockets, RabbitMQ, Celery, LGTM Stack for observability k6, and pytest_** so every layer has a clear job: API requests stay fast, database access stays async, background work stays off the request path, and observability stays visible. Production-grade, real-time, and built for scale.
 
 ---
 
@@ -16,7 +16,7 @@ A **fully async, non-blocking** social media backend built to handle **thousands
 ![k6](https://img.shields.io/badge/k6-7D64FF?style=for-the-badge&logo=k6&logoColor=white)
 ![Celery](https://img.shields.io/badge/Celery-37814A?style=for-the-badge&logo=celery&logoColor=white)
 ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)
-![WebSockets](https://img.shields.io/badge/WebSockets-010101?style=for-the-badge&logo=socket.io&logoColor=white)
+
 
 ---
 

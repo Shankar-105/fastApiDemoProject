@@ -211,7 +211,7 @@ async def health_check():
         }
     }
     
-    # 1. Check Database
+    # 1. Check Database Connection
     try:
         async with async_engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -220,7 +220,7 @@ async def health_check():
         health_status["status"] = "unhealthy"
         health_status["dependencies"]["database"] = f"error: {str(e)}"
 
-    # 2. Check Redis
+    # 2. Check Redis Connection
     try:
         if await _redis_svc.redis_client.ping():
             health_status["dependencies"]["redis"] = "connected"

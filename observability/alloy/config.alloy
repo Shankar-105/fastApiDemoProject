@@ -1,0 +1,108 @@
+// --- LOGS PIPELINE (Loki) ---
+
+// Discover Docker containers
+discovery.docker "linux" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Scrape logs from discovered containers
+loki.source.docker "local_logs" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.linux.targets
+  forward_to = [loki.process.structured_logs.receiver]
+}
+
+// Process and Parse JSON fields
+loki.process "structured_logs" {
+  forward_to = [loki.write.local_loki.receiver]
+
+  stage.json {
+    expressions = {
+      level      = "level",
+      msg        = "message",
+      req_id     = "request_id",
+      user_id    = "user_id",
+      trace_id   = "trace_id",
+      err_code   = "error_code",
+    }
+  }
+
+  // Attach extracted fields as searchable labels
+  stage.labels {
+    values = {
+      level    = null,
+      req_id   = null,
+      user_id  = null,
+      trace_id = null,
+      err_code = null,
+    }
+  }
+}
+
+// Ship to Loki
+loki.write "local_loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// --- METRICS PIPELINE (Prometheus) ---
+
+// Scrape metrics from FastAPI
+prometheus.scrape "fastapi" {
+  targets = [
+    {"__address__" = "api:8000"},
+  ]
+  metrics_path = "/metrics"
+  forward_to   = [prometheus.remote_write.local_prometheus.receiver]
+}
+
+// Scrape metrics from Alloy itself
+prometheus.scrape "alloy" {
+  targets = [
+    {"__address__" = "localhost:12345"},
+  ]
+  forward_to = [prometheus.remote_write.local_prometheus.receiver]
+}
+
+// Ship to Prometheus via Remote Write
+prometheus.remote_write "local_prometheus" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}
+
+// --- TRACES PIPELINE (Tempo) ---
+
+// Receive OTLP traces from Python app.
+// We enable both gRPC (4317) and HTTP (4318) for maximum compatibility.
+// Our FastAPI app specifically uses gRPC on 4317.
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    traces  = [otelcol.processor.batch.default.input]
+  }
+}
+
+// Batch traces for efficiency
+otelcol.processor.batch "default" {
+  output {
+    traces  = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+// Ship to Tempo
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls {
+      insecure = true
+    }
+  }
+}

@@ -32,9 +32,9 @@
 | [Database & Migrations](#-database--migrations) | PostgreSQL, SQLAlchemy 2.0, Alembic, async sessions |
 | [DevOps & Docker](#-devops--docker) | Docker Compose, multi-service stack, volumes, auto-restart |
 | [API Documentation](#-api-documentation) | Swagger UI, ReDoc, Pydantic schemas |
-| [API Versioning](#-api-versioning) | Semantic versioning (v1, v2) to prevent breaking changes for clients |
-| [Testing](#-testing) | Pytest, isolated test DB, 50+ integration tests |
-| [Observability and Load Testing](#-observability-and-load-testing) | OpenTelemetry, Prometheus, Grafana, and k6 traffic simulation |
+| [API Versioning](#-api-versioning) | Semantic versioning (v1, v2) for better api design |
+| [Testing](#-testing) | Pytest, isolated test DB, 80+ tests |
+| [Observability (LGTM Stack)](#-observability-lgtm-stack) | Full modern observability with Loki, Grafana, Tempo, and Alloy |
 | [Logging & Monitoring](#-logging--monitoring) | Structured JSON logging in production vs pretty console in local, persistent journald |
 ---
 
@@ -480,14 +480,21 @@ The API follows a strict versioning policy to ensure stability and backward comp
 
 ---
 
-## 📈 Observability and Load Testing
+## 📊 Observability (LGTM Stack)
 
-- **OpenTelemetry tracing** — FastAPI and SQLAlchemy request spans are instrumented to expose request flow and DB timing.
-- **Prometheus metrics** — `/metrics` endpoint is exposed for scrape-based monitoring.
-- **Grafana dashboards** — project includes provisioned dashboard and datasource setup for quick startup.
-- **k6 load scripts** — smoke, load, and stress scenarios are included under `loadtests/` for repeatable performance validation.
-- **Route-aware checks** — k6 scripts validate endpoint reachability with expected status handling for protected and heavy routes.
-- **Performance bottleneck discovery** — setup is designed to reveal latency tail growth, timeout behavior, and transport-level failures (EOF/connect timeout) under pressure.
+The app is equipped with the **LGTM Stack** (Loki, Grafana, Tempo, Mimir/Prometheus) for complete visibility into every request trace, log, and metric.
+
+- **Centralized Orchestration with Grafana Alloy** — a single, high-performance agent that collects logs, metrics, and traces from the entire stack and routes them to the correct backend.
+- **Distributed Tracing (Tempo)** — every request across FastAPI, the database, and Celery workers is traced via OpenTelemetry. You can follow the exact path of a request to see where bottlenecks or errors occur.
+- **Structured Log Aggregation (Loki)** — app logs are captured as JSON, parsed by Alloy, and stored in Loki. This allows for lightning-fast searching by `user_id`, `request_id`, or `trace_id`.
+- **Metrics Collection (Prometheus)** — real-time performance metrics (RPS, latency, error rates, system resources) are scraped and stored in Prometheus for long-term trend analysis.
+- **Unified Dashboards (Grafana)** — custom, professional dashboards for each layer of the stack:
+  - **Metrics Dashboard** — RPS, P95 latency, and error rate trends.
+  - **Logs Dashboard** — live log streaming with error/warning rate visualization.
+  - **Traces Dashboard** — deep-dive explorer for distributed tracing.
+- **k6 Load Testing** — included traffic simulation scripts (`loadtests/`) for smoke, load, and stress testing, fully integrated with the observability stack to reveal performance tail growth under pressure.
+
+> **This matters Because:** When a production issue occurs, you don't need to guess any more, You find the error in Loki, jump to the trace in Tempo to see the DB query or the app level code that failed, and check Prometheus to see how it has impacted the system performance — all in one place.
 
 ---
 

@@ -52,11 +52,10 @@ When `BENCHMARK_MODE_ENABLED=true`, the startup path changes:
 2. `docker_entrypoint.sh` selects `startup_benchmark.sh`.
 3. `startup_benchmark.sh` runs `alembic upgrade head` first.
 4. It then starts `gunicorn` with the tuned worker class.
-5. `app/main.py` sees benchmark mode is enabled and skips `configure_observability(...)`.
-6. FastAPI tracing, SQLAlchemy instrumentation, Prometheus instrumentation, and the request-timing middleware are not added.
-7. `startup_benchmark.sh` also sends access logs to `/dev/null`, so only error output remains.
+5. `app/main.py` sees benchmark mode is enabled and sets the logging level only to errors and critical so that debug, info, warning level logs are ignored while benchmarking!
+6. `startup_benchmark.sh` also sends access logs to `/dev/null`, so only error output remains.
 
-**Bottom line:** When benchmark mode is `true`, observability overhead is stripped to measure raw application throughput accurately with k6.
+**Bottom line:** When benchmark mode is `true`, logging overhead is stripped down to measure raw application throughput accurately with k6.
 
 #### What Worker Count Means
 

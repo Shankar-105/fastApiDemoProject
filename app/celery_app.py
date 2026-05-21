@@ -1,8 +1,11 @@
 from celery import Celery
 from celery.schedules import crontab, schedule
 from kombu import Exchange, Queue
-
 from app.config import settings
+from app.utils.logging import setup_logging
+
+# Initialize logging for Celery
+setup_logging()
 
 
 celery_app = Celery(

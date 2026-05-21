@@ -7,15 +7,17 @@ services: # all the current services
       - db  # Starts DB first
       - redis  # Starts Redis first
       - rabbitmq  # Celery broker for background jobs
+      - alloy  # OTLP exporter for tracing
     volumes:
       - .:/code
     environment:
-      - DATABASE_HOST=db  # here inside the containers the api and the db communincation is via this 'db'
+      - DATABASE_HOST=db  # here inside the containers the communication is via the container names
       - REDIS_HOST=redis  # inside Docker, services talk to each other by service name
       - REDIS_PORT=6379
       - REDIS_DB=0
       - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - PRODUCTION_MODE=${PRODUCTION_MODE:-false}
     restart: unless-stopped  # Auto-restart if it crashes
 
   db:
@@ -84,6 +86,7 @@ services: # all the current services
 
   prometheus:
     image: prom/prometheus:latest
+    container_name: prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -96,8 +99,9 @@ services: # all the current services
     restart: unless-stopped
 
   tempo:
-    image: grafana/tempo:latest
-    command: [ "-config.file=/etc/tempo.yaml" ]
+    image: grafana/tempo:2.4.1
+    container_name: tempo
+    command: [ "-target=all", "-config.file=/etc/tempo.yaml" ]
     volumes:
       - ./observability/tempo/tempo.yaml:/etc/tempo.yaml:ro
       - tempo_data:/var/tempo
@@ -107,6 +111,7 @@ services: # all the current services
 
   grafana:
     image: grafana/grafana:latest
+    container_name: grafana
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
@@ -125,6 +130,7 @@ services: # all the current services
 
   loki:
     image: grafana/loki:latest
+    container_name: loki
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/loki.yaml
@@ -134,10 +140,13 @@ services: # all the current services
 
   alloy:
     image: grafana/alloy:latest
+    container_name: alloy
     ports:
       - "12345:12345" # UI
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
+    environment:
+      - PRODUCTION_MODE=${PRODUCTION_MODE:-false}
     volumes:
       - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro

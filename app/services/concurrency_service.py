@@ -2,7 +2,7 @@ import asyncio
 import random
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
-import logging
+import structlog
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import models
 
 
-logger = logging.getLogger("app")
+logger = structlog.get_logger(__name__)
 
 T = TypeVar("T")
 

@@ -58,7 +58,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{container=\"api\"} | json",
+          "expr": "{container=\"api\"}",
           "queryType": "range",
           "refId": "A"
         }
@@ -80,7 +80,7 @@
       "id": 2,
       "targets": [
         {
-          "expr": "count_over_time({container=\"api\"} | json | level=\"ERROR\" [$__interval])",
+          "expr": "count_over_time({container=\"api\", level=\"ERROR\"}[$__interval])",
           "legendFormat": "Errors",
           "refId": "A"
         }
@@ -102,7 +102,7 @@
       "id": 3,
       "targets": [
         {
-          "expr": "count_over_time({container=\"api\"} | json | level=\"WARNING\" [$__interval])",
+          "expr": "count_over_time({container=\"api\", level=\"WARNING\"}[$__interval])",
           "legendFormat": "Warnings",
           "refId": "A"
         }

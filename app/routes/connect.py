@@ -10,25 +10,25 @@ from app.services.redis_service import delete_cache, delete_cache_pattern
 from app.models import NotificationType
 from app.services.rate_limit_service import follow_limiter
 from app.tasks.notification_tasks import create_notification_task
-import logging
+import structlog
 
 router=APIRouter(
     prefix="/users",
     tags=['Connections']
 )
 
-logger = logging.getLogger("app")
+logger = structlog.get_logger(__name__)
 
 @router.post("/{user_id}/follow", status_code=status.HTTP_201_CREATED, response_model=sch.FollowResponse)
 async def follow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser), background_tasks=None, _:None=Depends(follow_limiter)):
-    logger.info(f"User {currentUser.id} attempting to follow user {user_id}")
+    logger.info("follow_user_attempt", user_id=currentUser.id, target_id=user_id)
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     userToFollow=result.scalars().first()
     if not userToFollow:
-        logger.warning(f"Follow failed - user {user_id} does not exist")
+        logger.warning("follow_user_failed_not_found", target_id=user_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="User doesnt exist")
     if userToFollow.id == currentUser.id:
-        logger.warning(f"Follow failed - user {currentUser.id} attempted to follow themselves")
+        logger.warning("follow_user_failed_self", user_id=currentUser.id)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Cannot follow yourself")
     try:
         insert_result = await db.execute(
@@ -38,7 +38,7 @@ async def follow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser:m
             .returning(models.connections.c.followed_id)
         )
         if not insert_result.first():
-            logger.warning(f"Follow failed - user {currentUser.id} already following user {user_id}")
+            logger.warning("follow_user_failed_already_following", user_id=currentUser.id, target_id=user_id)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Your already following this user")
 
         await db.commit()
@@ -47,7 +47,7 @@ async def follow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser:m
         raise
     except Exception:
         await db.rollback()
-        logger.error(f"Follow failed - unexpected error for user {currentUser.id} following user {user_id}")
+        logger.error("follow_user_failed_unexpected", user_id=currentUser.id, target_id=user_id)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to follow user")
     await delete_cache(f"user_profile:{currentUser.id}")
     await delete_cache(f"user_profile:{userToFollow.id}")
@@ -62,16 +62,16 @@ async def follow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser:m
         entity_id=None,
         entity_type=None,
     )
-    logger.info(f"User {currentUser.id} successfully followed user {user_id}")
+    logger.info("follow_user_success", user_id=currentUser.id, target_id=user_id)
     return sch.FollowResponse(message=f"Followed user {userToFollow.username}", following_count=currentUser.following_cnt)
     
 @router.delete("/{user_id}/unfollow", status_code=status.HTTP_200_OK, response_model=sch.FollowResponse)
 async def unfollow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    logger.info(f"User {currentUser.id} attempting to unfollow user {user_id}")
+    logger.info("unfollow_user_attempt", user_id=currentUser.id, target_id=user_id)
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     userToUnFollow=result.scalars().first()
     if not userToUnFollow:
-        logger.warning(f"Unfollow failed - user {user_id} does not exist")
+        logger.warning("unfollow_user_failed_not_found", target_id=user_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="User doesnt exist")
     try:
         delete_result = await db.execute(
@@ -81,37 +81,38 @@ async def unfollow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser
             )
             .returning(models.connections.c.followed_id)
         )
-        if not delete_result.first():
-            logger.warning(f"Unfollow failed - user {currentUser.id} not following user {user_id}")
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Not following this user")
-
+        if delete_result.rowcount == 0:
+            logger.warning("unfollow_user_failed_not_following", user_id=currentUser.id, target_id=user_id)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="You are not following this user")
+        
         await db.commit()
     except HTTPException:
         await db.rollback()
         raise
     except Exception:
         await db.rollback()
-        logger.error(f"Unfollow failed - unexpected error for user {currentUser.id} unfollowing user {user_id}")
+        logger.error("unfollow_user_failed_unexpected", user_id=currentUser.id, target_id=user_id)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to unfollow user")
+    
     await delete_cache(f"user_profile:{currentUser.id}")
-    await delete_cache(f"user_profile:{userToUnFollow.id}")
-    await delete_cache(f"followers:{userToUnFollow.id}")
+    await delete_cache(f"user_profile:{user_id}")
+    await delete_cache(f"followers:{user_id}")
     await delete_cache(f"following:{currentUser.id}")
-    await delete_cache_pattern(f"feed:home:{currentUser.id}:*")
-    logger.info(f"User {currentUser.id} successfully unfollowed user {user_id}")
+    await increment_cache_version("feed:home")
+    logger.info("unfollow_user_success", user_id=currentUser.id, target_id=user_id)
     return sch.FollowResponse(message=f"Unfollowed user {userToUnFollow.username}", following_count=currentUser.following_cnt)
 
 @router.delete("/{user_id}/followers/{follower_id}", status_code=status.HTTP_200_OK, response_model=sch.FollowResponse)
 async def remove_follower_endpoint(user_id:int, follower_id:int, db: AsyncSession = Depends(getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
-    logger.info(f"User {currentUser.id} attempting to remove follower {follower_id}")
+    logger.info("remove_follower_attempt", user_id=currentUser.id, follower_id=follower_id)
     if user_id != currentUser.id:
-        logger.warning(f"Remove follower failed - user {currentUser.id} attempted to remove follower for user {user_id}")
+        logger.warning("remove_follower_failed_unauthorized", user_id=currentUser.id, target_user_id=user_id)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Can only remove followers from your own account")
     
     result=await db.execute(select(models.User).where(models.User.id == follower_id))
     userToRemove=result.scalars().first()
     if not userToRemove:
-        logger.warning(f"Remove follower failed - user {follower_id} does not exist")
+        logger.warning("remove_follower_failed_not_found", follower_id=follower_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User doesn't exist")
     
     try:
@@ -123,7 +124,7 @@ async def remove_follower_endpoint(user_id:int, follower_id:int, db: AsyncSessio
             .returning(models.connections.c.follower_id)
         )
         if not delete_result.first():
-            logger.warning(f"Remove follower failed - user {follower_id} is not following user {currentUser.id}")
+            logger.warning("remove_follower_failed_not_following", user_id=currentUser.id, follower_id=follower_id)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This user is not following you")
 
         await db.commit()
@@ -132,22 +133,22 @@ async def remove_follower_endpoint(user_id:int, follower_id:int, db: AsyncSessio
         raise
     except Exception:
         await db.rollback()
-        logger.error(f"Remove follower failed - unexpected error for user {currentUser.id} removing follower {follower_id}")
+        logger.error("remove_follower_failed_unexpected", user_id=currentUser.id, follower_id=follower_id)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to remove follower")
     await delete_cache(f"user_profile:{currentUser.id}")
     await delete_cache(f"user_profile:{userToRemove.id}")
     await delete_cache(f"followers:{currentUser.id}")
     await delete_cache(f"following:{userToRemove.id}")
-    logger.info(f"User {currentUser.id} successfully removed follower {follower_id}")
+    logger.info("remove_follower_success", user_id=currentUser.id, follower_id=follower_id)
     return sch.FollowResponse(message=f"Removed follower {userToRemove.username}", following_count=currentUser.following_cnt)
 
 @router.get("/{user_id}/followers", response_model=List[sch.UserBasicResponse])
 async def get_followers_list(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    logger.debug(f"Fetching followers list for user {user_id}")
+    logger.debug("fetching_followers_list", user_id=user_id)
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()
     if not user:
-        logger.warning(f"Get followers failed - user {user_id} does not exist")
+        logger.warning("get_followers_failed_not_found", user_id=user_id)
         raise HTTPException(status_code=404, detail="User not found")
     
     follower_link = models.connections.alias("follower_link")
@@ -168,7 +169,7 @@ async def get_followers_list(user_id:int, db:AsyncSession=Depends(getDb), curren
     )
     followers = followerResult.all()
     
-    logger.info(f"Followers list retrieved for user {user_id}, count: {len(followers)}")
+    logger.info("followers_list_retrieved", user_id=user_id, count=len(followers))
     return [
         sch.UserBasicResponse(
             id=f.id,
@@ -181,11 +182,11 @@ async def get_followers_list(user_id:int, db:AsyncSession=Depends(getDb), curren
 
 @router.get("/{user_id}/following", response_model=List[sch.UserBasicResponse])
 async def get_following_list(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    logger.debug(f"Fetching following list for user {user_id}")
+    logger.debug("fetching_following_list", user_id=user_id)
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()
     if not user:
-        logger.warning(f"Get following failed - user {user_id} does not exist")
+        logger.warning("get_following_failed_not_found", user_id=user_id)
         raise HTTPException(status_code=404, detail="User not found")
     
     following_link = models.connections.alias("following_link")
@@ -206,7 +207,7 @@ async def get_following_list(user_id:int, db:AsyncSession=Depends(getDb), curren
     )
     following = followingResult.all()
     
-    logger.info(f"Following list retrieved for user {user_id}, count: {len(following)}")
+    logger.info("following_list_retrieved", user_id=user_id, count=len(following))
     return [
         sch.UserBasicResponse(
             id=f.id,

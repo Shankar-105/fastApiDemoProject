@@ -5,14 +5,14 @@ import app.schemas as sch
 from app import models, db, oauth2
 from app.services import notification_service as ns
 from app.services.redis_service import get_cache, set_cache, delete_cache_pattern
-import logging
+import structlog
 
 router = APIRouter(
     prefix="/users/me/notifications",
     tags=["Notifications"]
 )
 
-logger = logging.getLogger("app")
+logger = structlog.get_logger(__name__)
 
 @router.get(
     "",
@@ -26,11 +26,11 @@ async def get_my_notifications(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
 ):
-    logger.debug(f"Fetching notifications for user {current_user.id}, limit: {limit}, offset: {offset}")
+    logger.debug("fetching_notifications", user_id=current_user.id, limit=limit, offset=offset)
     cache_key = f"notifications:{current_user.id}:{offset}:{limit}"
     cached = await get_cache(cache_key)
     if cached:
-        logger.info(f"Notifications for user {current_user.id} retrieved from cache")
+        logger.info("notifications_cache_hit", user_id=current_user.id)
         return cached
 
     notifications = await ns.get_notifications(db_session, current_user.id, limit, offset)
@@ -52,7 +52,7 @@ async def get_my_notifications(
         has_more=(offset + limit) < total,
     )
     await set_cache(cache_key, result.model_dump(mode="json"), ttl=20)
-    logger.info(f"Notifications for user {current_user.id} retrieved from DB, count: {len(notifications)}")
+    logger.info("notifications_retrieved_db", user_id=current_user.id, count=len(notifications))
     return result
 
 
@@ -66,17 +66,17 @@ async def get_unread_notification_count(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
 ):
-    logger.debug(f"Fetching unread notification count for user {current_user.id}")
+    logger.debug("fetching_unread_notif_count", user_id=current_user.id)
     cache_key = f"notif:unread:{current_user.id}"
     cached = await get_cache(cache_key)
     if cached:
-        logger.info(f"Unread count for user {current_user.id} retrieved from cache")
+        logger.info("unread_notif_count_cache_hit", user_id=current_user.id)
         return cached
 
     count = await ns.get_unread_count(db_session, current_user.id)
     result = sch.UnreadCountResponse(count=count)
     await set_cache(cache_key, result.model_dump(mode="json"), ttl=20)
-    logger.info(f"Unread count for user {current_user.id}: {count}")
+    logger.info("unread_notif_count_retrieved", user_id=current_user.id, count=count)
     return result
 
 
@@ -89,10 +89,10 @@ async def mark_all_notifications_read(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
 ):
-    logger.info(f"Marking all notifications read for user {current_user.id}")
+    logger.info("mark_all_notifications_read_attempt", user_id=current_user.id)
     await ns.mark_all_read(db_session, current_user.id)
     await delete_cache_pattern(f"notifications:{current_user.id}:*")
     await delete_cache_pattern(f"notif:unread:{current_user.id}")
-    logger.info(f"All notifications marked as read for user {current_user.id}")
+    logger.info("mark_all_notifications_read_success", user_id=current_user.id)
     return sch.SuccessResponse(message="All notifications marked as read")
 

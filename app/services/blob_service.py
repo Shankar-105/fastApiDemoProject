@@ -1,11 +1,11 @@
 import asyncio
 import os
-import logging
+import structlog
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from app.config import settings
 
 
-logger = logging.getLogger("app")
+logger = structlog.get_logger(__name__)
 
 _client: BlobServiceClient | None = None
 

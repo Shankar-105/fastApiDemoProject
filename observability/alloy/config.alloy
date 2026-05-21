@@ -9,17 +9,18 @@ discovery.docker "linux" {
 loki.source.docker "local_logs" {
   host       = "unix:///var/run/docker.sock"
   targets    = discovery.docker.linux.targets
-  forward_to = [loki.process.structured_logs.receiver]
+  forward_to = (sys.env("PRODUCTION_MODE") == "true") ? [loki.process.production_logs.receiver] : [loki.process.development_logs.receiver]
 }
 
-// Process and Parse JSON fields
-loki.process "structured_logs" {
+// Process logs for PRODUCTION (JSON)
+loki.process "production_logs" {
   forward_to = [loki.write.local_loki.receiver]
 
+  // Try to parse as JSON (standard for production)
   stage.json {
     expressions = {
       level      = "level",
-      msg        = "message",
+      message    = "message",
       req_id     = "request_id",
       user_id    = "user_id",
       trace_id   = "trace_id",
@@ -27,7 +28,7 @@ loki.process "structured_logs" {
     }
   }
 
-  // Attach extracted fields as searchable labels
+  // Set labels from the parsed JSON
   stage.labels {
     values = {
       level    = null,
@@ -35,6 +36,36 @@ loki.process "structured_logs" {
       user_id  = null,
       trace_id = null,
       err_code = null,
+    }
+  }
+}
+
+// Process logs for DEVELOPMENT (Regex/Plain text)
+loki.process "development_logs" {
+  forward_to = [loki.write.local_loki.receiver]
+
+  // Strip ANSI color codes from development logs
+  stage.decolorize {}
+
+  // Parse the development formatter output.
+  // Format: %H:%M:%S | LEVEL | LOGGER | MESSAGE (req_id=...)
+  stage.regex {
+    expression = `^(?P<time>\d{2}:\d{2}:\d{2}) \| (?P<level>[A-Z\s]+) \| (?P<logger>[\w.]+) \| (?P<message>.*)$`
+  }
+
+  // Extract metadata from the message
+  stage.regex {
+    expression = `\(req_id=(?P<req_id>[^,)]+)(, user_id=(?P<user_id>[^,)]+))?(, trace_id=(?P<trace_id>[^)]+))?\)`
+    source     = "message"
+  }
+
+  // Set labels from the regex capture groups
+  stage.labels {
+    values = {
+      level    = null,
+      req_id   = null,
+      user_id  = null,
+      trace_id = null,
     }
   }
 }
@@ -103,6 +134,7 @@ otelcol.exporter.otlp "tempo" {
     endpoint = "tempo:4317"
     tls {
       insecure = true
+      insecure_skip_verify = true
     }
   }
 }

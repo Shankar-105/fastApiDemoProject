@@ -1,12 +1,12 @@
-import os
 import time
 import uuid
+from urllib.parse import urlparse
+
 import structlog
 from structlog.contextvars import bind_contextvars, clear_contextvars
 from app.config import settings
 from fastapi import FastAPI
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -19,6 +19,53 @@ from app.utils.logging import setup_logging
 # Initialize logging as soon as this module is imported
 setup_logging()
 logger = structlog.get_logger(__name__)
+
+
+def _build_otlp_span_exporter():
+    """Build an OTLP span exporter from explicit environment configuration.
+
+    This keeps local development quiet when no collector endpoint is configured,
+    and only enables OTLP export when the caller opts in.
+    """
+    protocol = (
+        settings.otel_exporter_otlp_traces_protocol
+        or settings.otel_exporter_otlp_protocol
+        or "grpc"
+    ).lower()
+
+    endpoint = (
+        settings.otel_exporter_otlp_traces_endpoint
+        or settings.otel_exporter_otlp_endpoint
+    )
+
+    if not endpoint:
+        logger.info("otlp_traces_export_disabled", reason="no_endpoint_configured")
+        return None
+
+    if protocol in {"http", "http/protobuf", "http-protobuf", "protobuf"}:
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+        parsed = urlparse(endpoint if "://" in endpoint else f"http://{endpoint}")
+        base_url = f"{parsed.scheme}://{parsed.netloc or parsed.path}".rstrip("/")
+        trace_endpoint = (
+            base_url if base_url.endswith("/v1/traces") else f"{base_url}/v1/traces"
+        )
+        logger.info("configuring_otlp_tracing_http", endpoint=trace_endpoint)
+        return OTLPSpanExporter(endpoint=trace_endpoint, timeout=10)
+
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+    normalized_endpoint = endpoint
+    if "://" in normalized_endpoint:
+        parsed = urlparse(normalized_endpoint)
+        normalized_endpoint = parsed.netloc or parsed.path.lstrip("/")
+
+    logger.info("configuring_otlp_tracing_grpc", endpoint=normalized_endpoint)
+    return OTLPSpanExporter(
+        endpoint=normalized_endpoint,
+        insecure=True,
+        timeout=10,
+    )
 
 class LoggingASGIMiddleware:
     """
@@ -90,22 +137,17 @@ class LoggingASGIMiddleware:
 
 def configure_observability(app: FastAPI, async_engine) -> None:
     resource = Resource.create({SERVICE_NAME: "social-media-api"})
-    trace.set_tracer_provider(TracerProvider(resource=resource))
-    
-    is_docker = settings.database_host == "db"
-    
-    alloy_endpoint = "http://alloy:4318/v1/traces" if is_docker else "http://127.0.0.1:4318/v1/traces"
-    
-    logger.info("configuring_otlp_tracing_http", endpoint=alloy_endpoint)
-    
-    otlp_exporter = OTLPSpanExporter(
-        endpoint=alloy_endpoint,
-        timeout=10
-    )
-    trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(otlp_exporter))
 
+    provider = TracerProvider(resource=resource)
+    otlp_exporter = _build_otlp_span_exporter()
+
+    if otlp_exporter is not None:
+        provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+    
     if settings.otel_console_exporter_enabled:
-       trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+       provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+
+    trace.set_tracer_provider(provider)
 
     FastAPIInstrumentor.instrument_app(app)
     SQLAlchemyInstrumentor().instrument(engine=async_engine.sync_engine)

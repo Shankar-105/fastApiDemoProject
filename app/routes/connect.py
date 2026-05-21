@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_,delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from typing import List
-from app.services.redis_service import delete_cache, delete_cache_pattern
+from app.services.redis_service import delete_cache, delete_cache_pattern ,increment_cache_version
 from app.models import NotificationType
 from app.services.rate_limit_service import follow_limiter
 from app.tasks.notification_tasks import create_notification_task

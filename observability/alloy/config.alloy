@@ -1,15 +1,26 @@
 // --- LOGS PIPELINE (Loki) ---
 
-// Discover Docker containers
+// Discover Docker containers for observability.
 discovery.docker "linux" {
   host = "unix:///var/run/docker.sock"
+}
+
+// Discover only the FastAPI API container for the Loki dashboard.
+discovery.docker "api" {
+  host = "unix:///var/run/docker.sock"
+
+  filter {
+    name   = "name"
+    values = ["fastapiproject-api-1"]
+  }
 }
 
 // Scrape logs from discovered containers
 loki.source.docker "local_logs" {
   host       = "unix:///var/run/docker.sock"
-  targets    = discovery.docker.linux.targets
-  forward_to = (sys.env("PRODUCTION_MODE") == "true") ? [loki.process.production_logs.receiver] : [loki.process.development_logs.receiver]
+  targets    = discovery.docker.api.targets
+  labels     = {container = "api"}
+  forward_to = [loki.process.development_logs.receiver]
 }
 
 // Process logs for PRODUCTION (JSON)
@@ -121,14 +132,14 @@ otelcol.receiver.otlp "default" {
   }
 }
 
-// Batch traces for efficiency
+// 2. Define the Processor Second
 otelcol.processor.batch "default" {
   output {
-    traces  = [otelcol.exporter.otlp.tempo.input]
+    traces = [otelcol.exporter.otlp.tempo.input]
   }
 }
 
-// Ship to Tempo
+// 3. Define the Exporter Third
 otelcol.exporter.otlp "tempo" {
   client {
     endpoint = "tempo:4317"

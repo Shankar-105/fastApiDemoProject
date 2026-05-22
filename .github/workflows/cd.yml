@@ -39,22 +39,10 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            echo "📥 Updating dependencies..."
-            source venv/bin/activate
-            pip install -r requirements.txt --quiet
+            echo "🚀 Deploying with Docker Compose..."
+            sudo docker compose -f docker-compose.prod.yml up -d --build
 
-            echo "🚀 Reloading Systemd Service..."
-            chmod +x startup_prod.sh
-            
-            # This triggers the startup_prod.sh script via the system manager
-            sudo systemctl daemon-reload
-            sudo systemctl restart fastapi
+            echo "🧹 Cleaning up old images..."
+            sudo docker image prune -f
 
-            sleep 5
-            if sudo systemctl is-active --quiet fastapi; then
-              echo "✅ Deployment successful! App is running."
-            else
-              echo "❌ Deployment failed!"
-              sudo journalctl -u fastapi --no-pager -n 20
-              exit 1
-            fi
+            echo "✅ Deployment successful!"

@@ -21,6 +21,11 @@ services:
       - alloy
     networks:
       - social_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   celery_worker:
     build: .
@@ -42,6 +47,11 @@ services:
       - rabbitmq
     networks:
       - social_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   celery_beat:
     build: .
@@ -63,6 +73,11 @@ services:
       - rabbitmq
     networks:
       - social_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
@@ -73,6 +88,11 @@ services:
       - redis_data:/data
     networks:
       - social_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -85,6 +105,11 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - social_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   prometheus:
     image: prom/prometheus:latest
@@ -99,6 +124,11 @@ services:
       - prometheus_data:/prometheus
     networks:
       - social_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   tempo:
     image: grafana/tempo:2.4.1
@@ -110,6 +140,11 @@ services:
       - tempo_data:/var/tempo
     networks:
       - social_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   grafana:
     image: grafana/grafana:latest
@@ -129,6 +164,11 @@ services:
       - tempo
     networks:
       - social_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   loki:
     image: grafana/loki:latest
@@ -140,15 +180,20 @@ services:
       - loki_data:/loki
     networks:
       - social_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   alloy:
     image: grafana/alloy:latest
     container_name: alloy
     restart: always
     environment:
-      - PRODUCTION_MODE=true
+      - PRODUCTION_MODE=${PRODUCTION_MODE:-true}
     volumes:
-      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ./observability/alloy/config.${PRODUCTION_MODE:-true}.alloy:/etc/alloy/config.alloy:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - alloy_data:/var/lib/alloy/data
@@ -159,6 +204,11 @@ services:
       - tempo
     networks:
       - social_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   flower:
     image: mher/flower:2.0.1
@@ -172,6 +222,11 @@ services:
       - redis
     networks:
       - social_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   redis_data:

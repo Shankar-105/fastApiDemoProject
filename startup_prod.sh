@@ -18,6 +18,7 @@ alembic upgrade head
 export OTEL_CONSOLE_EXPORTER_ENABLED=false
 export BENCHMARK_MODE_ENABLED=false
 export PRODUCTION_MODE=true
+export COMPOSE_FILE=docker-compose.prod.yml
 
 # Use auto detection for max compatibility across platforms
 export UVICORN_LOOP="auto"

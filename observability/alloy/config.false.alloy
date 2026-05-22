@@ -11,7 +11,7 @@ discovery.docker "api" {
 
   filter {
     name   = "name"
-    values = ["fastapiproject-api-1"]
+    values = ["social_api"]
   }
 }
 
@@ -21,34 +21,6 @@ loki.source.docker "local_logs" {
   targets    = discovery.docker.api.targets
   labels     = {container = "api"}
   forward_to = [loki.process.development_logs.receiver]
-}
-
-// Process logs for PRODUCTION (JSON)
-loki.process "production_logs" {
-  forward_to = [loki.write.local_loki.receiver]
-
-  // Try to parse as JSON (standard for production)
-  stage.json {
-    expressions = {
-      level      = "level",
-      message    = "message",
-      req_id     = "request_id",
-      user_id    = "user_id",
-      trace_id   = "trace_id",
-      err_code   = "error_code",
-    }
-  }
-
-  // Set labels from the parsed JSON
-  stage.labels {
-    values = {
-      level    = null,
-      req_id   = null,
-      user_id  = null,
-      trace_id = null,
-      err_code = null,
-    }
-  }
 }
 
 // Process logs for DEVELOPMENT (Regex/Plain text)
@@ -118,9 +90,6 @@ prometheus.remote_write "local_prometheus" {
 
 // --- TRACES PIPELINE (Tempo) ---
 
-// Receive OTLP traces from Python app.
-// We enable both gRPC (4317) and HTTP (4318) for maximum compatibility.
-// Our FastAPI app specifically uses gRPC on 4317.
 otelcol.receiver.otlp "default" {
   grpc {
     endpoint = "0.0.0.0:4317"
@@ -134,14 +103,12 @@ otelcol.receiver.otlp "default" {
   }
 }
 
-// 2. Define the Processor Second
 otelcol.processor.batch "default" {
   output {
     traces = [otelcol.exporter.otlp.tempo.input]
   }
 }
 
-// 3. Define the Exporter Third
 otelcol.exporter.otlp "tempo" {
   client {
     endpoint = "tempo:4317"

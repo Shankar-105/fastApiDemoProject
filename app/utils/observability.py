@@ -22,20 +22,14 @@ logger = structlog.get_logger(__name__)
 
 
 def _build_otlp_span_exporter():
-    """Build an OTLP span exporter from explicit environment configuration.
-
-    This keeps local development quiet when no collector endpoint is configured,
-    and only enables OTLP export when the caller opts in.
-    """
+    """Build an OTLP span exporter from explicit environment configuration."""
     protocol = (
-        settings.otel_exporter_otlp_traces_protocol
-        or settings.otel_exporter_otlp_protocol
+        settings.otel_exporter_otlp_protocol
         or "grpc"
     ).lower()
 
     endpoint = (
-        settings.otel_exporter_otlp_traces_endpoint
-        or settings.otel_exporter_otlp_endpoint
+         settings.otel_exporter_otlp_endpoint
     )
 
     if not endpoint:

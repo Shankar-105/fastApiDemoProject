@@ -92,6 +92,7 @@ loki.write "local_loki" {
 
 // Scrape metrics from FastAPI
 prometheus.scrape "fastapi" {
+  scrape_interval = "15s"
   targets = [
     {"__address__" = "api:8000"},
   ]
@@ -101,6 +102,7 @@ prometheus.scrape "fastapi" {
 
 // Scrape metrics from Alloy itself
 prometheus.scrape "alloy" {
+  scrape_interval = "15s"
   targets = [
     {"__address__" = "localhost:12345"},
   ]

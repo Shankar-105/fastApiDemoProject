@@ -12,61 +12,52 @@ The app is deployed on an Azure Linux virtual machine in Central India and is pu
 
 Ran several tests against the deployed app and found infra bottlenecks and explained in clear what does that mean check that out here [`BENCHMARK.md`](./BENCHMARK.md)
 
-## What I Set Up
+## Modernized Architecture (Dockerized) 🐳
 
-### 1. Azure Linux VM
+The production environment has been modernized from standalone systemd services to a **Docker Compose** managed stack. This ensures consistency between environments and simplifies service orchestration.
 
-- Size: `Standard_B2ats_v2`
+### 1. Azure Linux VM (The Host)
+- Size: `Standard_B2ats_v2` (1GB RAM)
 - OS: Ubuntu 22.04
-- Purpose: runs the FastAPI application, Gunicorn/Uvicorn workers, and Nginx
-- **Update 1:**
-  - **OS Disk Changed** `StandardSSD_LRS` E4 (30 GB class, migrated from `Premium_LRS` P4 in 23rd Apr 2026)
-- **Update 2:** 
-  - **OS Disk Changed:** May 4, 2026 — Migrated from `StandardSSD_LRS` to `Standard_LRS` (HDD) — 30 GB for cost optimization
+- Purpose: Acts as the Docker host running our containerized application stack.
 
-### 2. Azure Database for PostgreSQL
+### 2. The Containerized Stack
+The following services are orchestrated via `docker-compose.prod.yml`:
+- **API**: FastAPI application running behind Gunicorn/Uvicorn.
+- **Celery Worker & Beat**: Handles background tasks and scheduled jobs.
+- **Redis**: Caching, rate limiting, and task result backend.
+- **RabbitMQ**: Message broker for Celery.
 
+### 3. Observability Update (Resource Management) ⚠️
+Initially, a full **LGTM Stack** (Loki, Grafana, Tempo, Mimir/Prometheus) was deployed to provide advanced monitoring, logging, and tracing. 
+
+**Current Status:** The LGTM stack is currently **Stopped/Disabled** in production.
+- **Reason:** The `Standard_B2ats_v2` VM instance is highly resource-constrained with only 1GB of RAM. Running the full observability suite alongside the application stack pushed the system into frequent Out-Of-Memory (OOM) states.
+- **Decision:** To prioritize application uptime and API responsiveness, observability has been scaled back to native `journald` logging. Tracing and metrics instrumentation are automatically bypassed in production mode to save memory.
+- **Future:** If the infrastructure is upgraded to a tier with more RAM (e.g., 4GB+), the full observability stack can be re-enabled with a single configuration change.
+
+## Managed Azure Services
+
+### 1. Azure Database for PostgreSQL
 - Tier: Flexible Server, `B1ms`
-- Purpose: stores users, posts, comments, messages, refresh tokens, notifications, and all core app data
+- Purpose: Persistent storage for users, posts, comments, messages, etc.
 
-### 3. Azure Blob Storage
-
-- Containers used:
-  - `profilepics`
-  - `posts-media`
-  - `chat-media`
-- Purpose: stores uploaded profile images, post media, and chat media outside the VM filesystem
-
-### 4. Redis on the same VM
-
-- Redis runs on the same Ubuntu VM
-- Purpose: caching, rate limiting, token blacklisting, and real-time notification delivery support
-
-### 5. RabbitMQ + Celery on the same VM
-
-- RabbitMQ runs on the same Ubuntu VM and acts as the Celery broker
-- Celery worker runs as a separate systemd service and executes background jobs
-- Celery Beat runs as a separate systemd service and keeps scheduled jobs alive
-- Purpose: email tasks, notification jobs, and periodic cleanup must keep working after a code deploy without relying on the web process
+### 2. Azure Blob Storage
+- Containers: `profilepics`, `posts-media`, `chat-media`
+- Purpose: Scalable, durable storage for all user-generated media content.
 
 ## Deployment Stack ✅
-
-- Nginx handles HTTPS termination and reverse proxying
-- Gunicorn runs the FastAPI app with Uvicorn workers
-- systemd keeps the app service alive and restarts it automatically
-- systemd also keeps Redis, RabbitMQ, Celery worker, and Celery Beat alive on the VM
-- GitHub Actions handles CI/CD and deploys the latest code to the VM after a successful pipeline run
+- **Nginx (Host)**: Handles HTTPS (Certbot) and proxies traffic to the Dockerized API.
+- **Docker Compose**: Manages the lifecycle of application services.
+- **Journald**: Native system logging for container output.
+- **GitHub Actions**: Automated CI/CD pipeline that builds and redeploys the Docker stack on every push to `main`.
 
 ## Why This Felt Like a Big Win
+Moving to Docker while balancing resource constraints taught me the importance of **Infrastructure Right-Sizing**. The app is now portable, resilient, and optimized for the current Azure hardware limits.
 
-Seeing the app live on Azure felt like a real milestone for me as a student devloper. This setup keeps the project production-ready without depending on a laptop or temporary local files.
-
-- Code runs on a real public server
-- The database is managed separately from the app server
-- Media uploads stay safe in Blob Storage instead of disappearing on restart
-- HTTPS is enabled for secure browser access
-- Deployments can be repeated without manual rebuild steps
+- Code is isolated and consistent via containers.
+- The system is protected against OOM crashes through strategic service selection.
+- Deployments are seamless and handle container rebuilds automatically.
 
 ## For Frontend Contributors ✨
-
-If you want to build a frontend on top of this API, start with the endpoint reference in [`API_GUIDE.md`](./API_GUIDE.md). It covers the REST routes, authentication flow, media handling, and WebSocket chat behavior.
+Start with the endpoint reference in [`API_GUIDE.md`](./API_GUIDE.md). Use the production URL for your base API endpoint.

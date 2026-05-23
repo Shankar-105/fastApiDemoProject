@@ -102,11 +102,12 @@ class LoggingASGIMiddleware:
                 headers = MutableHeaders(scope=message)
                 
                 # Get current trace ID from OpenTelemetry
-                span = trace.get_current_span()
-                span_ctx = span.get_span_context() if span else None
-                trace_id = (
-                    format(span_ctx.trace_id, "032x") if span_ctx and span_ctx.trace_id else "0" * 32
-                )
+                trace_id = "0" * 32
+                if not settings.production_mode:
+                    span = trace.get_current_span()
+                    span_ctx = span.get_span_context() if span else None
+                    if span_ctx and span_ctx.trace_id:
+                        trace_id = format(span_ctx.trace_id, "032x")
                 
                 # Add headers to response for client-side tracing
                 headers.append("X-Trace-Id", trace_id)

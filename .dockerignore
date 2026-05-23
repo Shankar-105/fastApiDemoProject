@@ -20,3 +20,11 @@ venv
 license
 # ignore the testing data 
 seed.py
+docs/
+social_media_app-main/
+*.rdb
+*.sqlite3
+*.db
+celerybeat-schedule
+*.log
+*.tmp

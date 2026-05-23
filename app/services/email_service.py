@@ -1,9 +1,9 @@
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
-import logging
+import structlog
 from app.config import settings
 
 
-logger = logging.getLogger("app")
+logger = structlog.get_logger(__name__)
 
 # setting up Gmail connection using the fastappi's
 # built-in Connection system
@@ -19,7 +19,7 @@ conf = ConnectionConfig(
 
 # method to send OTP
 async def send_otp_email(to_email:str,otp:str):
-    logger.info("Sending OTP email", extra={"extra_info": {"to_email": to_email}})
+    logger.info("otp_email_sending", to_email=to_email)
     # a body for the email that will be sent
     # when this variable "html" passed as an arg to
     # the MessageSchema constructor it will be converted to
@@ -40,11 +40,11 @@ async def send_otp_email(to_email:str,otp:str):
     fm = FastMail(conf)
     # send the email
     await fm.send_message(message)
-    logger.info("OTP email sent", extra={"extra_info": {"to_email": to_email}})
+    logger.info("otp_email_sent", to_email=to_email)
 
 
 async def send_verification_email(to_email: str, otp: str):
-    logger.info("Sending verification email", extra={"extra_info": {"to_email": to_email}})
+    logger.info("verification_email_sending", to_email=to_email)
     html = f"""
     <h3>Verify Your Email</h3>
     <p>Use this OTP to verify your account: <b style="font-size: 20px;">{otp}</b></p>

@@ -5,15 +5,15 @@ from app.services import redis_service
 from datetime import datetime
 from app.utils.socket_manager import manager
 import json
-import logging
+import structlog
 
 
-logger = logging.getLogger("app")
+logger = structlog.get_logger(__name__)
 
 async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
     try:
         sender_id = int(payload.get("sender_id"))
-        logger.info("Marking messages as read", extra={"extra_info": {"reader_id": reader_id, "sender_id": sender_id}})
+        logger.info("marking_messages_read", reader_id=reader_id, sender_id=sender_id)
         now = datetime.utcnow()
         # Atomic mark-read to avoid duplicate effects under concurrent receipts.
         update_result = await db.execute(
@@ -46,9 +46,9 @@ async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
         try:
             await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
             await redis_service.redis_client.publish("chat:messages", json.dumps(receipt_payload))
-            logger.info("Read receipt published to Redis", extra={"extra_info": {"reader_id": reader_id, "sender_id": sender_id}})
+            logger.info("read_receipt_published_redis", reader_id=reader_id, sender_id=sender_id)
         except Exception as e:
-            logger.warning("Failed to publish read receipt to Redis", extra={"extra_info": {"reader_id": reader_id, "sender_id": sender_id, "error": str(e)}})
+            logger.warning("read_receipt_publish_redis_failed", reader_id=reader_id, sender_id=sender_id, error=str(e))
             try:
                 await manager.send_personal_message(sender_payload, sender_id)
             except Exception:
@@ -61,4 +61,4 @@ async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
                 pass
         
     except Exception as e:
-        logger.exception("Error in read_receipt", extra={"extra_info": {"reader_id": reader_id, "error": str(e)}})
+        logger.exception("read_receipt_error", reader_id=reader_id, error=str(e))

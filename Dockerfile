@@ -19,7 +19,7 @@ COPY . .
 EXPOSE 8000
 
 # Make all startup scripts and entrypoint executable
-RUN chmod +x  /code/startup_dev.sh /code/startup_benchmark.sh /code/docker_entrypoint.sh
+RUN chmod +x /code/startup_dev.sh /code/startup_benchmark.sh /code/startup_prod.sh /code/docker_entrypoint.sh
 
 # Entrypoint: conditionally choose startup script based on BENCHMARK_MODE_ENABLED config
 ENTRYPOINT ["/bin/bash", "/code/docker_entrypoint.sh"]

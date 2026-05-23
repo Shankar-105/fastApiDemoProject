@@ -9,10 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import models
 from app.utils.time_formatting import format_timestamp
 import json
-import logging
+import structlog
 
 
-logger = logging.getLogger("app")
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(
     prefix="/messaging",
@@ -26,7 +26,7 @@ async def send_media(
     current_user = Depends(oauth2.getCurrentUser),
     db: AsyncSession = Depends(getDb),
 ):
-    logger.info("Sending media message", extra={"extra_info": {"sender_id": current_user.id, "receiver_id": to}})
+    logger.info("sending_media_message", sender_id=current_user.id, receiver_id=to)
     # 'video', 'audio', 'image'
     media_type = file.content_type.split("/")[0]
     file_extension = file.filename.split(".")[-1]
@@ -64,15 +64,15 @@ async def send_media(
     try:
         await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
         await redis_service.redis_client.publish("chat:messages", json.dumps(payload))
-        logger.info("Media message published to Redis", extra={"extra_info": {"message_id": msg.id, "sender_id": current_user.id, "receiver_id": to}})
+        logger.info("media_message_published_redis", message_id=msg.id, sender_id=current_user.id, receiver_id=to)
     except Exception as e:
-        logger.warning("Failed to publish media message to Redis", extra={"extra_info": {"message_id": msg.id, "sender_id": current_user.id, "receiver_id": to, "error": str(e)}})
+        logger.warning("media_message_publish_redis_failed", message_id=msg.id, sender_id=current_user.id, receiver_id=to, error=str(e))
         # fallback local sends
         try:
             if to in manager.active_connections:
                 await manager.send_json_to_user(payload, to)
             else:
-                logger.debug("Receiver offline; media message remains in DB", extra={"extra_info": {"message_id": msg.id, "receiver_id": to}})
+                logger.debug("receiver_offline_media_saved", message_id=msg.id, receiver_id=to)
         except Exception:
             manager.disconnect(to)
         try:

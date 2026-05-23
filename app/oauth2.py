@@ -123,7 +123,7 @@ async def verifyAccesstoken(token:str,credentials_exception,dbs:AsyncSession):
         raise credentials_exception
     return user
 
-from app.utils.logging import user_id_ctx
+from structlog.contextvars import bind_contextvars
 from app.utils.exceptions import AuthenticationException
 
 # Get current user (for protected routes)
@@ -140,7 +140,7 @@ async def getCurrentUser(token: str = Depends(oauth2_scheme), dbs: AsyncSession 
     # TTL on auth:user:{token} is bounded by token expiry, so we can skip DB lookup.
     if cached is not None:
         user = _build_user_from_cache(cached)
-        user_id_ctx.set(user.id)
+        bind_contextvars(user_id=user.id)
         return user
 
     # Cache miss: validate JWT claims/signature and then query DB once.
@@ -153,6 +153,6 @@ async def getCurrentUser(token: str = Depends(oauth2_scheme), dbs: AsyncSession 
     if user is None:
         raise AuthenticationException()
 
-    user_id_ctx.set(user.id)
+    bind_contextvars(user_id=user.id)
     await redis_service.set_cache(cache_key, _build_user_cache_payload(user), ttl=_get_access_token_ttl_seconds(payload))
     return user

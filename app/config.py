@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     rl_follow_window: int = 60
     # observability toggles
     otel_console_exporter_enabled: bool = False
+    otel_exporter_otlp_protocol: str = "grpc"
+    otel_exporter_otlp_endpoint: str = ""
     # Disables expensive logging/otel,promethus instrumentors during benchmark
     benchmark_mode_enabled: bool = False
     # contributors, dont care about this flag

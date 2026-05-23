@@ -8,10 +8,10 @@ from app.services import redis_service
 from datetime import datetime
 from typing import List
 import json
-import logging
+import structlog
 
 
-logger = logging.getLogger("app")
+logger = structlog.get_logger(__name__)
 router=APIRouter(
     prefix="/messaging",
     tags=['Messaging']
@@ -24,7 +24,7 @@ async def msg_reactions(
     db: AsyncSession = Depends(db.getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser)
 ):
-    logger.debug("Fetching message reactions", extra={"extra_info": {"message_id": msg_id, "user_id": currentUser.id}})
+    logger.debug("fetching_message_reactions", message_id=msg_id, user_id=currentUser.id)
     result = await db.execute(
         select(models.Message).where(models.Message.id == msg_id)
     )
@@ -57,7 +57,7 @@ async def react(
     user_id:int,
     db: AsyncSession
 ): 
-    logger.info("Handling message reaction", extra={"extra_info": {"message_id": reaction.message_id, "user_id": user_id, "reaction": reaction.reaction}})
+    logger.info("handling_message_reaction", message_id=reaction.message_id, user_id=user_id, reaction=reaction.reaction)
     result = await db.execute(
         select(models.Message).where(models.Message.id == reaction.message_id)
     )
@@ -68,7 +68,7 @@ async def react(
         }
     elgibile = [the_msg.sender_id, the_msg.receiver_id]
     if user_id not in elgibile:
-        logger.warning("Message reaction rejected: unauthorized user", extra={"extra_info": {"message_id": reaction.message_id, "user_id": user_id}})
+        logger.warning("message_reaction_unauthorized", message_id=reaction.message_id, user_id=user_id)
         return {
             "status": "Unknown User"
         }

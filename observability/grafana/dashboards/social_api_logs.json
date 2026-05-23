@@ -5,7 +5,7 @@
         "builtIn": 1,
         "datasource": {
           "type": "grafana",
-          "uid": "-- Graphics --"
+          "uid": "-- Grafana --"
         },
         "enable": true,
         "hide": true,
@@ -58,7 +58,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{container=\"api\"} | json",
+          "expr": "{container=\"api\"}",
           "queryType": "range",
           "refId": "A"
         }
@@ -80,12 +80,12 @@
       "id": 2,
       "targets": [
         {
-          "expr": "count_over_time({container=\"api\"} | json | level=\"ERROR\" [$__interval])",
-          "legendFormat": "Errors",
+          "expr": "sum(count_over_time({container=\"api\"}[$__interval])) or vector(0)",
+          "legendFormat": "All Logs",
           "refId": "A"
         }
       ],
-      "title": "Error Logs Over Time",
+      "title": "API Logs Over Time",
       "type": "timeseries"
     },
     {
@@ -102,12 +102,12 @@
       "id": 3,
       "targets": [
         {
-          "expr": "count_over_time({container=\"api\"} | json | level=\"WARNING\" [$__interval])",
-          "legendFormat": "Warnings",
+          "expr": "sum(count_over_time({container=\"api\"} |= \"request_processed\"[$__interval])) or vector(0)",
+          "legendFormat": "Requests",
           "refId": "A"
         }
       ],
-      "title": "Warning Logs Over Time",
+      "title": "Request Logs Over Time",
       "type": "timeseries"
     }
   ],

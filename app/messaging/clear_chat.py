@@ -4,10 +4,10 @@ from app import models,oauth2,config,db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import or_,and_,select,insert,literal
 from typing import List
-import logging
+import structlog
 
 
-logger = logging.getLogger("app")
+logger = structlog.get_logger(__name__)
 
 router=APIRouter(
     prefix="/messaging",
@@ -16,7 +16,7 @@ router=APIRouter(
 
 @router.delete("/conversations/{friend_id}")
 async def clear_chat(friend_id:int,db:AsyncSession =Depends(db.getDb),current_user:models.User=Depends(oauth2.getCurrentUser)):
-    logger.info("Clearing chat", extra={"extra_info": {"user_id": current_user.id, "friend_id": friend_id}})
+    logger.info("clearing_chat", user_id=current_user.id, friend_id=friend_id)
     
     # messages already deleted by me
     deleted_subq = (
@@ -47,5 +47,5 @@ async def clear_chat(friend_id:int,db:AsyncSession =Depends(db.getDb),current_us
     )
 )
     await db.commit()
-    logger.info("Chat cleared successfully", extra={"extra_info": {"user_id": current_user.id, "friend_id": friend_id}})
+    logger.info("chat_cleared_success", user_id=current_user.id, friend_id=friend_id)
     return {"detail": "Chat cleared successfully"}

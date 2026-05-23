@@ -35,7 +35,7 @@
 | [API Versioning](#-api-versioning) | Semantic versioning (v1, v2) for better api design |
 | [Testing](#-testing) | Pytest, isolated test DB, 80+ tests |
 | [Observability (LGTM Stack)](#-observability-lgtm-stack) | Full modern observability with Loki, Grafana, Tempo, and Alloy |
-| [Logging & Monitoring](#-logging--monitoring) | Structured JSON logging in production vs pretty console in local, persistent journald |
+| [Logging & Monitoring](#-logging--monitoring) | Structlog-based structured logging, trace correlation, and persistent journald |
 ---
 
 ## ⚡ Async & Non-Blocking Architecture
@@ -500,9 +500,11 @@ The app is equipped with the **LGTM Stack** (Loki, Grafana, Tempo, Mimir/Prometh
 
 ## 📝 Logging & Monitoring
 
-- **Dual-Mode Logging** — the app automatically switches its logging format based on the environment:
-- **Local Development** — uses `PrettyConsoleFormatter` with colors and human-readable timestamps for easy debugging in the terminal.
-- **Production (Azure)** — uses `StructuredJSONFormatter` which outputs logs in a machine-readable JSON format. This includes `trace_id`, `span_id`, `user_id`, and `request_id` context for distributed tracing.
+- **Structlog as the logging layer** — the app uses `structlog` across the API and Celery workers so logs are context-aware, consistent, and easy to correlate with traces.
+- **Dual-mode output** — local development uses a colored human-readable renderer, while production emits single-line structured JSON that is friendly to Loki and other log backends.
+- **Trace correlation baked in** — every log event can include `trace_id` and `span_id` from the active OpenTelemetry span, plus request context such as `request_id`, `user_id`, `method`, and `path`.
+- **Context variable propagation** — request-scoped metadata is bound through `structlog.contextvars`, which keeps logs tied to the right request even across async code paths.
+- **Persistence and shipping** — stdout/stderr still flow into `journald` on the VM, and the same structured logs are also collected by Alloy and shipped into Loki for Grafana dashboards.
 - **Systemd Journal Integration** — all `stdout` and `stderr` output from the FastAPI and Celery services are captured by `journald`.
 - **Persistent Journaling** — `journald` is configured in **persistent mode** on the Azure VM. Logs are stored in `/var/log/journal/`, meaning they survive VM reboots and maintenance cycles.
 

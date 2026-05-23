@@ -5,7 +5,7 @@
         "builtIn": 1,
         "datasource": {
           "type": "grafana",
-          "uid": "-- Graphics --"
+          "uid": "-- Grafana --"
         },
         "enable": true,
         "hide": true,
@@ -41,11 +41,13 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
+          "tableType": "traces",
+          "query": "{ resource.service.name = \"social-media-api\" }",
           "refId": "A"
         }
       ],
-      "title": "Trace Explorer",
-      "type": "traces"
+      "title": "Recent Social API Traces",
+      "type": "table"
     },
     {
       "datasource": {
@@ -66,12 +68,13 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "expr": "{ duration > 1s }",
+          "tableType": "traces",
+          "query": "{ resource.service.name = \"social-media-api\" && duration > 100ms }",
           "refId": "A"
         }
       ],
-      "title": "Slow Traces (> 1s)",
-      "type": "traces"
+      "title": "Slow Traces (> 100ms)",
+      "type": "table"
     }
   ],
   "refresh": "5s",

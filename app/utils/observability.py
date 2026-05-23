@@ -130,6 +130,12 @@ class LoggingASGIMiddleware:
             clear_contextvars()
 
 def configure_observability(app: FastAPI, async_engine) -> None:
+    # PRODUCTION_MODE=true on a 1GB RAM VM means we skip tracing/metrics to save memory
+    if settings.production_mode:
+        logger.info("observability_disabled_in_production", reason="resource_constraints_1gb_ram")
+        app.add_middleware(LoggingASGIMiddleware)
+        return
+
     resource = Resource.create({SERVICE_NAME: "social-media-api"})
 
     provider = TracerProvider(resource=resource)

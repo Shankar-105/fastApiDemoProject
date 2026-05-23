@@ -5,79 +5,71 @@ services:
       dockerfile: Dockerfile
     container_name: social_api
     restart: always
+    env_file: .env
     environment:
-      - DATABASE_URL=${DATABASE_URL}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
       - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - PRODUCTION_MODE=true
-      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-      - OTEL_EXPORTER_OTLP_ENDPOINT=alloy:4317
+    ports:
+      - "8000:8000"
     depends_on:
       - redis
       - rabbitmq
-      - alloy
     networks:
       - social_network
     logging:
-      driver: "json-file"
+      driver: journald
       options:
-        max-size: "10m"
-        max-file: "3"
+        tag: "social_api"
 
   celery_worker:
     build: .
     container_name: social_worker
     command: celery -A app.celery_app worker --loglevel=info
     restart: always
+    env_file: .env
     environment:
-      - DATABASE_URL=${DATABASE_URL}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
       - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - PRODUCTION_MODE=true
-      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-      - OTEL_EXPORTER_OTLP_ENDPOINT=alloy:4317
     depends_on:
       - redis
       - rabbitmq
     networks:
       - social_network
     logging:
-      driver: "json-file"
+      driver: journald
       options:
-        max-size: "10m"
-        max-file: "3"
+        tag: "social_worker"
 
   celery_beat:
     build: .
     container_name: social_beat
     command: celery -A app.celery_app beat --loglevel=info
     restart: always
+    env_file: .env
     environment:
-      - DATABASE_URL=${DATABASE_URL}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
       - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - PRODUCTION_MODE=true
-      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-      - OTEL_EXPORTER_OTLP_ENDPOINT=alloy:4317
     depends_on:
       - redis
       - rabbitmq
     networks:
       - social_network
     logging:
-      driver: "json-file"
+      driver: journald
       options:
-        max-size: "10m"
-        max-file: "3"
+        tag: "social_beat"
 
   redis:
     image: redis:7-alpine
@@ -89,10 +81,9 @@ services:
     networks:
       - social_network
     logging:
-      driver: "json-file"
+      driver: journald
       options:
-        max-size: "10m"
-        max-file: "3"
+        tag: "redis"
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -106,136 +97,13 @@ services:
     networks:
       - social_network
     logging:
-      driver: "json-file"
+      driver: journald
       options:
-        max-size: "10m"
-        max-file: "3"
-
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    restart: always
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.enable-remote-write-receiver"
-    volumes:
-      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    networks:
-      - social_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  tempo:
-    image: grafana/tempo:2.4.1
-    container_name: tempo
-    restart: always
-    command: [ "-target=all", "-config.file=/etc/tempo.yaml" ]
-    volumes:
-      - ./observability/tempo/tempo.yaml:/etc/tempo.yaml:ro
-      - tempo_data:/var/tempo
-    networks:
-      - social_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    restart: always
-    environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    depends_on:
-      - prometheus
-      - loki
-      - tempo
-    networks:
-      - social_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  loki:
-    image: grafana/loki:latest
-    container_name: loki
-    restart: always
-    command: -config.file=/etc/loki/loki.yml
-    volumes:
-      - ./observability/loki/loki.yml:/etc/loki/loki.yml:ro
-      - loki_data:/loki
-    networks:
-      - social_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  alloy:
-    image: grafana/alloy:latest
-    container_name: alloy
-    restart: always
-    environment:
-      - PRODUCTION_MODE=${PRODUCTION_MODE:-true}
-    volumes:
-      - ./observability/alloy/config.${PRODUCTION_MODE:-true}.alloy:/etc/alloy/config.alloy:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-      - alloy_data:/var/lib/alloy/data
-    command: run --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
-    depends_on:
-      - loki
-      - prometheus
-      - tempo
-    networks:
-      - social_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  flower:
-    image: mher/flower:2.0.1
-    container_name: flower
-    restart: always
-    environment:
-      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
-      - CELERY_RESULT_BACKEND=redis://redis:6379/1
-    depends_on:
-      - rabbitmq
-      - redis
-    networks:
-      - social_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+        tag: "rabbitmq"
 
 volumes:
   redis_data:
   rabbitmq_data:
-  prometheus_data:
-  grafana_data:
-  tempo_data:
-  loki_data:
-  alloy_data:
 
 networks:
   social_network:

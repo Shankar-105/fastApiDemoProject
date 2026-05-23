@@ -10,6 +10,9 @@ def add_otel_trace_id(logger: Any, method_name: str, event_dict: Dict[str, Any])
     """
     Adds OpenTelemetry trace and span IDs to the log event.
     """
+    if settings.production_mode:
+        return event_dict
+    
     span = trace.get_current_span()
     if span and span.get_span_context().is_valid:
         span_context = span.get_span_context()

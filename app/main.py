@@ -1,7 +1,6 @@
 # main.py
 import asyncio
 import json as _json
-import structlog
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.staticfiles import StaticFiles
@@ -15,12 +14,7 @@ from app.api.v1.api_router import api_v1_router
 from app.services.redis_service import check_redis_connection
 from app.utils.socket_manager import manager
 from fastapi.middleware.cors import CORSMiddleware
-from app.utils.logging import setup_logging
 from app.utils.observability import configure_observability
-
-# Initialize logging as early as possible
-setup_logging()
-logger = structlog.get_logger(__name__)
 
 # -- Database Setup --
 models.Base.metadata.create_all(bind=sync_engine)
@@ -62,7 +56,7 @@ async def lifespan(app: FastAPI):
         _chat_listener_task = asyncio.create_task(_chat_messages_listener())
         _notification_listener_task = asyncio.create_task(_notification_messages_listener())
     else:
-        logger.warning("redis_listeners_skipped", detail="Redis unavailable")
+        print("Skipping Redis listeners (Redis unavailable)!")
 
     yield
 

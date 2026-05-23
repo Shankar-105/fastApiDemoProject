@@ -6,14 +6,14 @@ from app import models, schemas, oauth2 , db
 from app.services.redis_service import get_cache, set_cache, delete_cache
 from app.services.blob_service import get_blob_url
 import os
-import structlog
+import logging
 
 router = APIRouter(
     prefix="/feed",
     tags=["Feed"]
 )
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 @router.get("", response_model=schemas.FeedResponse)
 async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
@@ -21,11 +21,11 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser)
     ):
-    logger.debug("fetching_home_feed", user_id=currentUser.id, limit=limit, offset=offset)
+    logger.debug(f"Fetching home feed for user: {currentUser.id}, limit: {limit}, offset: {offset}")
     cache_key = f"feed:home:{currentUser.id}:{offset}:{limit}"
     cached = await get_cache(cache_key)
     if cached:
-        logger.info("home_feed_cache_hit", user_id=currentUser.id)
+        logger.info(f"Home feed retrieved from cache for user: {currentUser.id}")
         return cached
 
     followed_users = (
@@ -92,7 +92,7 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
     
     result = schemas.FeedResponse(feed=user_homeFeed, total=None)
     await set_cache(cache_key, result.model_dump(mode="json"), ttl=30)
-    logger.info("home_feed_retrieved_db", user_id=currentUser.id, items_count=len(user_homeFeed))
+    logger.info(f"Home feed retrieved from DB for user: {currentUser.id}, items: {len(user_homeFeed)}")
     return result
 
 @router.get("/explore", response_model=schemas.PostListResponse)
@@ -101,11 +101,11 @@ async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser)
     ):
-    logger.debug("fetching_explore_feed", user_id=currentUser.id, limit=limit, offset=offset)
+    logger.debug(f"Fetching explore feed for user: {currentUser.id}, limit: {limit}, offset: {offset}")
     cache_key = f"feed:explore:{currentUser.id}:{offset}:{limit}"
     cached = await get_cache(cache_key)
     if cached:
-        logger.info("explore_feed_cache_hit", user_id=currentUser.id)
+        logger.info(f"Explore feed retrieved from cache for user: {currentUser.id}")
         return cached
 
     is_liked = (
@@ -161,5 +161,5 @@ async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
     
     result = schemas.PostListResponse(posts=explore_posts, pagination=pagination)
     await set_cache(cache_key, result.model_dump(mode="json"), ttl=60)
-    logger.info("explore_feed_retrieved_db", user_id=currentUser.id, items_count=len(explore_posts))
+    logger.info(f"Explore feed retrieved from DB for user: {currentUser.id}, items: {len(explore_posts)}")
     return result

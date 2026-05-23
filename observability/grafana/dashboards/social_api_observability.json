@@ -48,7 +48,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "100 * (sum(rate(http_requests_total{status=~\"4xx|5xx\"}[$__rate_interval])) / clamp_min(sum(rate(http_requests_total[$__rate_interval])), 1e-9)) or vector(0)",
+          "expr": "100 * (sum(rate(http_requests_total{status=~\"4..|5..\"}[$__rate_interval])) / clamp_min(sum(rate(http_requests_total[$__rate_interval])), 1e-9)) or vector(0)",
           "legendFormat": "error %",
           "refId": "A"
         }
@@ -62,7 +62,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(increase(http_requests_total{status=\"4xx\"}[$__range])) or vector(0)",
+          "expr": "sum(increase(http_requests_total{status=~\"4..\"}[$__range])) or vector(0)",
           "legendFormat": "4xx",
           "refId": "A"
         }
@@ -76,7 +76,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(increase(http_requests_total{status=\"5xx\"}[$__range])) or vector(0)",
+          "expr": "sum(increase(http_requests_total{status=~\"5..\"}[$__range])) or vector(0)",
           "legendFormat": "5xx",
           "refId": "A"
         }

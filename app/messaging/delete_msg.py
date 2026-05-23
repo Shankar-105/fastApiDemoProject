@@ -7,10 +7,10 @@ from app.utils.socket_manager import manager
 from app.services import redis_service
 import json,asyncio
 from datetime import datetime
-import structlog
+import logging
 
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 router=APIRouter(
     prefix="/messaging",
@@ -55,7 +55,7 @@ async def delete_for_everyone(
     sender_id: int,
     receiver_id: int,
     ):
-    logger.info("deleting_message_everyone", message_id=message_id, sender_id=sender_id, receiver_id=receiver_id)
+    logger.info("Deleting message for everyone", extra={"extra_info": {"message_id": message_id, "sender_id": sender_id, "receiver_id": receiver_id}})
     # Atomic transition prevents duplicate broadcasts during retries/concurrency.
     update_result = await db.execute(
         update(models.Message)
@@ -67,7 +67,7 @@ async def delete_for_everyone(
         .values(is_deleted_for_everyone=True)
     )
     if not update_result.rowcount:
-        logger.warning("delete_message_everyone_failed_not_found", message_id=message_id, sender_id=sender_id)
+        logger.warning("Delete-for-everyone failed: message not found", extra={"extra_info": {"message_id": message_id, "sender_id": sender_id}})
         return
 
     await db.commit()
@@ -78,16 +78,16 @@ async def delete_for_everyone(
         "is_deleted_for_everyone":True,
         "receiver_id": receiver_id
     }
-    logger.debug("delete_message_payload_prepared", message_id=message_id, sender_id=sender_id, receiver_id=receiver_id)
+    logger.debug("Prepared delete-for-everyone payload", extra={"extra_info": {"message_id": message_id, "sender_id": sender_id, "receiver_id": receiver_id}})
     
     sender_payload = dict(payload)
     sender_payload["receiver_id"] = sender_id
     try:
         await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
         await redis_service.redis_client.publish("chat:messages", json.dumps(payload))
-        logger.info("delete_message_published_redis", message_id=message_id, sender_id=sender_id, receiver_id=receiver_id)
+        logger.info("Delete message published to Redis", extra={"extra_info": {"message_id": message_id, "sender_id": sender_id, "receiver_id": receiver_id}})
     except Exception as e:
-        logger.warning("delete_message_publish_redis_failed", message_id=message_id, sender_id=sender_id, receiver_id=receiver_id, error=str(e))
+        logger.warning("Failed to publish delete message to Redis", extra={"extra_info": {"message_id": message_id, "sender_id": sender_id, "receiver_id": receiver_id, "error": str(e)}})
         # Fallback to local sends
         try:
             await manager.send_json_to_user(payload, receiver_id)

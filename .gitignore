@@ -76,7 +76,3 @@ AZURE_INTEGRATION.md
 
 # avoid celery-beat schedules
 celerybeat-schedule
-
-# avoid codegraph and its extensions
-.codegraph/
-.cursor/

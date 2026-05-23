@@ -18,12 +18,12 @@
 
 import redis.asyncio as aioredis
 import json
-import structlog
+import logging
 from typing import Any, Optional
 from app.config import settings
 
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 #  1. CREATE THE ASYNC REDIS CLIENT 
 # This is similar to how db.py creates the SQLAlchemy engine.

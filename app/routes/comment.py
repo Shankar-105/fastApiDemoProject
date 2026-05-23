@@ -6,25 +6,25 @@ from app.models import NotificationType
 from app.services.rate_limit_service import comment_limiter
 from app.services.redis_service import get_cache, set_cache, delete_cache_pattern, increment_cache_version
 from app.tasks.notification_tasks import create_notification_task
-import structlog
+import logging
 
 router=APIRouter(
     prefix="",
     tags=['Comments']
 )
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 @router.post("/posts/{post_id}/comments", status_code=status.HTTP_201_CREATED, response_model=sch.CommentDetailResponse)
 async def create_comment(post_id:int, comment:sch.CommentCreateRequest=Body(...), db:AsyncSession=Depends(db.getDb), currentUser: models.User = Depends(oauth2.getCurrentUser), _:None=Depends(comment_limiter)):
-    logger.info("create_comment_attempt", user_id=currentUser.id, post_id=post_id)
+    logger.info(f"User {currentUser.id} creating comment on post {post_id}")
     result = await db.execute(select(models.Post).where(models.Post.id == post_id))
     post = result.scalars().first()
     if not post:
-        logger.warning("create_comment_post_not_found", post_id=post_id)
+        logger.warning(f"Comment creation failed - post not found: {post_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Post with id {post_id} not found")
     if not post.enable_comments:
-        logger.warning("create_comment_disabled", post_id=post_id)
+        logger.warning(f"Comment creation failed - comments disabled on post {post_id}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"this post has comments disabled")
     new_comment =models.Comments(post_id=post_id,user_id=currentUser.id,comment_content=comment.content)
     db.add(new_comment)
@@ -50,7 +50,7 @@ async def create_comment(post_id:int, comment:sch.CommentCreateRequest=Body(...)
         profile_pic=currentUser.profile_picture
     )
     
-    logger.info("create_comment_success", user_id=currentUser.id, comment_id=new_comment.id, post_id=post_id)
+    logger.info(f"User {currentUser.id} created comment {new_comment.id} on post {post_id}")
     return sch.CommentDetailResponse(
         id=new_comment.id,
         post_id=new_comment.post_id,
@@ -62,27 +62,27 @@ async def create_comment(post_id:int, comment:sch.CommentCreateRequest=Body(...)
 
 @router.delete("/comments/{commentId}", status_code=status.HTTP_200_OK, response_model=sch.SuccessResponse)
 async def delete_comment(commentId:int, db:AsyncSession=Depends(db.getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
-    logger.info("delete_comment_attempt", user_id=currentUser.id, comment_id=commentId)
+    logger.info(f"User {currentUser.id} deleting comment {commentId}")
     result=await db.execute(select(models.Comments).where(and_(models.Comments.id==commentId,models.Comments.user_id==currentUser.id)))
     commentTodelete=result.scalars().first()
     if not commentTodelete:
-        logger.warning("delete_comment_failed", user_id=currentUser.id, comment_id=commentId, reason="not_found_or_unauthorized")
+        logger.warning(f"Comment deletion failed - comment {commentId} not found or no permission")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"comment with Id {commentId} not Found") 
     post_id = commentTodelete.post_id
     await db.delete(commentTodelete)
     await db.commit()
     await delete_cache_pattern(f"comments:post:{post_id}:*")
     await delete_cache_pattern(f"post:{post_id}:*")
-    logger.info("delete_comment_success", user_id=currentUser.id, comment_id=commentId)
+    logger.info(f"User {currentUser.id} deleted comment {commentId}")
     return sch.SuccessResponse(message=f"Comment {commentId} deleted successfully")
 
 @router.patch("/comments/{commentId}", status_code=status.HTTP_200_OK, response_model=sch.CommentDetailResponse)
 async def update_comment(commentId:int, request:sch.CommentUpdateRequest=Body(...), db:AsyncSession=Depends(db.getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
-    logger.info("update_comment_attempt", user_id=currentUser.id, comment_id=commentId)
+    logger.info(f"User {currentUser.id} updating comment {commentId}")
     result=await db.execute(select(models.Comments).where(and_(models.Comments.id==commentId,models.Comments.user_id==currentUser.id)))
     commentToBeEdited=result.scalars().first()
     if not commentToBeEdited:
-        logger.warning("update_comment_failed", user_id=currentUser.id, comment_id=commentId, reason="not_found_or_unauthorized")
+        logger.warning(f"Comment update failed - comment {commentId} not found or no permission")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"comment with Id {commentId} not Found")
     commentToBeEdited.comment_content=request.comment_content
     await db.commit()
@@ -96,7 +96,7 @@ async def update_comment(commentId:int, request:sch.CommentUpdateRequest=Body(..
         profile_pic=currentUser.profile_picture
     )
     
-    logger.info("update_comment_success", user_id=currentUser.id, comment_id=commentId)
+    logger.info(f"User {currentUser.id} updated comment {commentId}")
     return sch.CommentDetailResponse(
         id=commentToBeEdited.id,
         post_id=commentToBeEdited.post_id,
@@ -111,11 +111,11 @@ async def get_post_comments(post_id:int, limit:int=Query(10, ge=1, le=100), offs
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser)
     ):
-    logger.debug("fetching_comments", post_id=post_id, limit=limit, offset=offset)
+    logger.debug(f"Fetching comments for post {post_id}, limit: {limit}, offset: {offset}")
     cache_key = f"comments:post:{post_id}:{offset}:{limit}"
     cached = await get_cache(cache_key)
     if cached:
-        logger.info("comments_cache_hit", post_id=post_id)
+        logger.info(f"Comments for post {post_id} retrieved from cache")
         return cached
 
     commentsResult=await db.execute(
@@ -169,5 +169,5 @@ async def get_post_comments(post_id:int, limit:int=Query(10, ge=1, le=100), offs
         pagination=pagination
     )
     await set_cache(cache_key, result.model_dump(mode="json"), ttl=30)
-    logger.info("comments_retrieved_db", post_id=post_id, count=len(commentsResponse))
+    logger.info(f"Comments for post {post_id} retrieved from DB, count: {len(commentsResponse)}")
     return result

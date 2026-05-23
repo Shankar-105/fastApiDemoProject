@@ -1,111 +1,152 @@
 import logging
 import sys
-from typing import Any, Dict, List
-import structlog
-from structlog.types import Processor
+from typing import Any, Dict, Optional
+import json
+from datetime import datetime
 from opentelemetry import trace
-from app.config import settings
+from contextvars import ContextVar
 
-def add_otel_trace_id(logger: Any, method_name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+# Context variables for binding request-specific data
+user_id_ctx: ContextVar[Optional[int]] = ContextVar("user_id", default=None)
+request_id_ctx: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
+
+class StructuredJSONFormatter(logging.Formatter):
     """
-    Adds OpenTelemetry trace and span IDs to the log event.
+    JSON formatter for structured production logging.
     """
-    span = trace.get_current_span()
-    if span and span.get_span_context().is_valid:
+    def format(self, record: logging.LogRecord) -> str:
+        span = trace.get_current_span()
         span_context = span.get_span_context()
-        event_dict["trace_id"] = format(span_context.trace_id, "032x")
-        event_dict["span_id"] = format(span_context.span_id, "016x")
-    return event_dict
+        
+        log_data: Dict[str, Any] = {
+            "timestamp": datetime.fromtimestamp(record.created).isoformat(),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "logger": record.name,
+            "module": record.module,
+            "func_name": record.funcName,
+            "line_no": record.lineno,
+        }
 
-def drop_color_if_prod(logger: Any, method_name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Ensure no color codes in production JSON logs.
-    """
-    if settings.production_mode:
-        event_dict.pop("_record", None)
-        event_dict.pop("_from_structlog", None)
-    return event_dict
+        user_id = user_id_ctx.get()
+        if user_id:
+            log_data["user_id"] = user_id
+        
+        request_id = request_id_ctx.get()
+        if request_id:
+            log_data["request_id"] = request_id
 
-from celery.signals import after_setup_logger, after_setup_task_logger
+        if span_context and span_context.is_valid:
+            log_data["trace_id"] = format(span_context.trace_id, "032x")
+            log_data["span_id"] = format(span_context.span_id, "016x")
 
-def setup_logging():
+        if hasattr(record, "extra_info"):
+            log_data.update(record.extra_info)
+
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+
+        return json.dumps(log_data)
+
+class PrettyConsoleFormatter(logging.Formatter):
     """
-    Configures structlog for the entire application.
-    Supports development (pretty console) and production (structured JSON).
+    Pretty console formatter for development.
     """
+    grey = "\x1b[38;20m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    cyan = "\x1b[36;20m"
+    reset = "\x1b[0m"
     
-    # Common processors for both modes
-    shared_processors: List[Processor] = [
-        # Merges context variables set via structlog.contextvars.bind_contextvars()
-        structlog.contextvars.merge_contextvars,
-        # Adds log level (info, debug, etc.)
-        structlog.processors.add_log_level,
-        # Adds timestamp
-        structlog.processors.TimeStamper(fmt="iso"),
-        # Adds OpenTelemetry trace info
-        add_otel_trace_id,
-        # If an exception is passed, it renders it nicely
-        structlog.processors.format_exc_info,
-        # Adds information about where the log was called
-        structlog.processors.CallsiteParameterAdder(
-            {
-                structlog.processors.CallsiteParameter.FILENAME,
-                structlog.processors.CallsiteParameter.FUNC_NAME,
-                structlog.processors.CallsiteParameter.LINENO,
-            }
-        ),
-    ]
+    FORMATS = {
+        logging.DEBUG: grey + "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s" + reset,
+        logging.INFO: cyan + "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s" + reset,
+        logging.WARNING: yellow + "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s" + reset,
+        logging.ERROR: red + "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s" + reset,
+        logging.CRITICAL: bold_red + "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s" + reset
+    }
 
-    if settings.production_mode:
-        # Production Mode: Optimized for log aggregators (Loki/ELK)
-        # - Single-line JSON
-        # - No colors
-        # - INFO level default
-        processors = shared_processors + [
-            structlog.processors.dict_tracebacks,
-            structlog.processors.JSONRenderer(),
-        ]
-        log_level = logging.INFO
-    else:
-        # Development Mode: Optimized for humans
-        # - Pretty colors
-        # - Multiline tracebacks
-        # - DEBUG level default
-        processors = shared_processors + [
-            structlog.dev.ConsoleRenderer(colors=True),
-        ]
-        log_level = logging.DEBUG
+    def format(self, record: logging.LogRecord) -> str:
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt, datefmt="%H:%M:%S")
+        
+        message = formatter.format(record)
+        
+        context_parts = []
+        user_id = user_id_ctx.get()
+        if user_id:
+            context_parts.append(f"user_id={user_id}")
+        
+        request_id = request_id_ctx.get()
+        if request_id:
+            context_parts.append(f"req_id={request_id}")
+            
+        if context_parts:
+            message += f" \033[90m({', '.join(context_parts)})\033[0m"
+            
+        return message
 
-    if settings.benchmark_mode_enabled:
-        log_level = logging.ERROR
-
-    structlog.configure(
-        processors=processors,
-        context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
-        wrapper_class=structlog.make_filtering_bound_logger(log_level),
-        cache_logger_on_first_use=True,
-    )
-
-    # Pipe standard library logging (uvicorn, etc.) into structlog
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=log_level,
-    )
+def setup_production_logging():
+    """
+    Configures structured JSON logging for production environment.
+    """
+    from app.config import settings
     
-    # Reduce noise from 3rd party libraries
+    root_logger = logging.getLogger()
+    
+    if root_logger.handlers:
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+
+    handler = logging.StreamHandler(sys.stdout)
+    root_logger.setLevel(logging.INFO)
+    handler.setFormatter(StructuredJSONFormatter())
+    root_logger.addHandler(handler)
+    
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-    logging.getLogger("aiosmtplib").setLevel(logging.WARNING)
+    
+    return root_logger
 
-@after_setup_logger.connect
-@after_setup_task_logger.connect
-def setup_celery_logging(logger, **kwargs):
+def setup_development_logging():
     """
-    Ensure Celery workers use structlog.
+    Configures pretty console logging for development environment.
     """
-    setup_logging()
+    from app.config import settings
+    
+    root_logger = logging.getLogger()
+    
+    if root_logger.handlers:
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
 
-# Export a default logger for quick use, though get_logger(__name__) is preferred
-logger = structlog.get_logger("app")
+    handler = logging.StreamHandler(sys.stdout)
+    root_logger.setLevel(logging.DEBUG)
+    handler.setFormatter(PrettyConsoleFormatter())
+    root_logger.addHandler(handler)
+    
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    
+    return root_logger
+
+def setup_benchmark_logging():
+    """
+    Disables logging completely for benchmark mode.
+    """
+    root_logger = logging.getLogger()
+    
+    if root_logger.handlers:
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(PrettyConsoleFormatter())
+    root_logger.addHandler(handler)
+    root_logger.setLevel(logging.ERROR)
+    
+    return root_logger
+
+# Initialize logger
+logger = logging.getLogger("app")

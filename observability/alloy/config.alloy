@@ -1,54 +1,40 @@
 // --- LOGS PIPELINE (Loki) ---
 
-// Discover Docker containers for observability.
+// Discover Docker containers
 discovery.docker "linux" {
   host = "unix:///var/run/docker.sock"
-}
-
-// Discover only the FastAPI API container for the Loki dashboard.
-discovery.docker "api" {
-  host = "unix:///var/run/docker.sock"
-
-  filter {
-    name   = "name"
-    values = ["social_api"]
-  }
 }
 
 // Scrape logs from discovered containers
 loki.source.docker "local_logs" {
   host       = "unix:///var/run/docker.sock"
-  targets    = discovery.docker.api.targets
-  labels     = {container = "api"}
-  forward_to = [loki.process.development_logs.receiver]
+  targets    = discovery.docker.linux.targets
+  forward_to = [loki.process.structured_logs.receiver]
 }
 
-// Process logs for DEVELOPMENT (Regex/Plain text)
-loki.process "development_logs" {
+// Process and Parse JSON fields
+loki.process "structured_logs" {
   forward_to = [loki.write.local_loki.receiver]
 
-  // Strip ANSI color codes from development logs
-  stage.decolorize {}
-
-  // Parse the development formatter output.
-  // Format: %H:%M:%S | LEVEL | LOGGER | MESSAGE (req_id=...)
-  stage.regex {
-    expression = `^(?P<time>\d{2}:\d{2}:\d{2}) \| (?P<level>[A-Z\s]+) \| (?P<logger>[\w.]+) \| (?P<message>.*)$`
+  stage.json {
+    expressions = {
+      level      = "level",
+      msg        = "message",
+      req_id     = "request_id",
+      user_id    = "user_id",
+      trace_id   = "trace_id",
+      err_code   = "error_code",
+    }
   }
 
-  // Extract metadata from the message
-  stage.regex {
-    expression = `\(req_id=(?P<req_id>[^,)]+)(, user_id=(?P<user_id>[^,)]+))?(, trace_id=(?P<trace_id>[^)]+))?\)`
-    source     = "message"
-  }
-
-  // Set labels from the regex capture groups
+  // Attach extracted fields as searchable labels
   stage.labels {
     values = {
       level    = null,
       req_id   = null,
       user_id  = null,
       trace_id = null,
+      err_code = null,
     }
   }
 }
@@ -64,7 +50,6 @@ loki.write "local_loki" {
 
 // Scrape metrics from FastAPI
 prometheus.scrape "fastapi" {
-  scrape_interval = "15s"
   targets = [
     {"__address__" = "api:8000"},
   ]
@@ -74,7 +59,6 @@ prometheus.scrape "fastapi" {
 
 // Scrape metrics from Alloy itself
 prometheus.scrape "alloy" {
-  scrape_interval = "15s"
   targets = [
     {"__address__" = "localhost:12345"},
   ]
@@ -90,6 +74,9 @@ prometheus.remote_write "local_prometheus" {
 
 // --- TRACES PIPELINE (Tempo) ---
 
+// Receive OTLP traces from Python app.
+// We enable both gRPC (4317) and HTTP (4318) for maximum compatibility.
+// Our FastAPI app specifically uses gRPC on 4317.
 otelcol.receiver.otlp "default" {
   grpc {
     endpoint = "0.0.0.0:4317"
@@ -103,18 +90,19 @@ otelcol.receiver.otlp "default" {
   }
 }
 
+// Batch traces for efficiency
 otelcol.processor.batch "default" {
   output {
-    traces = [otelcol.exporter.otlp.tempo.input]
+    traces  = [otelcol.exporter.otlp.tempo.input]
   }
 }
 
+// Ship to Tempo
 otelcol.exporter.otlp "tempo" {
   client {
     endpoint = "tempo:4317"
     tls {
       insecure = true
-      insecure_skip_verify = true
     }
   }
 }

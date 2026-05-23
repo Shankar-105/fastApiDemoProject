@@ -7,17 +7,17 @@ from app.utils.time_formatting import format_timestamp
 from app.services import redis_service
 from datetime import datetime
 import json
-import structlog
+import logging
 
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
                
 async def messageUser(
     payload:schemas.MessageSchema,
     user_id:int,
     db:AsyncSession
 ):    
-    logger.info("creating_direct_message", sender_id=user_id, receiver_id=payload.to)
+    logger.info("Creating direct message", extra={"extra_info": {"sender_id": user_id, "receiver_id": payload.to}})
     msg = models.Message(
         content=payload.content,
         sender_id=user_id,
@@ -28,7 +28,7 @@ async def messageUser(
     db.add(msg)
     await db.commit()
     # No refresh needed - expire_on_commit=False keeps object attributes
-    logger.info("direct_message_saved", sender_id=user_id, receiver_id=payload.to)
+    logger.info("Direct message added to db", extra={"extra_info": {"sender_id": user_id, "receiver_id": payload.to}})
 
     reply_payload = {
         "id": msg.id,
@@ -52,9 +52,9 @@ async def messageUser(
     try:
         await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
         await redis_service.redis_client.publish("chat:messages", json.dumps(reply_payload))
-        logger.info("direct_message_published_redis", message_id=msg.id, sender_id=user_id, receiver_id=payload.to)
+        logger.info("Direct message published to Redis", extra={"extra_info": {"message_id": msg.id, "sender_id": user_id, "receiver_id": payload.to}})
     except Exception as e:
-        logger.warning("direct_message_publish_redis_failed", message_id=msg.id, sender_id=user_id, receiver_id=payload.to, error=str(e))
+        logger.warning("Failed to publish direct message to Redis", extra={"extra_info": {"message_id": msg.id, "sender_id": user_id, "receiver_id": payload.to, "error": str(e)}})
         # Best-effort local delivery when Redis is down
         try:
             receiver_id = msg.receiver_id
@@ -67,9 +67,9 @@ async def messageUser(
                 )
                 await db.commit()
             else:
-                logger.debug("receiver_offline_dm_saved", message_id=msg.id, receiver_id=payload.to)
+                logger.debug("Receiver offline; direct message remains in DB", extra={"extra_info": {"message_id": msg.id, "receiver_id": payload.to}})
         except Exception as e2:
-            logger.warning("direct_message_local_send_failed", message_id=msg.id, error=str(e2))
+            logger.warning("Local send failed for direct message", extra={"extra_info": {"message_id": msg.id, "error": str(e2)}})
 
         try:
             await manager.send_personal_message(sender_payload, user_id)

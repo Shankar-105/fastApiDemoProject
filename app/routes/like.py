@@ -8,25 +8,25 @@ from sqlalchemy.exc import IntegrityError
 from app.models import NotificationType
 from app.services.redis_service import delete_cache_pattern, increment_cache_version
 from app.tasks.notification_tasks import create_notification_task
-import structlog
+import logging
 
 router=APIRouter(
     prefix="",
     tags=['Votes']
 )
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 @router.post("/posts/{postId}/votes", status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
 async def voteOnPost(postId:int, post:sch.VoteRequest=Body(...), db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    logger.info("vote_post_attempt", user_id=currentUser.id, post_id=postId, choice=post.choice)
+    logger.info(f"User {currentUser.id} voting on post {postId} with choice {post.choice}")
     if post.post_id != postId:
-        logger.warning("vote_post_mismatch", post_id_path=postId, post_id_payload=post.post_id)
+        logger.warning(f"Vote failed - path/post_id mismatch: {postId} vs {post.post_id}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path postId and request post_id must match")
     result=await db.execute(select(models.Post).where(models.Post.id==post.post_id))
     queriedPost=result.scalars().first()
     if not queriedPost:
-        logger.warning("vote_post_not_found", post_id=post.post_id)
+        logger.warning(f"Vote failed - post not found: {post.post_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"post with Id {post.post_id} not Found")
     voteResult=await db.execute(select(models.Votes).where(and_(models.Votes.post_id==post.post_id,models.Votes.user_id==currentUser.id)))
     currentVote=voteResult.scalars().first()
@@ -40,7 +40,7 @@ async def voteOnPost(postId:int, post:sch.VoteRequest=Body(...), db:AsyncSession
                 await delete_cache_pattern(f"post:{post.post_id}:*")
                 await increment_cache_version("feed:home")
                 await increment_cache_version("feed:explore")
-                logger.info("vote_post_removed", user_id=currentUser.id, post_id=postId)
+                logger.info(f"User {currentUser.id} removed vote on post {postId}")
                 return sch.VoteResponse(message="Vote removed successfully", likes=likes, dislikes=dislikes)
             else:
                 currentVote.action = post.choice
@@ -50,7 +50,7 @@ async def voteOnPost(postId:int, post:sch.VoteRequest=Body(...), db:AsyncSession
                 await delete_cache_pattern(f"post:{post.post_id}:*")
                 await increment_cache_version("feed:home")
                 await increment_cache_version("feed:explore")
-                logger.info("vote_post_switched", user_id=currentUser.id, post_id=postId, choice=post.choice)
+                logger.info(f"User {currentUser.id} switched vote on post {postId} to {post.choice}")
                 return sch.VoteResponse(message="Vote switched successfully", likes=likes, dislikes=dislikes)
         else:
             newVote = models.Votes(
@@ -74,22 +74,22 @@ async def voteOnPost(postId:int, post:sch.VoteRequest=Body(...), db:AsyncSession
                     entity_id=post.post_id,
                     entity_type="post",
                 )
-            logger.info("vote_post_added", user_id=currentUser.id, post_id=postId, choice=post.choice)
+            logger.info(f"User {currentUser.id} added vote on post {postId}")
             return sch.VoteResponse(message="New vote added successfully", likes=likes, dislikes=dislikes)
     except IntegrityError:
         await db.rollback()
-        logger.error("vote_post_integrity_error", user_id=currentUser.id, post_id=postId)
+        logger.error(f"Vote failed - integrity error for user {currentUser.id} on post {postId}")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Database error, please try again")
 @router.post("/comments/{commentId}/votes", status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
 async def likeAComment(commentId:int, comment:sch.CommentVoteRequest=Body(...), db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    logger.info("vote_comment_attempt", user_id=currentUser.id, comment_id=commentId, choice=comment.choice)
+    logger.info(f"User {currentUser.id} voting on comment {commentId} with choice {comment.choice}")
     if comment.comment_id != commentId:
-        logger.warning("vote_comment_mismatch", comment_id_path=commentId, comment_id_payload=comment.comment_id)
+        logger.warning(f"Comment vote failed - path/comment_id mismatch: {commentId} vs {comment.comment_id}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path commentId and request comment_id must match")
     result=await db.execute(select(models.Comments).where(models.Comments.id==comment.comment_id))
     queriedComment=result.scalars().first()
     if not queriedComment:
-        logger.warning("vote_comment_not_found", comment_id=comment.comment_id)
+        logger.warning(f"Comment vote failed - comment not found: {comment.comment_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"comment with Id {comment.comment_id} not Found")
     voteResult=await db.execute(select(models.CommentVotes).where(and_(models.CommentVotes.comment_id==comment.comment_id,models.CommentVotes.user_id==currentUser.id)))
     currentVote=voteResult.scalars().first()
@@ -100,7 +100,7 @@ async def likeAComment(commentId:int, comment:sch.CommentVoteRequest=Body(...), 
                 await db.commit()
                 count_result = await db.execute(select(models.Comments.likes).where(models.Comments.id==comment.comment_id))
                 likes = count_result.scalar()
-                logger.info("vote_comment_removed", user_id=currentUser.id, comment_id=commentId)
+                logger.info(f"User {currentUser.id} removed vote on comment {commentId}")
                 return sch.VoteResponse(message="Vote removed successfully", likes=likes)
         else:
             newVote=models.CommentVotes(
@@ -112,9 +112,9 @@ async def likeAComment(commentId:int, comment:sch.CommentVoteRequest=Body(...), 
             await db.commit()
             count_result = await db.execute(select(models.Comments.likes).where(models.Comments.id==comment.comment_id))
             likes = count_result.scalar()
-            logger.info("vote_comment_added", user_id=currentUser.id, comment_id=commentId, choice=comment.choice)
+            logger.info(f"User {currentUser.id} added vote on comment {commentId}")
             return sch.VoteResponse(message="New vote added successfully", likes=likes)
     except IntegrityError:
         await db.rollback()
-        logger.error("vote_comment_integrity_error", user_id=currentUser.id, comment_id=commentId)
+        logger.error(f"Comment vote failed - integrity error for user {currentUser.id} on comment {commentId}")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Database error, please try again")

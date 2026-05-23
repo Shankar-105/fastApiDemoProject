@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import os,uuid
 import asyncio
-import structlog
+import logging
 from app.config import settings
 from app.services.blob_service import upload_blob, delete_blob, get_blob_url
 from app.utils.exceptions import ResourceNotFoundException, ValidationException
@@ -21,16 +21,16 @@ router=APIRouter(
     tags=['Posts']
 )
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 # gets a specific post with id -> {postId}
 @router.get("/{postId}", response_model=sch.PostDetailResponse)
 async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    logger.debug("fetching_post", post_id=postId, user_id=currentUser.id)
+    logger.debug(f"Fetching post {postId} for user {currentUser.id}")
     cache_key = f"post:{postId}:{currentUser.id}"
     cached = await get_cache(cache_key)
     if cached:
-        logger.info("post_cache_hit", post_id=postId, user_id=currentUser.id)
+        logger.info(f"Post {postId} retrieved from cache for user {currentUser.id}")
         return cached
 
     result=await db.execute(
@@ -40,7 +40,7 @@ async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:model
     )
     reqPost=result.scalars().first()
     if reqPost==None:
-        logger.warning("post_not_found", post_id=postId)
+        logger.warning(f"Post {postId} not found")
         raise ResourceNotFoundException(resource="Post", identifier=postId)
     
     await queue_post_view(postId, currentUser.id)
@@ -86,7 +86,7 @@ async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:model
         owner=owner
     )
     await set_cache(cache_key, result_response.model_dump(mode="json"), ttl=120)
-    logger.info("post_retrieved_db", post_id=postId, user_id=currentUser.id)
+    logger.info(f"Post {postId} retrieved from DB for user {currentUser.id}")
     return result_response
 
 
@@ -100,12 +100,12 @@ async def create_post(
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     _:None=Depends(create_post_limiter),
 ):
-    logger.info("create_post_attempt", user_id=currentUser.id)
+    logger.info(f"User {currentUser.id} creating new post")
     media_path = None
     media_type = None
     if media:
         if media.content_type not in ["image/jpeg", "image/png", "video/mp4"]:
-            logger.warning("create_post_invalid_media", user_id=currentUser.id, content_type=media.content_type)
+            logger.warning(f"User {currentUser.id} attempted invalid media type: {media.content_type}")
             raise ValidationException("Only JPG, PNG, MP4 allowed")
         ext=media.filename.split(".")[-1]
         filename=f"{uuid.uuid4()}.{ext}"
@@ -139,7 +139,7 @@ async def create_post(
         profile_pic=currentUser.profile_picture
     )
     
-    logger.info("create_post_success", user_id=currentUser.id, post_id=new_post.id)
+    logger.info(f"User {currentUser.id} created post {new_post.id}")
     return sch.PostDetailResponse(
         id=new_post.id,
         title=new_post.title,
@@ -158,11 +158,11 @@ async def create_post(
 # delets a specific post with the mentioned id -> {id}
 @router.delete("/{postId}", response_model=sch.SuccessResponse)
 async def delete_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    logger.info("delete_post_attempt", user_id=currentUser.id, post_id=postId)
+    logger.info(f"User {currentUser.id} attempting to delete post {postId}")
     result=await db.execute(select(models.Post).where(and_(models.Post.id==postId,models.Post.user_id==currentUser.id)))
     postToDelete=result.scalars().first()
     if not postToDelete:
-        logger.warning("delete_post_failed", user_id=currentUser.id, post_id=postId, reason="not_found_or_unauthorized")
+        logger.warning(f"User {currentUser.id} failed to delete post {postId} - not found or no permission")
         raise ResourceNotFoundException(resource="Post", identifier=postId)
     if postToDelete.media_path:
         await delete_blob("posts-media", postToDelete.media_path)
@@ -174,13 +174,13 @@ async def delete_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:mo
     await increment_cache_version("feed:explore")
     await delete_cache_pattern(f"user:posts:{currentUser.id}:*")
     await delete_cache_pattern(f"comments:post:{postId}:*")
-    logger.info("delete_post_success", user_id=currentUser.id, post_id=postId)
+    logger.info(f"User {currentUser.id} successfully deleted post {postId}")
     return sch.SuccessResponse(message=f"Post {postToDelete.id} deleted successfully")
 
 # update a specific post with id -> {id}
 @router.put("/{postId}", response_model=sch.PostDetailResponse)
 async def update_post(postId:int, post:sch.PostUpdateRequest, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
-    logger.info("update_post_attempt", user_id=currentUser.id, post_id=postId)
+    logger.info(f"User {currentUser.id} attempting to update post {postId}")
     result=await db.execute(
         select(models.Post)
         .options(selectinload(models.Post.user))
@@ -188,7 +188,7 @@ async def update_post(postId:int, post:sch.PostUpdateRequest, db:AsyncSession=De
     )
     postToUpdate=result.scalars().first()
     if not postToUpdate:
-        logger.warning("update_post_failed", user_id=currentUser.id, post_id=postId, reason="not_found")
+        logger.warning(f"User {currentUser.id} failed to update post {postId} - not found")
         raise ResourceNotFoundException(resource="Post", identifier=postId)
     update_data = post.dict(exclude_unset=True)
     for key, value in update_data.items():
@@ -209,7 +209,7 @@ async def update_post(postId:int, post:sch.PostUpdateRequest, db:AsyncSession=De
         profile_pic=postToUpdate.user.profile_picture
     )
     
-    logger.info("update_post_success", user_id=currentUser.id, post_id=postId)
+    logger.info(f"User {currentUser.id} successfully updated post {postId}")
     return sch.PostDetailResponse(
         id=postToUpdate.id,
         title=postToUpdate.title,

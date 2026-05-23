@@ -17,7 +17,7 @@ datasources:
         datasourceUid: loki
       tracesToLogsV2:
         datasourceUid: loki
-        group_by: ["trace_id"]
+        group_by: ["service_name", "user_id"]
         filter_by_trace_id: true
         filter_by_span_id: false
       tracesToMetrics:

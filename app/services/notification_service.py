@@ -1,5 +1,5 @@
 import json
-import structlog
+import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
@@ -30,7 +30,7 @@ _NOTIFICATION_TEXT = {
 _NOTIFICATION_CHANNEL = "notifications:messages"
 
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 
 async def create_notification(
@@ -42,12 +42,16 @@ async def create_notification(
     entity_type: str | None = None,
 ) -> None:
     logger.info(
-        "notification_creating",
-        actor_id=actor_id,
-        owner_id=owner_id,
-        notif_type=notif_type.value,
-        entity_id=entity_id,
-        entity_type=entity_type,
+        "Creating notification",
+        extra={
+            "extra_info": {
+                "actor_id": actor_id,
+                "owner_id": owner_id,
+                "notif_type": notif_type.value,
+                "entity_id": entity_id,
+                "entity_type": entity_type,
+            }
+        },
     )
     # Belt-and-suspenders self-notification guard.
     # The caller already checks this, but if this function is ever called from
@@ -99,17 +103,15 @@ async def create_notification(
                 json.dumps(payload),
             )
             logger.info(
-                "notification_published_to_redis",
-                notification_id=notif.id,
-                owner_id=owner_id,
+                "Notification published to Redis",
+                extra={"extra_info": {"notification_id": notif.id, "owner_id": owner_id}},
             )
         except Exception:
             # Redis is the cross-worker delivery path; fall back to the local
             # socket manager only if pub/sub is unavailable.
             logger.warning(
-                "notification_publish_failed_falling_back",
-                notification_id=notif.id,
-                owner_id=owner_id,
+                "Redis publish failed for notification; falling back to socket manager",
+                extra={"extra_info": {"notification_id": notif.id, "owner_id": owner_id}},
             )
             await manager.send_personal_message(payload, owner_id)
 
@@ -125,10 +127,8 @@ async def get_notifications(
 ) -> list[Notification]:
     """Return paginated notifications for a user, newest first."""
     logger.debug(
-        "fetching_notifications",
-        user_id=user_id,
-        limit=limit,
-        offset=offset,
+        "Fetching notifications",
+        extra={"extra_info": {"user_id": user_id, "limit": limit, "offset": offset}},
     )
     result = await db.execute(
         select(Notification)

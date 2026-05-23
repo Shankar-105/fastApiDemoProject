@@ -3,18 +3,18 @@ from app import models,db,schemas as sch,oauth2
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func
 from app.services.blob_service import get_blob_url
-import structlog
+import logging
 
 router=APIRouter(
     prefix="",
     tags=['Search']
 )
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 @router.get("/search", status_code=status.HTTP_202_ACCEPTED, response_model=sch.SearchResultResponse)
 async def search(searchParams: sch.SearchRequest = Depends(), db: AsyncSession = Depends(db.getDb), currenUser: models.User = Depends(oauth2.getCurrentUser)):
-    logger.info("search_request", user_id=currenUser.id, query=searchParams.q, order_by=searchParams.orderBy)
+    logger.info(f"Search request from user {currenUser.id}: query='{searchParams.q}', orderBy='{searchParams.orderBy}'")
     if searchParams.q and searchParams.q.startswith("#"):
         hashtag = searchParams.q.lstrip("#")
         hashtag_filter = models.Post.hashtags.ilike(f"%{hashtag}%")
@@ -42,7 +42,7 @@ async def search(searchParams: sch.SearchRequest = Depends(), db: AsyncSession =
                 created_at=post.created_at
             ))
         
-        logger.info("hashtag_search_completed", query=searchParams.q, results_count=total)
+        logger.info(f"Hashtag search completed: '{searchParams.q}', results: {total}")
         return sch.SearchResultResponse(
             result_type="posts",
             posts=posts,
@@ -71,12 +71,12 @@ async def search(searchParams: sch.SearchRequest = Depends(), db: AsyncSession =
                 profile_pic=user.profile_picture
             ))
         
-        logger.info("username_search_completed", query=searchParams.q, results_count=total)
+        logger.info(f"Username search completed: '{searchParams.q}', results: {total}")
         return sch.SearchResultResponse(
             result_type="users",
             users=users,
             total=total
         )
     else:
-        logger.warning("search_missing_query", user_id=currenUser.id)
+        logger.warning(f"Search failed - no query parameters provided by user {currenUser.id}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Query Parameters Required")

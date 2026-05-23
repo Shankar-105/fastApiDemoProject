@@ -10,10 +10,10 @@ from app.services import redis_service
 from datetime import datetime,timedelta,timezone
 from app.utils.time_formatting import format_timestamp
 import json
-import structlog
+import logging
 
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 router=APIRouter(
     prefix="/messaging",
@@ -22,7 +22,7 @@ router=APIRouter(
 
 @router.get("/messages/{msg_id}/can-edit", response_model=CanEditResponse)
 async def can_edit(msg_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
-    logger.debug("checking_edit_window", message_id=msg_id, user_id=currentUser.id)
+    logger.debug("Checking edit window", extra={"extra_info": {"message_id": msg_id, "user_id": currentUser.id}})
     result = await db.execute(
         select(models.Message).where(
             models.Message.id == msg_id,
@@ -40,7 +40,7 @@ async def can_edit(msg_id:int,db:AsyncSession=Depends(db.getDb),currentUser:mode
     return CanEditResponse(can_edit=True)
     
 async def edit_message(db:AsyncSession,message_id:int,new_content:str,sender_id:int,recv_id:int):
-    logger.info("editing_message", message_id=message_id, sender_id=sender_id, receiver_id=recv_id)
+    logger.info("Editing message", extra={"extra_info": {"message_id": message_id, "sender_id": sender_id, "receiver_id": recv_id}})
     result = await db.execute(
         select(models.Message).where(
             models.Message.id == message_id,
@@ -50,7 +50,7 @@ async def edit_message(db:AsyncSession,message_id:int,new_content:str,sender_id:
     message = result.scalars().first()
 
     if not message:
-        logger.warning("edit_message_not_found", message_id=message_id, sender_id=sender_id)
+        logger.warning("Edit message failed: message not found", extra={"extra_info": {"message_id": message_id, "sender_id": sender_id}})
         return None
 
     curr_time = datetime.now(timezone.utc)
@@ -65,7 +65,7 @@ async def edit_message(db:AsyncSession,message_id:int,new_content:str,sender_id:
             "reason": "edit_window_expired",
         }
         await manager.send_personal_message(payload, sender_id)
-        logger.warning("edit_message_window_expired", message_id=message_id, sender_id=sender_id)
+        logger.warning("Edit message denied: edit window expired", extra={"extra_info": {"message_id": message_id, "sender_id": sender_id}})
         return
 
     if message.content.strip() == new_content:
@@ -77,7 +77,7 @@ async def edit_message(db:AsyncSession,message_id:int,new_content:str,sender_id:
         }
         await manager.send_json_to_user(payload, recv_id)
         await manager.send_personal_message(payload, sender_id)
-        logger.debug("edit_message_content_unchanged", message_id=message_id, sender_id=sender_id)
+        logger.debug("Edit message skipped because content was unchanged", extra={"extra_info": {"message_id": message_id, "sender_id": sender_id}})
         return
 
     edit_window_floor = curr_time - timedelta(minutes=config.settings.max_edit_time)

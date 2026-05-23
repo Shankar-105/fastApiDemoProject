@@ -5,10 +5,10 @@ from app.utils.socket_manager import manager
 from app.messaging import delete_msg,delete_shares,dm,edit_msg,load_missed_msgs,msg_reaction,share_reaction,reply_msg,reply_to_share,media_msg,read_receipt
 import json
 import asyncio
-import structlog
+import logging
 
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 router = APIRouter(
     prefix="/messaging",
     tags=["Messaging"]

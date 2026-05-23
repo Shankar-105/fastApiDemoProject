@@ -2,7 +2,7 @@ import secrets
 import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
-import structlog
+import logging
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +12,7 @@ from app import models, oauth2
 from app.config import settings
 
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 
 def _hash_refresh_token(token_str: str) -> str:
@@ -23,7 +23,7 @@ async def create_refresh_token(
     db: AsyncSession, user_id: int, family_id: str | None = None
 ) -> str:
 
-    logger.info("refresh_token_creating", user_id=user_id)
+    logger.info("Creating refresh token", extra={"extra_info": {"user_id": user_id}})
     token_str = secrets.token_urlsafe(32)  # 43-char cryptographically random
     if family_id is None:
         family_id = str(uuid.uuid4())
@@ -46,7 +46,7 @@ async def rotate_refresh_token(
 
     from fastapi import HTTPException, status  # local import to avoid circular
     old_token_hash = _hash_refresh_token(old_token_str)
-    logger.info("refresh_token_rotating")
+    logger.info("Rotating refresh token")
 
     result = await db.execute(
         select(models.RefreshToken)

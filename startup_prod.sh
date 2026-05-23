@@ -2,13 +2,25 @@
 # Production/default startup script — balanced for real-world traffic
 set -e
 
-# Port Cleanup (only if running on host, but harmless in Docker)
-if command -v lsof >/dev/null 2>&1 ; then
-    if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null ; then
-        echo "⚠️ Port 8000 is busy, cleaning up existing processes..."
-        fuser -k 8000/tcp || true
-        sleep 2
-    fi
+# Activate virtual environment
+if [ -f "/app/venv/bin/activate" ]; then
+  source /app/venv/bin/activate
+elif [ -f "./venv/bin/activate" ]; then
+  source ./venv/bin/activate
+fi
+
+# Ensure local venv binaries are used when the script is executed directly
+export PATH="/app/venv/bin:$PATH"
+
+# start_prod.sh
+echo "⚙️  FastAPI Production Server"
+echo "────────────────────────────────────────"
+
+# Port Cleanup: Ensure 8000 is free
+if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null ; then
+    echo "⚠️ Port 8000 is busy, cleaning up existing processes..."
+    fuser -k 8000/tcp || true
+    sleep 2
 fi
 
 # Run migrations
@@ -18,7 +30,6 @@ alembic upgrade head
 export OTEL_CONSOLE_EXPORTER_ENABLED=false
 export BENCHMARK_MODE_ENABLED=false
 export PRODUCTION_MODE=true
-export COMPOSE_FILE=docker-compose.prod.yml
 
 # Use auto detection for max compatibility across platforms
 export UVICORN_LOOP="auto"

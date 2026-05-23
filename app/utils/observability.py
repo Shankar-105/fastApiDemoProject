@@ -1,12 +1,12 @@
+import logging
+import os
+import sys
 import time
 import uuid
-from urllib.parse import urlparse
-
-import structlog
-from structlog.contextvars import bind_contextvars, clear_contextvars
 from app.config import settings
 from fastapi import FastAPI
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -14,58 +14,26 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.utils.logging import setup_logging
+from app.utils.logging import (
+    request_id_ctx,
+    user_id_ctx,
+    setup_production_logging,
+    setup_development_logging,
+    setup_benchmark_logging
+)
 
-# Initialize logging as soon as this module is imported
-setup_logging()
-logger = structlog.get_logger(__name__)
+# Initialize logging based on environment
+if settings.benchmark_mode_enabled and not settings.production_mode:
+    setup_benchmark_logging()
+elif settings.production_mode:
+    setup_production_logging()
+else:
+    setup_development_logging()
 
-
-def _build_otlp_span_exporter():
-    """Build an OTLP span exporter from explicit environment configuration."""
-    protocol = (
-        settings.otel_exporter_otlp_protocol
-        or "grpc"
-    ).lower()
-
-    endpoint = (
-         settings.otel_exporter_otlp_endpoint
-    )
-
-    if not endpoint:
-        logger.info("otlp_traces_export_disabled", reason="no_endpoint_configured")
-        return None
-
-    if protocol in {"http", "http/protobuf", "http-protobuf", "protobuf"}:
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-
-        parsed = urlparse(endpoint if "://" in endpoint else f"http://{endpoint}")
-        base_url = f"{parsed.scheme}://{parsed.netloc or parsed.path}".rstrip("/")
-        trace_endpoint = (
-            base_url if base_url.endswith("/v1/traces") else f"{base_url}/v1/traces"
-        )
-        logger.info("configuring_otlp_tracing_http", endpoint=trace_endpoint)
-        return OTLPSpanExporter(endpoint=trace_endpoint, timeout=10)
-
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-
-    normalized_endpoint = endpoint
-    if "://" in normalized_endpoint:
-        parsed = urlparse(normalized_endpoint)
-        normalized_endpoint = parsed.netloc or parsed.path.lstrip("/")
-
-    logger.info("configuring_otlp_tracing_grpc", endpoint=normalized_endpoint)
-    return OTLPSpanExporter(
-        endpoint=normalized_endpoint,
-        insecure=True,
-        timeout=10,
-    )
+logger = logging.getLogger("app")
 
 class LoggingASGIMiddleware:
-    """
-    Improved ASGI middleware using structlog for structured request logging.
-    Injects request_id, trace_id into context and logs request results.
-    """
+    """Lightweight ASGI middleware that logs request timing and injects X-Trace-Id."""
 
     def __init__(self, app: FastAPI):
         self.app = app
@@ -81,73 +49,66 @@ class LoggingASGIMiddleware:
         req = Request(scope, receive=receive)
         start = time.perf_counter()
         status_code = None
-        
-        # Clear any leaked context from previous tasks and start fresh
-        clear_contextvars()
+        trace_id = "0" * 32
         
         # Generate or extract request ID
         request_id = req.headers.get("X-Request-Id", str(uuid.uuid4()))
+        request_id_token = request_id_ctx.set(request_id)
         
-        # Bind initial request context
-        bind_contextvars(
-            request_id=request_id,
-            method=req.method,
-            path=req.url.path,
-        )
+        # User ID context will be set by a separate dependency/middleware after auth
+        user_id_token = user_id_ctx.set(None)
 
         async def send_wrapper(message):
-            nonlocal status_code
+            nonlocal status_code, trace_id
             if message["type"] == "http.response.start":
                 status_code = message.get("status")
                 headers = MutableHeaders(scope=message)
-                
-                # Get current trace ID from OpenTelemetry
                 span = trace.get_current_span()
                 span_ctx = span.get_span_context() if span else None
                 trace_id = (
                     format(span_ctx.trace_id, "032x") if span_ctx and span_ctx.trace_id else "0" * 32
                 )
-                
-                # Add headers to response for client-side tracing
                 headers.append("X-Trace-Id", trace_id)
                 headers.append("X-Request-Id", request_id)
-                
-                # Bind status code to context for the final log
-                bind_contextvars(status_code=status_code)
-                
             await send(message)
 
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
             duration_ms = (time.perf_counter() - start) * 1000
-            # Log the request completion with timing
             logger.info(
-                "request_processed",
-                duration_ms=round(duration_ms, 2),
+                "Request processed",
+                extra={
+                    "extra_info": {
+                        "method": req.method,
+                        "path": req.url.path,
+                        "status": status_code or "-",
+                        "duration_ms": round(duration_ms, 2),
+                        "trace_id": trace_id,
+                        "request_id": request_id
+                    }
+                }
             )
-            # Clear context variables to avoid leakage in async tasks
-            clear_contextvars()
+            # Reset context variables
+            request_id_ctx.reset(request_id_token)
+            user_id_ctx.reset(user_id_token)
 
 def configure_observability(app: FastAPI, async_engine) -> None:
-    # PRODUCTION_MODE=true on a 1GB RAM VM means we skip tracing/metrics to save memory
-    if settings.production_mode:
-        logger.info("observability_disabled_in_production", reason="resource_constraints_1gb_ram")
-        app.add_middleware(LoggingASGIMiddleware)
-        return
-
     resource = Resource.create({SERVICE_NAME: "social-media-api"})
-
-    provider = TracerProvider(resource=resource)
-    otlp_exporter = _build_otlp_span_exporter()
-
-    if otlp_exporter is not None:
-        provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+    trace.set_tracer_provider(TracerProvider(resource=resource))
     
-    if settings.otel_console_exporter_enabled:
-       provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    # NEW: Export traces to Alloy's OTLP receiver
+    # In Docker local, 'alloy' is the hostname. On VM, it might be 'localhost'.
+    alloy_endpoint = "alloy:4317" if os.getenv("DOCKER_MODE") else "localhost:4317"
+    
+    otlp_exporter = OTLPSpanExporter(
+        endpoint=f"http://{alloy_endpoint}",
+        insecure=True
+    )
+    trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(otlp_exporter))
 
-    trace.set_tracer_provider(provider)
+    if settings.otel_console_exporter_enabled:
+       trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
 
     FastAPIInstrumentor.instrument_app(app)
     SQLAlchemyInstrumentor().instrument(engine=async_engine.sync_engine)

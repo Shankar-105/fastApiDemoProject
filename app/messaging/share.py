@@ -11,10 +11,10 @@ from app.utils.socket_manager import manager  # your WebSocket ConnectionManager
 from app.utils.time_formatting import format_timestamp
 from app.services import redis_service
 import json
-import structlog
+import logging
 
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 
 router = APIRouter(
@@ -38,15 +38,15 @@ async def share_post(
     post_result = await db.execute(select(Post).where(Post.id == payload.post_id))
     post: Post = post_result.scalars().first()
     if not post:
-        logger.warning("share_post_not_found", post_id=payload.post_id, sender_id=me.id)
+        logger.warning("Share failed: post not found", extra={"extra_info": {"post_id": payload.post_id, "sender_id": me.id}})
         raise HTTPException(status_code=404, detail="Post not found")
     receiver_result = await db.execute(select(User).where(User.id == payload.to_user_id))
     receiver: User = receiver_result.scalars().first()
     if not receiver:
-        logger.warning("share_receiver_not_found", post_id=payload.post_id, sender_id=me.id, receiver_id=payload.to_user_id)
+        logger.warning("Share failed: receiver not found", extra={"extra_info": {"post_id": payload.post_id, "sender_id": me.id, "receiver_id": payload.to_user_id}})
         raise HTTPException(status_code=404, detail="Receiver not found")
     if receiver.id == me.id:
-        logger.warning("share_self_denied", post_id=payload.post_id, sender_id=me.id)
+        logger.warning("Share failed: attempted self-share", extra={"extra_info": {"post_id": payload.post_id, "sender_id": me.id}})
         raise HTTPException(status_code=400, detail="Cannot share with yourself")
 
     shared = SharedPost(
@@ -88,9 +88,9 @@ async def share_post(
     try:
         await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
         await redis_service.redis_client.publish("chat:messages", json.dumps(preview))
-        logger.info("share_published_redis", shared_id=shared.id, sender_id=me.id, receiver_id=receiver.id)
+        logger.info("Share published to Redis", extra={"extra_info": {"shared_id": shared.id, "sender_id": me.id, "receiver_id": receiver.id}})
     except Exception as e:
-        logger.warning("share_publish_redis_failed", shared_id=shared.id, sender_id=me.id, receiver_id=receiver.id, error=str(e))
+        logger.warning("Failed to publish share to Redis", extra={"extra_info": {"shared_id": shared.id, "sender_id": me.id, "receiver_id": receiver.id, "error": str(e)}})
         try:
             await manager.send_json_to_user(preview, receiver.id)
         except Exception:

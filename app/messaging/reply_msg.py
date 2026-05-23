@@ -7,10 +7,10 @@ from app.services import redis_service
 from datetime import datetime
 from app.utils.time_formatting import format_timestamp
 import json
-import structlog
+import logging
 
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 
 async def reply_msg(
@@ -18,7 +18,7 @@ async def reply_msg(
     user_id:int,
     db:AsyncSession
 ):    
-    logger.info("creating_reply_message", reply_msg_id=payload.reply_msg_id, sender_id=user_id, receiver_id=payload.to)
+    logger.info("Creating reply message", extra={"extra_info": {"reply_msg_id": payload.reply_msg_id, "sender_id": user_id, "receiver_id": payload.to}})
 
     subq = (
         select(models.DeletedMessage.message_id)
@@ -34,7 +34,7 @@ async def reply_msg(
     )
     original_msg = result.scalars().first()
     if not original_msg:
-        logger.warning("reply_to_deleted_message_denied", reply_msg_id=payload.reply_msg_id, sender_id=user_id)
+        logger.warning("Cannot reply to a deleted message", extra={"extra_info": {"reply_msg_id": payload.reply_msg_id, "sender_id": user_id}})
         return
 
     msg = models.Message(
@@ -54,7 +54,7 @@ async def reply_msg(
     )
     db.add(reply_link)
     await db.commit()
-    logger.info("reply_message_saved", message_id=msg.id, reply_msg_id=payload.reply_msg_id, sender_id=user_id, receiver_id=payload.to)
+    logger.info("Reply message saved", extra={"extra_info": {"message_id": msg.id, "reply_msg_id": payload.reply_msg_id, "sender_id": user_id, "receiver_id": payload.to}})
 
     receiver_id = msg.receiver_id
     redis_published = False
@@ -86,9 +86,9 @@ async def reply_msg(
                 await redis_service.redis_client.publish("chat:messages", json.dumps(sender_payload))
                 await redis_service.redis_client.publish("chat:messages", json.dumps(reply_message_payload))
                 redis_published = True
-                logger.info("reply_message_published_redis", message_id=msg.id, sender_id=user_id, receiver_id=payload.to)
+                logger.info("Reply message published to Redis", extra={"extra_info": {"message_id": msg.id, "sender_id": user_id, "receiver_id": payload.to}})
             except Exception as e:
-                logger.warning("reply_message_publish_redis_failed", message_id=msg.id, sender_id=user_id, receiver_id=payload.to, error=str(e))
+                logger.warning("Failed to publish reply message to Redis", extra={"extra_info": {"message_id": msg.id, "sender_id": user_id, "receiver_id": payload.to, "error": str(e)}})
                 try:
                     await manager.send_json_to_user(reply_message_payload, receiver_id)
                     await db.execute(

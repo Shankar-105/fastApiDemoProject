@@ -7,10 +7,10 @@ from app.utils.socket_manager import manager
 from app.services import redis_service
 from typing import List
 import json
-import structlog
+import logging
 
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger("app")
 
 router = APIRouter(
     prefix="/messaging",
@@ -26,16 +26,16 @@ async def get_shared_post_reactions(
     db: AsyncSession = Depends(db.getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser)
 ):
-    logger.debug("fetching_shared_post_reactions", shared_id=shared_id, user_id=currentUser.id)
+    logger.debug("Fetching shared post reactions", extra={"extra_info": {"shared_id": shared_id, "user_id": currentUser.id}})
     result = await db.execute(
         select(models.SharedPost).where(models.SharedPost.id == shared_id)
     )
     shared = result.scalars().first()
     if not shared:
-        logger.warning("shared_post_reactions_not_found", shared_id=shared_id, user_id=currentUser.id)
+        logger.warning("Shared post reactions skipped: shared post not found", extra={"extra_info": {"shared_id": shared_id, "user_id": currentUser.id}})
         return
     if shared.from_user_id != currentUser.id and shared.to_user_id != currentUser.id:
-        logger.warning("shared_post_reactions_unauthorized", shared_id=shared_id, user_id=currentUser.id)
+        logger.warning("Shared post reactions rejected: unauthorized user", extra={"extra_info": {"shared_id": shared_id, "user_id": currentUser.id}})
         return
 
     reactions_result = await db.execute(
@@ -59,20 +59,20 @@ async def react_to_shared_post(
     user_id: int,
     db: AsyncSession
 ):
-    logger.info("handling_shared_post_reaction", shared_id=reaction.message_id, user_id=user_id, reaction=reaction.reaction)
+    logger.info("Handling shared post reaction", extra={"extra_info": {"shared_id": reaction.message_id, "user_id": user_id, "reaction": reaction.reaction}})
     # message_id is nothing but share_id
     result = await db.execute(
         select(models.SharedPost).where(models.SharedPost.id == reaction.message_id)
     )
     shared = result.scalars().first()
     if not shared:
-        logger.warning("shared_post_reaction_not_found", shared_id=reaction.message_id, user_id=user_id)
+        logger.warning("Shared post reaction skipped: shared post not found", extra={"extra_info": {"shared_id": reaction.message_id, "user_id": user_id}})
         return {"status": "not found"}
 
     eligible = [shared.from_user_id, shared.to_user_id]
 
     if user_id not in eligible:
-        logger.warning("shared_post_reaction_unauthorized", shared_id=reaction.message_id, user_id=user_id)
+        logger.warning("Shared post reaction rejected: unauthorized user", extra={"extra_info": {"shared_id": reaction.message_id, "user_id": user_id}})
         return {"status": "unauthorized"}
 
     existing_result = await db.execute(

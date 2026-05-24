@@ -1,18 +1,58 @@
+import math
+import time
+
 from fastapi import Depends, HTTPException, Request, status
+from redis.exceptions import WatchError
+
 from app import models, oauth2
 from app.services import redis_service as _redis_svc
 from app.config import settings
 
 
+async def _consume_token_bucket(key: str, max_calls: int, window: int) -> tuple[bool, int]:
+    now_ms = int(time.time() * 1000)
+    refill_window_ms = max(window, 1) * 1000
+
+    if max_calls <= 0:
+        return False, 1
+
+    refill_per_ms = max_calls / refill_window_ms
+    ttl_ms = max(refill_window_ms * 2, 1000)
+
+    while True:
+        pipe = _redis_svc.redis_client.pipeline()
+        try:
+            await pipe.watch(key)
+            tokens_raw, last_refill_raw = await pipe.hmget(key, "tokens", "ts")
+
+            tokens = float(tokens_raw) if tokens_raw is not None else float(max_calls)
+            last_refill_ms = int(last_refill_raw) if last_refill_raw is not None else now_ms
+
+            elapsed_ms = max(0, now_ms - last_refill_ms)
+            refill_amount = elapsed_ms * refill_per_ms
+            tokens = min(float(max_calls), tokens + refill_amount)
+
+            if tokens >= 1:
+                tokens -= 1
+                allowed = True
+                retry_after_ms = 0
+            else:
+                allowed = False
+                deficit = 1 - tokens
+                retry_after_ms = math.ceil(deficit / refill_per_ms)
+
+            pipe.multi()
+            pipe.hset(key, mapping={"tokens": str(tokens), "ts": str(now_ms)})
+            pipe.pexpire(key, ttl_ms)
+            await pipe.execute()
+            return allowed, max(1, math.ceil(retry_after_ms / 1000))
+        except WatchError:
+            continue
+
 async def _check(key: str, max_calls: int, window: int) -> None:
     try:
-        count = await _redis_svc.redis_client.incr(key)
-        if count == 1:
-            # First hit in this window — start the expiry clock
-            await _redis_svc.redis_client.expire(key, window)
-        if count > max_calls:
-            ttl = await _redis_svc.redis_client.ttl(key)
-            retry_after = max(ttl, 1)   # guard against 0 if key just expired
+        allowed, retry_after = await _consume_token_bucket(key, max_calls, window)
+        if not allowed:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=f"Rate limit exceeded. Try again in {retry_after}s.",

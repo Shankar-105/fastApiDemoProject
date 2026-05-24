@@ -26,7 +26,7 @@ _This API packs **a lot**. For the full breakdown of every feature — async arc
 
 ---
 
-## 🚦 Setup On Your Local Machine — Simplified with Docker!
+## 🚦 Setup On Your Local Host — Simplified with Docker!
 
 _Want to run the API, test it, or make your own changes? Start with [`docs/SETUP.md`](./docs/SETUP.md) to clone the repository and set up the environment in your machine._
 
@@ -40,7 +40,7 @@ _Now that your setup is running, Check out [`docs/API_GUIDE.md`](./docs/API_GUID
 
 ## ☁️ Azure Deployment — How the app is hosted in the cloud
 
-_Want to know how this project runs in the cloud? Read [`docs/AZURE_DEPLOYMENT.md`](./docs/AZURE_DEPLOYMENT.md) for the Azure VM, PostgreSQL, Blob Storage, Redis, and CI/CD setup behind the live deployment._
+_Want to know how this project runs in the Azure cloud? Read [`docs/AZURE_DEPLOYMENT.md`](./docs/AZURE_DEPLOYMENT.md) for the Azure VM, PostgreSQL, Blob Storage, Redis, and CI/CD setup behind the live deployment._
 
 ---
 
@@ -58,20 +58,18 @@ _Real benchmark evidence for the deployed app, with charts + clear conclusions [
 
 ## 📊 Monitoring and Load Testing
 
-_Want to observe app raw performance and run synthetic traffic on API? Start with [`docs/MONITORING_AND_LOAD_TESTING.md`](./docs/MONITORING_AND_LOAD_TESTING.md) for Prometheus, Grafana and k6 setup with app performance reuslts._
+_Want to observe app raw performance and run synthetic traffic on API? Start with [`docs/MONITORING_AND_LOAD_TESTING.md`](./docs/MONITORING_AND_LOAD_TESTING.md) for Grafana and k6 setup with app performance reuslts._
 
 ---
 
 ## 🤝 Contributing
 
-_Backend developer? Frontend developer? Either, there's a clear path for you. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for role-specific setup guides, code conventions, and PR instructions._
+_Backend developer? Frontend developer? Either, there's a clear path for you. See [`CONTRIBUTING.md`](./CONTRIBUTING.md)._
 
 ---
 
 ## 👨‍💻 Built by Bhavani Shankar Mukka 🎓
-**From [`ANITS Engineering College`](https://anits.org/)**
+**_From [`Anits Engineering College`](https://anits.org/)_**
 
-**_Thanks for checking out the project, If you use this API , let me know—would love to hear you_**
-
-### _Built with ❤️ using FastAPI, SQLAlchemy, PostgreSQL, Redis, WebSockets, Celery, and RabbitMQ_
+### _Built with ❤️ using FastAPI_
 ---

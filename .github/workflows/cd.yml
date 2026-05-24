@@ -26,8 +26,7 @@ jobs:
           script: |
             set -e
 
-            # Ensure correct ownership
-            sudo chown -R $USER:$USER /app
+            # Navigate to the app directory
             cd /app
 
             echo "📦 Pulling latest code..."
@@ -40,9 +39,10 @@ jobs:
             git reset --hard origin/main
 
             echo "🚀 Deploying with Docker Compose..."
-            sudo docker compose -f docker-compose.prod.yml up -d --build
+            # Running docker compose directly as azureuser (already in docker group)
+            docker compose -f docker-compose.prod.yml up -d --build
 
             echo "🧹 Cleaning up old images..."
-            sudo docker image prune -f
+            docker image prune -f
 
             echo "✅ Deployment successful!"

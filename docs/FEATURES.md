@@ -119,7 +119,7 @@ IP-based and user-based throttling to protect against abuse, brute-force attacks
 - **Two strategies:**
   - **IP-based** — throttles by client IP address (login, signup, forgot-password, reset-password, refresh)
   - **User-based** — throttles by authenticated user ID (change-password OTP, authenticated reset-password, create comment, create post, follow)
-- **Redis-backed counters** — atomic `INCR` + `EXPIRE` in Redis; counters survive app restarts
+- **Redis-backed token bucket** — atomic Redis updates smooth bursts and avoid the edge spikes of fixed windows.
 - **Configurable per endpoint** via `.env`:
   | Endpoint | Default Limit | Window |
   |----------|--------------|--------|

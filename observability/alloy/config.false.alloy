@@ -10,8 +10,8 @@ discovery.docker "api" {
   host = "unix:///var/run/docker.sock"
 
   filter {
-    name   = "name"
-    values = ["social_api"]
+    name   = "label"
+    values = ["com.docker.compose.service=api"]
   }
 }
 

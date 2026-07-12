@@ -1,4 +1,4 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter,Form,Query,Request
+from fastapi import status,HTTPException,Depends,Body,APIRouter,Form,Query
 from fastapi.responses import FileResponse
 import app.schemas as sch
 from typing import List, Optional
@@ -59,7 +59,6 @@ async def get_current_user_avatar(db:AsyncSession=Depends(db.getDb), currentUser
 async def delete_profile_picture(
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("delete_profile_picture_attempt", user_id=currentUser.id)
@@ -160,7 +159,6 @@ async def update_current_user_profile(
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     token: str = Depends(oauth2.oauth2_scheme),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("update_my_profile_attempt", user_id=currentUser.id)

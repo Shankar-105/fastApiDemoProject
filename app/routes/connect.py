@@ -1,4 +1,4 @@
-from fastapi import status,HTTPException,Depends,APIRouter,Request
+from fastapi import status,HTTPException,Depends,APIRouter
 import app.schemas as sch
 from app import models,oauth2
 from app.db import getDb
@@ -21,14 +21,13 @@ router=APIRouter(
 logger = structlog.get_logger(__name__)
 
 @router.post("/{user_id}/follow", status_code=status.HTTP_201_CREATED, response_model=sch.FollowResponse)
-@idempotent(endpoint_identifier="follow_user", success_status_code=status.HTTP_201_CREATED)
+@idempotent(endpoint_identifier="follow_user")
 async def follow_user(
         user_id: int,
     db:AsyncSession=Depends(getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     background_tasks=None,
     _:None=Depends(follow_limiter),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("follow_user_attempt", user_id=currentUser.id, target_id=user_id)
@@ -81,7 +80,6 @@ async def unfollow_user(
     user_id:int, 
     db:AsyncSession=Depends(getDb), 
     currentUser:models.User=Depends(oauth2.getCurrentUser),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("unfollow_user_attempt", user_id=currentUser.id, target_id=user_id)
@@ -126,7 +124,6 @@ async def remove_follower_endpoint(
     follower_id:int, 
     db: AsyncSession = Depends(getDb), 
     currentUser: models.User = Depends(oauth2.getCurrentUser),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("remove_follower_attempt", user_id=currentUser.id, follower_id=follower_id)

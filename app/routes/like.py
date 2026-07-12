@@ -1,4 +1,4 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter,Request
+from fastapi import status,HTTPException,Depends,Body,APIRouter
 from typing import Optional
 import app.schemas as sch
 from app import models,oauth2, config
@@ -20,13 +20,12 @@ router=APIRouter(
 logger = structlog.get_logger(__name__)
 
 @router.post("/posts/{postId}/votes", status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
-@idempotent(endpoint_identifier="vote_on_post", success_status_code=status.HTTP_201_CREATED)
+@idempotent(endpoint_identifier="vote_on_post")
 async def voteOnPost(
     postId:int,
     post:sch.VoteRequest=Body(...),
     db:AsyncSession=Depends(getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("vote_post_attempt", user_id=currentUser.id, post_id=postId, choice=post.choice)
@@ -91,13 +90,12 @@ async def voteOnPost(
         logger.error("vote_post_integrity_error", user_id=currentUser.id, post_id=postId)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Database error, please try again")
 @router.post("/comments/{commentId}/votes", status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
-@idempotent(endpoint_identifier="vote_on_comment", success_status_code=status.HTTP_201_CREATED)
+@idempotent(endpoint_identifier="vote_on_comment")
 async def likeAComment(
     commentId:int,
     comment:sch.CommentVoteRequest=Body(...),
     db:AsyncSession=Depends(getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("vote_comment_attempt", user_id=currentUser.id, comment_id=commentId, choice=comment.choice)

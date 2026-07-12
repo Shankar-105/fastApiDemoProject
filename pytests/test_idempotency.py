@@ -1,8 +1,7 @@
 import asyncio
 import uuid
-from types import SimpleNamespace
 
-from fastapi import HTTPException, Response
+from fastapi import HTTPException
 
 from app.services import redis_service
 from app.services.idempotency_service import idempotent
@@ -93,39 +92,26 @@ class _BrokenRedisClient:
         raise ConnectionError("redis unavailable")
 
 
-def _make_request(path: str = "/v1/items", method: str = "POST"):
-    return SimpleNamespace(method=method, url=SimpleNamespace(path=path))
-
-
 async def test_idempotent_conflict_when_same_key_has_different_payload(monkeypatch):
     fake_redis = _FakeRedisClient()
     monkeypatch.setattr(redis_service, "redis_client", fake_redis)
 
     calls = []
 
-    @idempotent(endpoint_identifier="create_item", success_status_code=201)
-    async def create_item(payload: dict, request=None, response=None, idempotency_key=None):
+    @idempotent(endpoint_identifier="create_item")
+    async def create_item(payload: dict, idempotency_key=None):
         calls.append(payload)
         return {"ok": True, "payload": payload}
 
-    request = _make_request()
-    first_response = Response()
-    second_response = Response()
-
     first = await create_item(
         {"name": "alpha"},
-        request=request,
-        response=first_response,
         idempotency_key="fixed-key",
     )
     assert first == {"ok": True, "payload": {"name": "alpha"}}
-    assert first_response.status_code == 201
 
     try:
         await create_item(
             {"name": "beta"},
-            request=request,
-            response=second_response,
             idempotency_key="fixed-key",
         )
         assert False, "expected HTTPException"
@@ -139,18 +125,14 @@ async def test_idempotent_rejects_concurrent_processing(monkeypatch):
     fake_redis = _FakeRedisClient()
     monkeypatch.setattr(redis_service, "redis_client", fake_redis)
 
-    @idempotent(endpoint_identifier="slow_item", success_status_code=201)
-    async def slow_item(payload: dict, request=None, response=None, idempotency_key=None):
+    @idempotent(endpoint_identifier="slow_item")
+    async def slow_item(payload: dict, idempotency_key=None):
         await asyncio.sleep(0.05)
         return {"ok": True, "payload": payload}
-
-    request = _make_request(path="/v1/slow-items")
 
     async def invoke():
         return await slow_item(
             {"name": "alpha"},
-            request=request,
-            response=Response(),
             idempotency_key="shared-key",
         )
 
@@ -162,14 +144,12 @@ async def test_idempotent_rejects_concurrent_processing(monkeypatch):
 async def test_idempotent_allows_request_when_redis_is_down(monkeypatch):
     monkeypatch.setattr(redis_service, "redis_client", _BrokenRedisClient())
 
-    @idempotent(endpoint_identifier="fallback_item", success_status_code=201)
-    async def fallback_item(payload: dict, request=None, response=None, idempotency_key=None):
+    @idempotent(endpoint_identifier="fallback_item")
+    async def fallback_item(payload: dict, idempotency_key=None):
         return {"ok": True, "payload": payload}
 
     result = await fallback_item(
         {"name": "alpha"},
-        request=_make_request(path="/v1/fallback-items"),
-        response=Response(),
         idempotency_key="broken-redis-key",
     )
 

@@ -1,4 +1,4 @@
-from fastapi import Body,HTTPException,status,APIRouter,Depends,Query,Request
+from fastapi import Body,HTTPException,status,APIRouter,Depends,Query
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_,func
@@ -18,14 +18,13 @@ router=APIRouter(
 logger = structlog.get_logger(__name__)
 
 @router.post("/posts/{post_id}/comments", status_code=status.HTTP_201_CREATED, response_model=sch.CommentDetailResponse)
-@idempotent(endpoint_identifier="create_comment", success_status_code=status.HTTP_201_CREATED)
+@idempotent(endpoint_identifier="create_comment")
 async def create_comment(
     post_id:int,
     comment:sch.CommentCreateRequest=Body(...),
     db:AsyncSession=Depends(db.getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser),
     _:None=Depends(comment_limiter),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("create_comment_attempt", user_id=currentUser.id, post_id=post_id)
@@ -77,7 +76,6 @@ async def delete_comment(
     commentId:int, 
     db:AsyncSession=Depends(db.getDb), 
     currentUser: models.User = Depends(oauth2.getCurrentUser),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("delete_comment_attempt", user_id=currentUser.id, comment_id=commentId)
@@ -101,7 +99,6 @@ async def update_comment(
     comment_update:sch.CommentUpdateRequest=Body(...), 
     db:AsyncSession=Depends(db.getDb), 
     currentUser: models.User = Depends(oauth2.getCurrentUser),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("update_comment_attempt", user_id=currentUser.id, comment_id=commentId)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, status, Request
+from fastapi import APIRouter, Depends, Query, status
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
@@ -91,7 +91,6 @@ async def get_unread_notification_count(
 async def mark_all_notifications_read(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("mark_all_notifications_read_attempt", user_id=current_user.id)

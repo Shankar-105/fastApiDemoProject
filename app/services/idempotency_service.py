@@ -19,8 +19,6 @@ STATUS_PROCESSING = "processing"
 STATUS_COMPLETED = "completed"
 
 _IGNORED_ARGUMENT_NAMES = {
-    "request",
-    "response",
     "idempotency_key",
     "currentUser",
     "current_user",
@@ -95,28 +93,16 @@ def _build_record(
     *,
     state: str,
     request_hash: str,
-    status_code: Optional[int] = None,
     body: Any = None,
-    headers: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     record: Dict[str, Any] = {
         "schema_version": IDEMPOTENCY_SCHEMA_VERSION,
         "state": state,
         "request_hash": request_hash,
     }
-    if status_code is not None:
-        record["status_code"] = status_code
     if body is not None:
         record["body"] = jsonable_encoder(body)
-    if headers is not None:
-        record["headers"] = headers
     return record
-
-
-def build_idempotency_key(user_id: Optional[int], endpoint: str, idempotency_key: str) -> str:
-    """Legacy compatibility helper retained for older imports."""
-    user_part = f"user:{user_id}" if user_id is not None else "public"
-    return f"{IDEMPOTENCY_KEY_PREFIX}{user_part}:{endpoint}:{idempotency_key}"
 
 
 async def get_idempotency_result(key: str) -> Optional[Dict[str, Any]]:
@@ -147,9 +133,7 @@ async def set_idempotency_processing(key: str, request_hash: str, ttl: int = 360
 async def set_idempotency_completed(
     key: str,
     request_hash: str,
-    status_code: int,
     body: Any,
-    headers: Optional[Dict[str, str]] = None,
     ttl: int = 86400,
 ) -> None:
     try:
@@ -159,9 +143,7 @@ async def set_idempotency_completed(
                 _build_record(
                     state=STATUS_COMPLETED,
                     request_hash=request_hash,
-                    status_code=status_code,
                     body=body,
-                    headers=headers or {},
                 )
             ),
             ex=ttl,
@@ -183,20 +165,17 @@ async def get_idempotency_key(
     return idempotency_key
 
 
-def idempotent(endpoint_identifier: Optional[str] = None, success_status_code: Optional[int] = None):
+def idempotent(endpoint_identifier: Optional[str] = None):
     def decorator(func: Callable[..., Coroutine[Any, Any, Any]]):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             current_user = kwargs.get("currentUser") or kwargs.get("current_user")
-            response = kwargs.get("response")
             idempotency_key: Optional[str] = kwargs.get("idempotency_key")
 
             if not idempotency_key:
                 return await func(*args, **kwargs)
 
-            request_kwargs = dict(kwargs)
-            request_kwargs.pop("response", None)
-            request_hash = _build_request_hash(func, args, request_kwargs)
+            request_hash = _build_request_hash(func, args, kwargs)
 
             user_id = current_user.id if current_user and hasattr(current_user, "id") else None
             endpoint = endpoint_identifier or func.__name__
@@ -217,8 +196,6 @@ def idempotent(endpoint_identifier: Optional[str] = None, success_status_code: O
                         endpoint=endpoint,
                         idempotency_key=idempotency_key,
                     )
-                    if response is not None and hasattr(response, "status_code"):
-                        response.status_code = int(existing.get("status_code", success_status_code or 200))
                     return existing.get("body")
 
                 if existing.get("state") == STATUS_PROCESSING:
@@ -241,16 +218,10 @@ def idempotent(endpoint_identifier: Optional[str] = None, success_status_code: O
             try:
                 result = await func(*args, **kwargs)
 
-                resolved_status_code = success_status_code or 200
-                if response is not None and hasattr(response, "status_code"):
-                    response.status_code = resolved_status_code
-
                 await set_idempotency_completed(
                     redis_key,
                     request_hash=request_hash,
-                    status_code=resolved_status_code,
                     body=result,
-                    headers={},
                     ttl=settings.idempotency_completed_ttl,
                 )
 
@@ -261,10 +232,7 @@ def idempotent(endpoint_identifier: Optional[str] = None, success_status_code: O
 
         if hasattr(func, "__annotations__"):
             wrapper.__annotations__ = func.__annotations__
-
-            signature = inspect.signature(func)
-            new_parameters = [param for param in signature.parameters.values() if param.name != "request"]
-            wrapper.__signature__ = signature.replace(parameters=new_parameters)
+            wrapper.__signature__ = inspect.signature(func)
         return wrapper
 
     return decorator

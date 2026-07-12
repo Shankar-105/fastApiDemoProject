@@ -1,4 +1,4 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter,Request
+from fastapi import status,HTTPException,Depends,Body,APIRouter
 from app import db,models,oauth2
 from app.services import token_service
 from app.services.idempotency_service import get_idempotency_key, idempotent
@@ -29,12 +29,11 @@ router=APIRouter(
 logger = structlog.get_logger(__name__)
 
 @router.post("/login",status_code=status.HTTP_202_ACCEPTED)
-@idempotent(endpoint_identifier="login", success_status_code=status.HTTP_202_ACCEPTED)
+@idempotent(endpoint_identifier="login")
 async def loginUser(
     userCred:OAuth2PasswordRequestForm=Depends(),
     db:AsyncSession=Depends(db.getDb),
     _:None=Depends(login_limiter),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
 
@@ -84,7 +83,6 @@ async def refresh_token(
     payload: sch.RefreshTokenRequest = Body(...),
     db: AsyncSession = Depends(db.getDb),
     _: None = Depends(refresh_limiter),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("Token refresh attempt")

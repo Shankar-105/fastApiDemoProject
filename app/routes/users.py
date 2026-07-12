@@ -1,4 +1,4 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter,Query,Request
+from fastapi import status,HTTPException,Depends,Body,APIRouter,Query
 from typing import List, Optional
 import app.schemas as sch
 from app import models,db,oauth2
@@ -95,12 +95,11 @@ async def get_user_avatar(user_id:int, db:AsyncSession=Depends(db.getDb), curren
     )
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=sch.UserResponse)
-@idempotent(endpoint_identifier="register_user", success_status_code=status.HTTP_201_CREATED)
+@idempotent(endpoint_identifier="register_user")
 async def register_user(
     userData:sch.UserSignupRequest=Body(...),
     db:AsyncSession=Depends(db.getDb),
     _:None=Depends(signup_limiter),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("registration_attempt", username=userData.username, email=userData.email)

@@ -1,4 +1,4 @@
-from fastapi import status,HTTPException,Depends,APIRouter,Form,UploadFile,File,Request
+from fastapi import status,HTTPException,Depends,APIRouter,Form,UploadFile,File
 import app.schemas as sch
 from app.services.rate_limit_service import create_post_limiter
 from app.services.idempotency_service import get_idempotency_key, idempotent
@@ -93,7 +93,7 @@ async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:model
 
 # creates a new post using sqlAlchemy
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=sch.PostDetailResponse)
-@idempotent(endpoint_identifier="create_post", success_status_code=status.HTTP_201_CREATED)
+@idempotent(endpoint_identifier="create_post")
 async def create_post(
     title:str=Form(...),
     content:str=Form(...),
@@ -101,7 +101,6 @@ async def create_post(
     db: AsyncSession=Depends(getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     _:None=Depends(create_post_limiter),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("create_post_attempt", user_id=currentUser.id)
@@ -166,7 +165,6 @@ async def delete_post(
     postId:int, 
     db:AsyncSession=Depends(getDb), 
     currentUser:models.User=Depends(oauth2.getCurrentUser),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("delete_post_attempt", user_id=currentUser.id, post_id=postId)
@@ -196,7 +194,6 @@ async def update_post(
     post:sch.PostUpdateRequest, 
     db:AsyncSession=Depends(getDb), 
     currentUser:models.User=Depends(oauth2.getCurrentUser),
-    request: Optional[Request] = None,
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("update_post_attempt", user_id=currentUser.id, post_id=postId)

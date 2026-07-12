@@ -1,6 +1,7 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter
+from fastapi import status,HTTPException,Depends,Body,APIRouter,Request
 from app import db,models,oauth2
 from app.services import token_service
+from app.services.idempotency_service import get_idempotency_key, idempotent
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.utils import thread_helpers as utils
@@ -18,6 +19,7 @@ from app.services.rate_limit_service import login_limiter, forgot_password_limit
 from app.tasks.email_tasks import send_otp_email as send_otp_email_task
 from app.tasks.email_tasks import send_verification_email as send_verification_email_task
 import structlog
+from typing import Optional
 
 router=APIRouter(
     prefix="/auth",
@@ -27,7 +29,15 @@ router=APIRouter(
 logger = structlog.get_logger(__name__)
 
 @router.post("/login",status_code=status.HTTP_202_ACCEPTED)
-async def loginUser(userCred:OAuth2PasswordRequestForm=Depends(),db:AsyncSession=Depends(db.getDb),_:None=Depends(login_limiter)):
+@idempotent(endpoint_identifier="login", success_status_code=status.HTTP_202_ACCEPTED)
+async def loginUser(
+    userCred:OAuth2PasswordRequestForm=Depends(),
+    db:AsyncSession=Depends(db.getDb),
+    _:None=Depends(login_limiter),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
+
     logger.info("login_attempt", username=userCred.username)
     result = await db.execute(select(models.User).where(models.User.username == userCred.username))
     isUserPresent = result.scalars().first()
@@ -69,7 +79,14 @@ async def loginUser(userCred:OAuth2PasswordRequestForm=Depends(),db:AsyncSession
     )
 
 @router.post("/refresh-token", status_code=status.HTTP_200_OK)
-async def refresh_token(payload: sch.RefreshTokenRequest = Body(...), db: AsyncSession = Depends(db.getDb), _: None = Depends(refresh_limiter)):
+@idempotent(endpoint_identifier="refresh_token")
+async def refresh_token(
+    payload: sch.RefreshTokenRequest = Body(...),
+    db: AsyncSession = Depends(db.getDb),
+    _: None = Depends(refresh_limiter),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("Token refresh attempt")
     access_token, new_refresh = await token_service.rotate_refresh_token(db, payload.refresh_token)
     logger.info("Token refresh successful")

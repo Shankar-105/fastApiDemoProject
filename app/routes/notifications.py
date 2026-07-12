@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, Request
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 import app.schemas as sch
 from app import models, db, oauth2
 from app.services import notification_service as ns
 from app.services.redis_service import get_cache, set_cache, delete_cache_pattern
+from app.services.idempotency_service import get_idempotency_key, idempotent
 import structlog
 
 router = APIRouter(
@@ -85,9 +87,12 @@ async def get_unread_notification_count(
     status_code=status.HTTP_200_OK,
     response_model=sch.SuccessResponse,
 )
+@idempotent(endpoint_identifier="mark_notifications_read")
 async def mark_all_notifications_read(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("mark_all_notifications_read_attempt", user_id=current_user.id)
     await ns.mark_all_read(db_session, current_user.id)

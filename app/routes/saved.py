@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, delete
 
 from app import db, models, oauth2, schemas as sch
 from app.services.blob_service import get_blob_url
+from app.services.idempotency_service import get_idempotency_key, idempotent
 import structlog
 
 router = APIRouter(
@@ -41,10 +43,13 @@ def _build_post_detail(post: models.Post, is_liked: bool) -> sch.PostDetailRespo
 
 
 @router.post("/posts/{post_id}/save", status_code=status.HTTP_201_CREATED, response_model=sch.SuccessResponse)
+@idempotent(endpoint_identifier="save_post", success_status_code=status.HTTP_201_CREATED)
 async def save_post(
     post_id: int,
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("save_post_attempt", user_id=current_user.id, post_id=post_id)
     post_result = await db_session.execute(select(models.Post).where(models.Post.id == post_id))
@@ -72,10 +77,13 @@ async def save_post(
 
 
 @router.delete("/posts/{post_id}/unsave", status_code=status.HTTP_200_OK, response_model=sch.SuccessResponse)
+@idempotent(endpoint_identifier="unsave_post", success_status_code=status.HTTP_200_OK)
 async def unsave_post(
     post_id: int,
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("unsave_post_attempt", user_id=current_user.id, post_id=post_id)
     saved_result = await db_session.execute(

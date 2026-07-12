@@ -1,9 +1,11 @@
-from fastapi import Body,HTTPException,status,APIRouter,Depends,Query
+from fastapi import Body,HTTPException,status,APIRouter,Depends,Query,Request
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_,func
 from app import oauth2,models,db,schemas as sch, config
 from app.models import NotificationType
 from app.services.rate_limit_service import comment_limiter
+from app.services.idempotency_service import get_idempotency_key, idempotent
 from app.services.redis_service import get_cache, set_cache, delete_cache_pattern, increment_cache_version
 from app.tasks.notification_tasks import create_notification_task
 import structlog
@@ -16,7 +18,16 @@ router=APIRouter(
 logger = structlog.get_logger(__name__)
 
 @router.post("/posts/{post_id}/comments", status_code=status.HTTP_201_CREATED, response_model=sch.CommentDetailResponse)
-async def create_comment(post_id:int, comment:sch.CommentCreateRequest=Body(...), db:AsyncSession=Depends(db.getDb), currentUser: models.User = Depends(oauth2.getCurrentUser), _:None=Depends(comment_limiter)):
+@idempotent(endpoint_identifier="create_comment", success_status_code=status.HTTP_201_CREATED)
+async def create_comment(
+    post_id:int,
+    comment:sch.CommentCreateRequest=Body(...),
+    db:AsyncSession=Depends(db.getDb),
+    currentUser: models.User = Depends(oauth2.getCurrentUser),
+    _:None=Depends(comment_limiter),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("create_comment_attempt", user_id=currentUser.id, post_id=post_id)
     result = await db.execute(select(models.Post).where(models.Post.id == post_id))
     post = result.scalars().first()
@@ -61,7 +72,14 @@ async def create_comment(post_id:int, comment:sch.CommentCreateRequest=Body(...)
     )
 
 @router.delete("/comments/{commentId}", status_code=status.HTTP_200_OK, response_model=sch.SuccessResponse)
-async def delete_comment(commentId:int, db:AsyncSession=Depends(db.getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="delete_comment")
+async def delete_comment(
+    commentId:int, 
+    db:AsyncSession=Depends(db.getDb), 
+    currentUser: models.User = Depends(oauth2.getCurrentUser),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("delete_comment_attempt", user_id=currentUser.id, comment_id=commentId)
     result=await db.execute(select(models.Comments).where(and_(models.Comments.id==commentId,models.Comments.user_id==currentUser.id)))
     commentTodelete=result.scalars().first()
@@ -77,14 +95,22 @@ async def delete_comment(commentId:int, db:AsyncSession=Depends(db.getDb), curre
     return sch.SuccessResponse(message=f"Comment {commentId} deleted successfully")
 
 @router.patch("/comments/{commentId}", status_code=status.HTTP_200_OK, response_model=sch.CommentDetailResponse)
-async def update_comment(commentId:int, request:sch.CommentUpdateRequest=Body(...), db:AsyncSession=Depends(db.getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="update_comment")
+async def update_comment(
+    commentId:int, 
+    comment_update:sch.CommentUpdateRequest=Body(...), 
+    db:AsyncSession=Depends(db.getDb), 
+    currentUser: models.User = Depends(oauth2.getCurrentUser),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("update_comment_attempt", user_id=currentUser.id, comment_id=commentId)
     result=await db.execute(select(models.Comments).where(and_(models.Comments.id==commentId,models.Comments.user_id==currentUser.id)))
     commentToBeEdited=result.scalars().first()
     if not commentToBeEdited:
         logger.warning("update_comment_failed", user_id=currentUser.id, comment_id=commentId, reason="not_found_or_unauthorized")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"comment with Id {commentId} not Found")
-    commentToBeEdited.comment_content=request.comment_content
+    commentToBeEdited.comment_content=comment_update.comment_content
     await db.commit()
     
     await delete_cache_pattern(f"comments:post:{commentToBeEdited.post_id}:*")

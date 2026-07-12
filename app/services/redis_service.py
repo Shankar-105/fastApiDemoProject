@@ -193,7 +193,7 @@ async def get_auth_cache_and_blacklist(token: str) -> tuple[bool, Optional[Any]]
         return False, None
 
 
-# --- Phase A: Cache versioning for targeted invalidations ---
+# --- Cache versioning for targeted invalidations ---
 # Instead of deleting "feed:*" globally (which triggers SCAN loops and cache churn),
 # use versioned keys like "feed:home:{user_id}:v{version}:{offset}:{limit}".
 # When feed changes, increment the version counter, and old keys naturally expire.

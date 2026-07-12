@@ -72,6 +72,48 @@ Most endpoints require a **JWT Bearer Token**. Here's the flow:
 
 ---
 
+## 🔄 Idempotency
+
+All mutating endpoints (POST, PATCH, DELETE) support idempotent requests using the `Idempotency-Key` header. This prevents duplicate operations when requests are retried (e.g., due to network issues).
+
+### How to Use
+
+1. Generate a unique idempotency key (e.g., a UUID) for each unique operation
+2. Include the key in the `Idempotency-Key` header of your request
+3. If you need to retry the request, use the same idempotency key
+4. The server will return the same result as the first successful request, without repeating the operation
+
+### Request Scoping
+
+The idempotency record is scoped by authenticated user, HTTP method, and a hashed request path. That means the same key can be reused safely across different endpoints, but not for different payloads on the same operation.
+
+### Stored Record
+
+Each Redis record stores:
+
+- `processing` vs `completed` state
+- request fingerprint for conflict detection
+- response status code
+- serialized response body
+- response headers when available
+
+### Header Details
+
+| Header | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Idempotency-Key` | string | No | A unique key to ensure idempotency |
+
+### Behavior
+
+- **First Request**: The request is processed normally, marked as `processing`, then stored as `completed` in Redis.
+- **Subsequent Requests with Same Key**: The stored status, body, and headers are replayed immediately without reprocessing.
+- **Concurrent Requests with Same Key**: A `409 Conflict` is returned if a request with the same key is already being processed.
+- **Same Key, Different Payload**: A `409 Conflict` is returned to prevent replaying the wrong operation.
+- **Key Expiry**: Processing markers expire after 1 hour and completed results expire after 24 hours (configurable).
+- **No Key Provided**: The request is processed normally without idempotency guarantees.
+
+---
+
 ## 💚 Health Check
 
 | Detail | Value |

@@ -1,12 +1,13 @@
-from fastapi import status,HTTPException,Depends,APIRouter
+from fastapi import status,HTTPException,Depends,APIRouter,Request
 import app.schemas as sch
 from app import models,oauth2
 from app.db import getDb
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_,delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from typing import List
+from typing import List, Optional
 from app.services.redis_service import delete_cache, delete_cache_pattern ,increment_cache_version
+from app.services.idempotency_service import get_idempotency_key, idempotent
 from app.models import NotificationType
 from app.services.rate_limit_service import follow_limiter
 from app.tasks.notification_tasks import create_notification_task
@@ -20,7 +21,16 @@ router=APIRouter(
 logger = structlog.get_logger(__name__)
 
 @router.post("/{user_id}/follow", status_code=status.HTTP_201_CREATED, response_model=sch.FollowResponse)
-async def follow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser), background_tasks=None, _:None=Depends(follow_limiter)):
+@idempotent(endpoint_identifier="follow_user", success_status_code=status.HTTP_201_CREATED)
+async def follow_user(
+        user_id: int,
+    db:AsyncSession=Depends(getDb),
+    currentUser:models.User=Depends(oauth2.getCurrentUser),
+    background_tasks=None,
+    _:None=Depends(follow_limiter),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("follow_user_attempt", user_id=currentUser.id, target_id=user_id)
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     userToFollow=result.scalars().first()
@@ -66,7 +76,14 @@ async def follow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser:m
     return sch.FollowResponse(message=f"Followed user {userToFollow.username}", following_count=currentUser.following_cnt)
     
 @router.delete("/{user_id}/unfollow", status_code=status.HTTP_200_OK, response_model=sch.FollowResponse)
-async def unfollow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="unfollow_user")
+async def unfollow_user(
+    user_id:int, 
+    db:AsyncSession=Depends(getDb), 
+    currentUser:models.User=Depends(oauth2.getCurrentUser),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("unfollow_user_attempt", user_id=currentUser.id, target_id=user_id)
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     userToUnFollow=result.scalars().first()
@@ -103,7 +120,15 @@ async def unfollow_user(user_id:int, db:AsyncSession=Depends(getDb), currentUser
     return sch.FollowResponse(message=f"Unfollowed user {userToUnFollow.username}", following_count=currentUser.following_cnt)
 
 @router.delete("/{user_id}/followers/{follower_id}", status_code=status.HTTP_200_OK, response_model=sch.FollowResponse)
-async def remove_follower_endpoint(user_id:int, follower_id:int, db: AsyncSession = Depends(getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="remove_follower")
+async def remove_follower_endpoint(
+    user_id:int, 
+    follower_id:int, 
+    db: AsyncSession = Depends(getDb), 
+    currentUser: models.User = Depends(oauth2.getCurrentUser),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("remove_follower_attempt", user_id=currentUser.id, follower_id=follower_id)
     if user_id != currentUser.id:
         logger.warning("remove_follower_failed_unauthorized", user_id=currentUser.id, target_user_id=user_id)

@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     rl_create_post_window: int = 60
     rl_follow_max: int = 20
     rl_follow_window: int = 60
+    # idempotency config
+    idempotency_processing_ttl: int = 3600  # 1 hour
+    idempotency_completed_ttl: int = 86400  # 24 hours
     # observability toggles
     otel_console_exporter_enabled: bool = False
     otel_exporter_otlp_protocol: str = "grpc"

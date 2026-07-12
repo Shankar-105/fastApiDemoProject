@@ -1,6 +1,7 @@
-from fastapi import status,HTTPException,Depends,APIRouter,Form,UploadFile,File
+from fastapi import status,HTTPException,Depends,APIRouter,Form,UploadFile,File,Request
 import app.schemas as sch
 from app.services.rate_limit_service import create_post_limiter
+from app.services.idempotency_service import get_idempotency_key, idempotent
 from typing import Optional
 from app import models,oauth2
 from app.db import getDb
@@ -92,6 +93,7 @@ async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:model
 
 # creates a new post using sqlAlchemy
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=sch.PostDetailResponse)
+@idempotent(endpoint_identifier="create_post", success_status_code=status.HTTP_201_CREATED)
 async def create_post(
     title:str=Form(...),
     content:str=Form(...),
@@ -99,6 +101,8 @@ async def create_post(
     db: AsyncSession=Depends(getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     _:None=Depends(create_post_limiter),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("create_post_attempt", user_id=currentUser.id)
     media_path = None
@@ -157,7 +161,14 @@ async def create_post(
     )
 # delets a specific post with the mentioned id -> {id}
 @router.delete("/{postId}", response_model=sch.SuccessResponse)
-async def delete_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="delete_post")
+async def delete_post(
+    postId:int, 
+    db:AsyncSession=Depends(getDb), 
+    currentUser:models.User=Depends(oauth2.getCurrentUser),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("delete_post_attempt", user_id=currentUser.id, post_id=postId)
     result=await db.execute(select(models.Post).where(and_(models.Post.id==postId,models.Post.user_id==currentUser.id)))
     postToDelete=result.scalars().first()
@@ -179,7 +190,15 @@ async def delete_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:mo
 
 # update a specific post with id -> {id}
 @router.put("/{postId}", response_model=sch.PostDetailResponse)
-async def update_post(postId:int, post:sch.PostUpdateRequest, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="update_post")
+async def update_post(
+    postId:int, 
+    post:sch.PostUpdateRequest, 
+    db:AsyncSession=Depends(getDb), 
+    currentUser:models.User=Depends(oauth2.getCurrentUser),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("update_post_attempt", user_id=currentUser.id, post_id=postId)
     result=await db.execute(
         select(models.Post)

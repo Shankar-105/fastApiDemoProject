@@ -1,7 +1,7 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter,Form,Query
+from fastapi import status,HTTPException,Depends,Body,APIRouter,Form,Query,Request
 from fastapi.responses import FileResponse
 import app.schemas as sch
-from typing import List
+from typing import List, Optional
 from app import models,db,oauth2
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_,distinct,func,case
@@ -11,6 +11,7 @@ import os
 import asyncio
 from fastapi import UploadFile,File
 from app.services.redis_service import delete_cache
+from app.services.idempotency_service import get_idempotency_key, idempotent
 from app.services.blob_service import upload_blob, delete_blob, get_blob_url
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
 import structlog
@@ -54,7 +55,13 @@ async def get_current_user_avatar(db:AsyncSession=Depends(db.getDb), currentUser
     )
 
 @router.delete("/avatar", status_code=status.HTTP_200_OK, response_model=sch.SuccessResponse)
-async def delete_profile_picture(db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="delete_profile_picture")
+async def delete_profile_picture(
+    db:AsyncSession=Depends(db.getDb),
+    currentUser:models.User=Depends(oauth2.getCurrentUser),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("delete_profile_picture_attempt", user_id=currentUser.id)
     async def _remove_picture():
         locked_user = await lock_user_row(db, user_id=currentUser.id)
@@ -145,7 +152,17 @@ async def get_current_user_posts(limit:int=Query(10, ge=1, le=100), offset: int 
 # ambiguity as one of the section is being passed via Form and the other via Body
 # so made everything to be passed via Form only
 @router.patch("", status_code=status.HTTP_200_OK, response_model=sch.UserProfileResponse)
-async def update_current_user_profile(username:str=Form(None), bio:str=Form(None), profile_picture:UploadFile=File(None), db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser), token: str = Depends(oauth2.oauth2_scheme)):
+@idempotent(endpoint_identifier="update_profile")
+async def update_current_user_profile(
+    username:str=Form(None),
+    bio:str=Form(None),
+    profile_picture:UploadFile=File(None),
+    db:AsyncSession=Depends(db.getDb),
+    currentUser:models.User=Depends(oauth2.getCurrentUser),
+    token: str = Depends(oauth2.oauth2_scheme),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("update_my_profile_attempt", user_id=currentUser.id)
     if not any([username, bio, profile_picture]):
         posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))

@@ -1,5 +1,5 @@
-from fastapi import status,HTTPException,Depends,Body,APIRouter,Query
-from typing import List
+from fastapi import status,HTTPException,Depends,Body,APIRouter,Query,Request
+from typing import List, Optional
 import app.schemas as sch
 from app import models,db,oauth2
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,7 @@ import os
 import structlog
 from app.services.redis_service import get_cache, set_cache, delete_cache, delete_cache_pattern
 from app.services.rate_limit_service import signup_limiter
+from app.services.idempotency_service import get_idempotency_key, idempotent
 from app.services.blob_service import get_blob_url
 import app.services.otp_service as otp_service
 import app.services.email_service as email_service
@@ -94,7 +95,14 @@ async def get_user_avatar(user_id:int, db:AsyncSession=Depends(db.getDb), curren
     )
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=sch.UserResponse)
-async def register_user(userData:sch.UserSignupRequest=Body(...), db:AsyncSession=Depends(db.getDb), _:None=Depends(signup_limiter)):
+@idempotent(endpoint_identifier="register_user", success_status_code=status.HTTP_201_CREATED)
+async def register_user(
+    userData:sch.UserSignupRequest=Body(...),
+    db:AsyncSession=Depends(db.getDb),
+    _:None=Depends(signup_limiter),
+    request: Optional[Request] = None,
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
     logger.info("registration_attempt", username=userData.username, email=userData.email)
     existing_email = await db.execute(select(models.User).where(models.User.email == userData.email))
     if existing_email.scalars().first():

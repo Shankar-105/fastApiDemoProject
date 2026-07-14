@@ -1,7 +1,9 @@
 import asyncio
 import os
+import re
 import structlog
 from azure.storage.blob import BlobServiceClient, ContentSettings
+from fastapi import HTTPException, status
 from app.config import settings
 
 
@@ -30,6 +32,28 @@ def _ensure_parent_dir(path: str) -> None:
         os.makedirs(parent, exist_ok=True)
 
 
+MAX_UPLOAD_BYTES = settings.max_upload_size_mb * 1024 * 1024
+
+def safe_extension(filename: str | None) -> str:
+    """Return only the last alphanumeric extension segment, preventing path traversal."""
+    if not filename:
+        return ""
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
+    ext = re.sub(r"[^a-zA-Z0-9]", "", ext)
+    return ext
+
+
+async def validate_and_read_file(file) -> bytes:
+    """Read an UploadFile with server-side size enforcement."""
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large. Max {settings.max_upload_size_mb} MiB.",
+        )
+    return data
+
+
 def _get_client() -> BlobServiceClient | None:
     global _client
     if _client is None and _is_azure_enabled():
@@ -52,7 +76,11 @@ async def upload_blob(container: str, blob_name: str, data: bytes, content_type:
     client = _get_client()
     if client is None:
         local_dir = _container_to_local_path(container)
-        local_blob = blob_name.replace("/", os.sep)
+        local_blob = blob_name.replace("\\", "/")
+        if ".." in local_blob.split("/") or local_blob.startswith("/"):
+            logger.error("path_traversal_attempt_blocked", blob_name=blob_name)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid blob name.")
+        local_blob = local_blob.replace("/", os.sep)
         local_path = os.path.join(local_dir, local_blob)
         _ensure_parent_dir(local_path)
         await asyncio.to_thread(_write_bytes, local_path, data)
@@ -72,7 +100,11 @@ async def delete_blob(container: str, blob_name: str) -> None:
     client = _get_client()
     if client is None:
         local_dir = _container_to_local_path(container)
-        local_blob = blob_name.replace("/", os.sep)
+        local_blob = blob_name.replace("\\", "/")
+        if ".." in local_blob.split("/") or local_blob.startswith("/"):
+            logger.error("path_traversal_attempt_blocked", blob_name=blob_name)
+            return
+        local_blob = local_blob.replace("/", os.sep)
         local_path = os.path.join(local_dir, local_blob)
         await asyncio.to_thread(_delete_if_exists, local_path)
         return

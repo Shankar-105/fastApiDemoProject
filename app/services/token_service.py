@@ -45,6 +45,8 @@ async def rotate_refresh_token(
 ) -> tuple[str, str]:
 
     from fastapi import HTTPException, status  # local import to avoid circular
+    from app.services import redis_service
+    import json
     old_token_hash = _hash_refresh_token(old_token_str)
     logger.info("refresh_token_rotating")
 
@@ -65,10 +67,20 @@ async def rotate_refresh_token(
             detail="Invalid refresh token.",
         )
 
-    # ── Reuse detected — token was already revoked ──
-    # Someone (attacker or real user) is replaying an old token.
-    # Revoke the ENTIRE family to cut off both parties.
+    # ── Token was already revoked (could be a retry or a real reuse) ──
     if old_row.revoked:
+        # Check the 60-second grace window in Redis — if this is a harmless
+        # retry of a successful rotation, return the same successor tokens.
+        grace_key = f"rotation_grace:{old_token_hash}"
+        try:
+            grace_data = await redis_service.redis_client.get(grace_key)
+            if grace_data:
+                cached = json.loads(grace_data)
+                logger.info("Refresh token rotation retry — returning cached successor")
+                return cached["access_token"], cached["refresh_token"]
+        except Exception:
+            pass
+
         logger.warning("Refresh token reuse detected; revoking family", extra={"extra_info": {"family_id": old_row.family_id}})
         await revoke_family(db, old_row.family_id)
         raise HTTPException(
@@ -102,6 +114,17 @@ async def rotate_refresh_token(
     access_token = await oauth2.createAccessToken(
         {"userId": user.id, "userName": user.username}
     )
+
+    # Store the successor tokens in Redis for a 60-second grace window,
+    # so harmless retries of this same rotation return the same pair
+    # instead of being treated as a reuse attack.
+    try:
+        grace_key = f"rotation_grace:{old_token_hash}"
+        grace_value = json.dumps({"access_token": access_token, "refresh_token": new_refresh})
+        await redis_service.redis_client.set(grace_key, grace_value, ex=60)
+    except Exception:
+        pass
+
     logger.info("Refresh token rotated successfully", extra={"extra_info": {"user_id": old_row.user_id}})
 
     return access_token, new_refresh

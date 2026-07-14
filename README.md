@@ -1,7 +1,7 @@
 # 🚀 Social Media Api
-**Modern Social Media Backend + Real-time Chat – Scalable, Fast, and Beginner-Friendly**
+**Modern Social Media Backend + Real-time Chat – Scalable, Fast**
 
-A **fully async, non-blocking** social media backend built to handle **thousands of concurrent connections** without breaking a sweat. The stack is designed around **_FastAPI, async SQLAlchemy, PostgreSQL, Redis, WebSockets, RabbitMQ, Celery, LGTM Stack for observability k6, and pytest_** so every layer has a clear job: API requests stay fast, database access stays async, background work stays off the request path, and observability stays visible. Production-grade, real-time, and built for scale.
+A **fully async, non-blocking** social media backend built to handle **thousands of concurrent connections** without breaking a sweat. The stack is designed around **_FastAPI, async SQLAlchemy, PostgreSQL, Redis, WebSockets, RabbitMQ, Celery, LGTM Stack, k6, and pytest_** so every layer has a clear job: API requests stay fast, database access stays async, background work stays off the request path, and observability stays visible. Production-grade, real-time, and built for scale.
 
 ---
 

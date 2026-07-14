@@ -1,7 +1,7 @@
 from fastapi import File, UploadFile, APIRouter, Depends, Form
 from uuid import uuid4
 from app import oauth2
-from app.services.blob_service import upload_blob
+from app.services.blob_service import upload_blob, validate_and_read_file, safe_extension
 from app.services import redis_service
 from app.utils.socket_manager import manager
 from app.db import getDb
@@ -29,9 +29,9 @@ async def send_media(
     logger.info("sending_media_message", sender_id=current_user.id, receiver_id=to)
     # 'video', 'audio', 'image'
     media_type = file.content_type.split("/")[0]
-    file_extension = file.filename.split(".")[-1]
-    blob_name = f"{media_type}s/{uuid4()}.{file_extension}"
-    content_bytes = await file.read()
+    file_extension = safe_extension(file.filename)
+    blob_name = f"{media_type}s/{uuid4()}.{file_extension}" if file_extension else f"{media_type}s/{uuid4()}"
+    content_bytes = await validate_and_read_file(file)
     media_url = await upload_blob("chat-media", blob_name, content_bytes, file.content_type)
 
     # Persist message to DB and publish via Redis (publish-first, fallback local)

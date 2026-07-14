@@ -118,6 +118,13 @@ async def likeAComment(
                 likes = count_result.scalar()
                 logger.info("vote_comment_removed", user_id=currentUser.id, comment_id=commentId)
                 return sch.VoteResponse(message="Vote removed successfully", likes=likes)
+            else:
+                currentVote.like=comment.choice
+                await db.commit()
+                count_result = await db.execute(select(models.Comments.likes).where(models.Comments.id==comment.comment_id))
+                likes = count_result.scalar()
+                logger.info("vote_comment_switched", user_id=currentUser.id, comment_id=commentId, choice=comment.choice)
+                return sch.VoteResponse(message="Vote switched successfully", likes=likes)
         else:
             newVote=models.CommentVotes(
                 comment_id=comment.comment_id,

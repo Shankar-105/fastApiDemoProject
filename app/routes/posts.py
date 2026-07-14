@@ -14,7 +14,7 @@ import os,uuid
 import asyncio
 import structlog
 from app.config import settings
-from app.services.blob_service import upload_blob, delete_blob, get_blob_url
+from app.services.blob_service import upload_blob, delete_blob, get_blob_url, safe_extension, validate_and_read_file
 from app.utils.exceptions import ResourceNotFoundException, ValidationException
 
 router=APIRouter(
@@ -110,9 +110,9 @@ async def create_post(
         if media.content_type not in ["image/jpeg", "image/png", "video/mp4"]:
             logger.warning("create_post_invalid_media", user_id=currentUser.id, content_type=media.content_type)
             raise ValidationException("Only JPG, PNG, MP4 allowed")
-        ext=media.filename.split(".")[-1]
+        ext=safe_extension(media.filename)
         filename=f"{uuid.uuid4()}.{ext}"
-        content_bytes = await media.read()
+        content_bytes = await validate_and_read_file(media)
         await upload_blob("posts-media", filename, content_bytes, media.content_type)
         media_path=filename
         media_type="image" if media.content_type.startswith("image") else "video"

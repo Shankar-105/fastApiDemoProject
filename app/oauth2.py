@@ -71,6 +71,10 @@ def _build_user_from_cache(cached: dict) -> models.User:
                 setattr(user, key, None)
         else:
             setattr(user, key, value)
+    if not hasattr(user, "followers_cnt"):
+        user.followers_cnt = 0
+    if not hasattr(user, "following_cnt"):
+        user.following_cnt = 0
     return user
 
 
@@ -84,8 +88,6 @@ def _build_user_cache_payload(user: models.User) -> dict:
         "email_verified": user.email_verified,
         "profile_picture": user.profile_picture,
         "created_at": user.created_at.isoformat() if user.created_at else None,
-        "followers_cnt": user.followers_cnt,
-        "following_cnt": user.following_cnt,
     }
 
 

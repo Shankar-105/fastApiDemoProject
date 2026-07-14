@@ -9,10 +9,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 import os
 import asyncio
+import uuid
 from fastapi import UploadFile,File
 from app.services.redis_service import delete_cache
 from app.services.idempotency_service import get_idempotency_key, idempotent
-from app.services.blob_service import upload_blob, delete_blob, get_blob_url
+from app.services.blob_service import upload_blob, delete_blob, get_blob_url, safe_extension, validate_and_read_file
 from app.services.concurrency_service import lock_user_row, run_with_transient_retry
 import structlog
 
@@ -28,6 +29,11 @@ async def myProfile(db:AsyncSession=Depends(db.getDb),currentUser:models.User=De
     logger.debug("fetching_my_profile", user_id=currentUser.id)
     posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))
     posts_count = posts_count_result.scalar()
+    count_row = await db.execute(
+        select(models.User.followers_cnt, models.User.following_cnt)
+        .where(models.User.id == currentUser.id)
+    )
+    counts = count_row.first()
     logger.info("my_profile_retrieved", user_id=currentUser.id)
     return sch.UserProfileResponse(
         id=currentUser.id,
@@ -36,8 +42,8 @@ async def myProfile(db:AsyncSession=Depends(db.getDb),currentUser:models.User=De
         bio=currentUser.bio or "",
         profile_picture=currentUser.profile_picture,
         posts_count=posts_count,
-        followers_count=currentUser.followers_cnt,
-        following_count=currentUser.following_cnt,
+        followers_count=counts.followers_cnt if counts else 0,
+        following_count=counts.following_cnt if counts else 0,
         created_at=currentUser.created_at
     )
 
@@ -165,6 +171,11 @@ async def update_current_user_profile(
     if not any([username, bio, profile_picture]):
         posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))
         posts_count = posts_count_result.scalar()
+        count_row = await db.execute(
+            select(models.User.followers_cnt, models.User.following_cnt)
+            .where(models.User.id == currentUser.id)
+        )
+        counts = count_row.first()
         return sch.UserProfileResponse(
             id=currentUser.id,
             username=currentUser.username,
@@ -172,8 +183,8 @@ async def update_current_user_profile(
             bio=currentUser.bio,
             profile_picture=currentUser.profile_picture,
             posts_count=posts_count,
-            followers_count=currentUser.followers_cnt,
-            following_count=currentUser.following_cnt,
+            followers_count=counts.followers_cnt if counts else 0,
+            following_count=counts.following_cnt if counts else 0,
             created_at=currentUser.created_at
         )
 
@@ -194,8 +205,9 @@ async def update_current_user_profile(
             if profile_picture.content_type not in allowedFileTypes:
                 await db.rollback()
                 raise HTTPException(status_code=400,detail="only jpeg,png,gif files allowed")
-            blob_name=f"{locked_user.username}_{profile_picture.filename}"
-            content_bytes = await profile_picture.read()
+            ext=safe_extension(profile_picture.filename)
+            blob_name=f"profile_{uuid.uuid4()}.{ext}" if ext else f"profile_{uuid.uuid4()}"
+            content_bytes = await validate_and_read_file(profile_picture)
             await upload_blob("profilepics", blob_name, content_bytes, profile_picture.content_type)
             uploaded_blob_name = blob_name
             locked_user.profile_picture=blob_name

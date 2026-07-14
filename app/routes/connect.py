@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_,delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from typing import List, Optional
-from app.services.redis_service import delete_cache, delete_cache_pattern ,increment_cache_version
+from app.services.redis_service import delete_cache, delete_cache_pattern, increment_cache_version
 from app.services.idempotency_service import get_idempotency_key, idempotent
 from app.models import NotificationType
 from app.services.rate_limit_service import follow_limiter
@@ -26,6 +26,7 @@ async def follow_user(
         user_id: int,
     db:AsyncSession=Depends(getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser),
+    token: str = Depends(oauth2.oauth2_scheme),
     background_tasks=None,
     _:None=Depends(follow_limiter),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
@@ -63,6 +64,8 @@ async def follow_user(
     await delete_cache(f"followers:{userToFollow.id}")
     await delete_cache(f"following:{currentUser.id}")
     await delete_cache_pattern(f"feed:home:{currentUser.id}:*")
+    await delete_cache(f"auth:user:{token}")
+    currentUser.following_cnt = getattr(currentUser, "following_cnt", 0) + 1
     create_notification_task.delay(
         actor_id=currentUser.id,
         owner_id=userToFollow.id,
@@ -80,6 +83,7 @@ async def unfollow_user(
     user_id:int, 
     db:AsyncSession=Depends(getDb), 
     currentUser:models.User=Depends(oauth2.getCurrentUser),
+    token: str = Depends(oauth2.oauth2_scheme),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("unfollow_user_attempt", user_id=currentUser.id, target_id=user_id)
@@ -113,7 +117,9 @@ async def unfollow_user(
     await delete_cache(f"user_profile:{user_id}")
     await delete_cache(f"followers:{user_id}")
     await delete_cache(f"following:{currentUser.id}")
+    await delete_cache(f"auth:user:{token}")
     await increment_cache_version("feed:home")
+    currentUser.following_cnt = max(0, getattr(currentUser, "following_cnt", 0) - 1)
     logger.info("unfollow_user_success", user_id=currentUser.id, target_id=user_id)
     return sch.FollowResponse(message=f"Unfollowed user {userToUnFollow.username}", following_count=currentUser.following_cnt)
 
@@ -124,6 +130,7 @@ async def remove_follower_endpoint(
     follower_id:int, 
     db: AsyncSession = Depends(getDb), 
     currentUser: models.User = Depends(oauth2.getCurrentUser),
+    token: str = Depends(oauth2.oauth2_scheme),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
     logger.info("remove_follower_attempt", user_id=currentUser.id, follower_id=follower_id)
@@ -161,8 +168,9 @@ async def remove_follower_endpoint(
     await delete_cache(f"user_profile:{userToRemove.id}")
     await delete_cache(f"followers:{currentUser.id}")
     await delete_cache(f"following:{userToRemove.id}")
+    await delete_cache(f"auth:user:{token}")
     logger.info("remove_follower_success", user_id=currentUser.id, follower_id=follower_id)
-    return sch.FollowResponse(message=f"Removed follower {userToRemove.username}", following_count=currentUser.following_cnt)
+    return sch.FollowResponse(message=f"Removed follower {userToRemove.username}")
 
 @router.get("/{user_id}/followers", response_model=List[sch.UserBasicResponse])
 async def get_followers_list(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):

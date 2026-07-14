@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     # azure blob storage
     azure_storage_connection_string: str = ""
     azure_storage_account_name: str = ""
+    # upload limits
+    max_upload_size_mb: int = 50
     # rate limiting — max hits and window (seconds) per endpoint
     rl_login_max: int = 5
     rl_login_window: int = 300

@@ -16,7 +16,16 @@ async def messageUser(
     payload:schemas.MessageSchema,
     user_id:int,
     db:AsyncSession
-):    
+):
+    """Save and deliver a direct message between two users.
+
+    Persists the Message record, then publishes both a sender copy and a
+    receiver copy to Redis pub/sub on "chat:messages" for cross-worker
+    delivery. If Redis is unavailable, falls back to local WebSocket sends.
+    When the receiver is online the message is also marked as read immediately.
+    Called from the WebSocket dispatch loop in chat.py for the default
+    (non-reply, non-reaction) message type.
+    """    
     logger.info("creating_direct_message", sender_id=user_id, receiver_id=payload.to)
     msg = models.Message(
         content=payload.content,

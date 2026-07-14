@@ -26,6 +26,12 @@ logger = structlog.get_logger(__name__)
 
 @router.get("/profile", status_code=status.HTTP_200_OK, response_model=sch.UserProfileResponse)
 async def myProfile(db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return the authenticated user's own profile with live counts.
+
+    Always hits the DB for accurate ``posts_count``, ``followers_count``,
+    and ``following_count`` — not cached because these counters change
+    frequently and the profile page should show real-time data.
+    """
     logger.debug("fetching_my_profile", user_id=currentUser.id)
     posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))
     posts_count = posts_count_result.scalar()
@@ -49,6 +55,11 @@ async def myProfile(db:AsyncSession=Depends(db.getDb),currentUser:models.User=De
 
 @router.get("/avatar", status_code=status.HTTP_200_OK, response_model=sch.MediaInfo)
 async def get_current_user_avatar(db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return a signed blob URL for the current user's profile picture.
+
+    Thin wrapper around ``get_user_avatar`` but reads from the already-
+    loaded ``currentUser`` object so it avoids an extra DB query.
+    """
     logger.debug("fetching_my_avatar", user_id=currentUser.id)
     profilePicturePath = currentUser.profile_picture
     if not profilePicturePath:
@@ -67,6 +78,12 @@ async def delete_profile_picture(
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Remove the current user's profile picture and delete the blob.
+
+    Uses a row-level lock (``lock_user_row``) and a transient-retry
+    wrapper to handle concurrent profile updates.  The old blob is
+    deleted after the DB transaction commits successfully.
+    """
     logger.info("delete_profile_picture_attempt", user_id=currentUser.id)
     async def _remove_picture():
         locked_user = await lock_user_row(db, user_id=currentUser.id)
@@ -92,6 +109,12 @@ async def delete_profile_picture(
 # retrives all posts using sqlAlchemy
 @router.get("/posts", response_model=sch.PostListResponse)
 async def get_current_user_posts(limit:int=Query(10, ge=1, le=100), offset: int = Query(0, ge=0), db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return the current user's own posts with pagination.
+
+    Differs from ``get_user_posts`` in that it's not cached — the owner
+    expects real-time accuracy.  Also returns ``is_liked`` so the owner
+    can see their own vote state on each post.
+    """
     logger.debug("fetching_my_posts", user_id=currentUser.id, limit=limit, offset=offset)
     is_liked = (
         select(models.Votes.post_id)
@@ -167,6 +190,13 @@ async def update_current_user_profile(
     token: str = Depends(oauth2.oauth2_scheme),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Update the current user's username, bio, and/or profile picture.
+
+    Uses ``multipart/form-data`` so the profile picture can be uploaded
+    alongside text fields.  Row-level locking prevents lost updates from
+    concurrent requests.  If the username is taken, rolls back and
+    deletes any newly-uploaded blob before returning 400.
+    """
     logger.info("update_my_profile_attempt", user_id=currentUser.id)
     if not any([username, bio, profile_picture]):
         posts_count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id==currentUser.id))
@@ -253,6 +283,11 @@ async def update_current_user_profile(
 
 @router.get("/engagements/votes", status_code=status.HTTP_200_OK)
 async def get_voted_posts(db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return all posts the current user has voted on (like or dislike).
+
+    Joins through the ``Votes`` table and includes the post owner's
+    username.  Not cached — suitable for the user's engagement dashboard.
+    """
     # Query voted posts via join
     result=await db.execute(
         select(models.Post.title, models.Post.id, models.User.username)
@@ -275,6 +310,11 @@ async def get_voted_posts(db:AsyncSession=Depends(db.getDb), currentUser:models.
 
 @router.get("/stats/votes", status_code=status.HTTP_200_OK, response_model=sch.VoteStatsResponse)
 async def get_vote_stats(db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return aggregated like/dislike counts for the current user.
+
+    Uses a single SQL query with ``func.count(case(...))`` to get both
+    counts in one round-trip.  Powers the user's stats dashboard.
+    """
     # using the func,case and quering - BUG FIX: summary returns a list of Row objects
     result=await db.execute(
         select(
@@ -291,6 +331,11 @@ async def get_vote_stats(db:AsyncSession=Depends(db.getDb), currentUser:models.U
 
 @router.get("/posts/liked")
 async def get_liked_posts_list(db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return posts the current user has liked (action == True).
+
+    Filters ``Votes`` by the current user with ``action=True`` and
+    joins post title and owner.  Used on the user's engagement page.
+    """
     # Query liked posts
     result=await db.execute(
         select(models.Post.id, models.User.username)
@@ -310,7 +355,13 @@ async def get_liked_posts_list(db:AsyncSession=Depends(db.getDb), currentUser:mo
         ]
     }
 @router.get("/posts/disliked")
-async def get_disliked_posts_list(db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):    # Query disliked posts
+async def get_disliked_posts_list(db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return posts the current user has disliked (action == False).
+
+    Symmetric to ``get_liked_posts_list`` — same join pattern but
+    filters on ``action == False``.
+    """
+    # Query disliked posts
     result=await db.execute(
         select(models.Post.id, models.User.username)
         .join(models.Votes,models.Votes.post_id==models.Post.id)
@@ -331,6 +382,11 @@ async def get_disliked_posts_list(db:AsyncSession=Depends(db.getDb), currentUser
 
 @router.get("/posts/commented", status_code=status.HTTP_200_OK)
 async def get_commented_posts(db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return all distinct posts the current user has commented on.
+
+    Uses ``GROUP BY`` to deduplicate when a user leaves multiple
+    comments on the same post.  Joins through ``Comments`` → ``Post``.
+    """
     postsResult=await db.execute(
         select(models.Post.title, models.Post.id, models.User.username)
         .join(models.Comments, models.Comments.post_id == models.Post.id)
@@ -353,6 +409,11 @@ async def get_commented_posts(db:AsyncSession=Depends(db.getDb), currentUser:mod
 
 @router.get("/stats/comments", status_code=status.HTTP_200_OK, response_model=sch.CommentStatsResponse)
 async def get_comment_stats(db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return total comment count and unique posts commented on.
+
+    Both aggregates come from a single query using ``func.count`` and
+    ``func.count(distinct(...))`` to minimise database round-trips.
+    """
     # Fetch both aggregates in one query to reduce DB roundtrips.
     statsResult=await db.execute(
         select(

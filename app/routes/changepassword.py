@@ -17,6 +17,12 @@ router = APIRouter(
 
 @router.post("/password/change", response_model=schemas.SuccessResponse)
 async def change_password(db: AsyncSession = Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),_:None=Depends(change_password_limiter)):
+    """Request a password change — sends a 5-minute OTP to the user's email.
+
+    Rate-limited by ``change_password_limiter``.  The OTP is persisted
+    in the DB and dispatched via Celery so the caller gets an immediate
+    200 response while the email is sent in the background.
+    """
     # call the generate otp method in the otp_service file which generates an otp
     otp=otp_service.generateOtp()
     # save this otp in the db using the saveOtp method in the otp_sevice file 
@@ -26,6 +32,12 @@ async def change_password(db: AsyncSession = Depends(db.getDb),currentUser:model
     return schemas.SuccessResponse(message="OTP sent to your email! Check inbox")
 
 async def verifyOtp(db:AsyncSession,otp:str,currentUser:models.User):
+    """Validate an OTP for the current user; raises 400 on mismatch/expiry.
+
+    Shared helper called by ``reset_password_authenticated``.  Rolls
+    back the DB session if the OTP is wrong so the caller's transaction
+    is not left in a partial state.
+    """
     # Check if OTP good
     if await otp_service.checkOtp(db,currentUser.email,otp):
         return
@@ -34,6 +46,13 @@ async def verifyOtp(db:AsyncSession,otp:str,currentUser:models.User):
 
 @router.post("/password/reset-authenticated", response_model=schemas.SuccessResponse)
 async def reset_password_authenticated(request:schemas.PasswordResetRequest=Body(...),db:AsyncSession=Depends(db.getDb),currentUser:models.User=Depends(oauth2.getCurrentUser),token: str = Depends(oauth2.oauth2_scheme),_:None=Depends(reset_password_auth_limiter)):
+    """Reset password using old password + OTP verification.
+
+    Rate-limited.  Uses row-level locking to prevent concurrent password
+    updates.  Verifies the old password, checks the OTP, hashes the new
+    password, then revokes all refresh tokens so every device must
+    re-login.  Also invalidates the auth cache for the current session.
+    """
     async def _reset_password():
         locked_user = await lock_user_row(db, user_id=currentUser.id)
         # first check whether the user entered the correct current password

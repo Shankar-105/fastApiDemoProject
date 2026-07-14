@@ -2,16 +2,12 @@ from datetime import datetime, timezone, timedelta
 from typing import Union
 
 def format_timestamp(dt: Union[datetime, None]) -> str:
-    """
-    Converts a datetime (with or without timezone) into human-readable format
-    Examples:
-        Just now → if < 1 min ago
-        5m ago   → if < 1 hour
-        2h ago   → if < 1 day
-        Today at 3:45 PM
-        Yesterday at 3:45 PM
-        Monday at 4:00 PM
-        19-11-2025 04:00 PM
+    """Convert a datetime to a human-readable relative or formatted string.
+
+    Returns "Just now" (less than 1 min), "5m ago" (< 1h), "2h ago" (< 1d
+    and same day), "Yesterday at 3:45 PM", "Monday at 4:00 PM" (< 7d),
+    or "19-11-2025 04:00 PM" (older). All times displayed in Indian timezone.
+    Used in notification responses and chat history.
     """
     if not dt:
         return "N/A"
@@ -60,5 +56,9 @@ def format_timestamp(dt: Union[datetime, None]) -> str:
 
 
 def get_local_indian_time():
-    """Returns IST timezone (UTC +5:30)"""
+    """Return the Indian Standard Time timezone (UTC +5:30).
+
+    Used by format_timestamp to display times in IST regardless of
+    the server's configured timezone.
+    """
     return timezone(timedelta(hours=5, minutes=30))

@@ -9,6 +9,7 @@ from app.services import redis_service
 from app.services.redis_service import delete_cache_pattern
 from app.utils.socket_manager import manager
 
+
 # -- Patchable session factory --
 # Mirrors exactly what redis_service.py does with redis_client.
 # In production this is AsyncSessionLocal (production DB).
@@ -41,6 +42,21 @@ async def create_notification(
     entity_id: int | None = None,
     entity_type: str | None = None,
 ) -> None:
+    """Persist a notification row and push it to the recipient in real-time.
+
+    This is called from background tasks (not directly from routes) after
+    a like, comment, or follow action completes.  The route's DB session is
+    already closed when the task runs, so we open a fresh session via
+    ``_session_factory``.
+
+    We publish the notification to Redis pub/sub on the ``notifications:messages``
+    channel.  The cross-worker listener in ``main.py`` picks it up and delivers
+    it to the connected WebSocket of the recipient.  If Redis is unavailable
+    we fall back to the local socket manager (single-worker mode).
+
+    Self-notifications are silently dropped — we never notify a user of their
+    own action, even though the callers already guard against this.
+    """
     logger.info(
         "notification_creating",
         actor_id=actor_id,
@@ -58,10 +74,6 @@ async def create_notification(
     text = _NOTIFICATION_TEXT[notif_type](actor_username)
 
     # -- Step A: Persist to DB --
-    # We open a FRESH session here. The route's session is already closed by
-    # the time BackgroundTasks run (FastAPI closes it when the response is sent).
-    # We use _session_factory (not AsyncSessionLocal directly) so tests can
-    # patch this module to use the test DB instead of production.
     async with _session_factory() as db:
         notif = Notification(
             owner_id=owner_id,
@@ -73,7 +85,7 @@ async def create_notification(
         )
         db.add(notif)
         await db.commit()
-        await db.refresh(notif)     # <- needed to get the auto-assigned id + created_at
+        await db.refresh(notif)
 
         # Invalidate notification caches for the recipient
         await delete_cache_pattern(f"notifications:{owner_id}:*")
@@ -113,9 +125,6 @@ async def create_notification(
             )
             await manager.send_personal_message(payload, owner_id)
 
-# -- REST helper functions --
-# These are called by the notification routes added in step 7.
-# Defined here (not inside the routes) to keep the service layer clean.
 
 async def get_notifications(
     db: AsyncSession,
@@ -123,7 +132,11 @@ async def get_notifications(
     limit: int = 20,
     offset: int = 0,
 ) -> list[Notification]:
-    """Return paginated notifications for a user, newest first."""
+    """Return paginated notifications for a user, newest first.
+
+    Called from GET /v1/users/me/notifications.  The route layer handles
+    caching; this function always queries the DB.
+    """
     logger.debug(
         "fetching_notifications",
         user_id=user_id,
@@ -139,8 +152,12 @@ async def get_notifications(
     )
     return result.scalars().all()
 
+
 async def get_unread_count(db: AsyncSession, user_id: int) -> int:
-    """Return the count of unread notifications - used for the badge number."""
+    """Return the count of unread notifications, used for the badge number.
+
+    Called from GET /v1/users/me/notifications/unread-count.
+    """
     logger.debug("Fetching unread notification count", extra={"extra_info": {"user_id": user_id}})
     result = await db.execute(
         select(func.count())
@@ -149,8 +166,13 @@ async def get_unread_count(db: AsyncSession, user_id: int) -> int:
     )
     return result.scalar() or 0
 
+
 async def mark_all_read(db: AsyncSession, user_id: int) -> None:
-    """Bulk-mark every unread notification for a user as read."""
+    """Bulk-mark every unread notification for a user as read.
+
+    Called from PATCH /v1/users/me/notifications/read.
+    After this the badge count will be zero on next refresh.
+    """
     logger.info("Marking all notifications read", extra={"extra_info": {"user_id": user_id}})
     await db.execute(
         update(Notification)
@@ -158,4 +180,3 @@ async def mark_all_read(db: AsyncSession, user_id: int) -> None:
         .values(is_read=True)
     )
     await db.commit()
-

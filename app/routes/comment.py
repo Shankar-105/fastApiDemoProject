@@ -27,6 +27,13 @@ async def create_comment(
     _:None=Depends(comment_limiter),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Add a comment to a post.
+
+    Rate-limited by ``comment_limiter``.  Idempotent.  Rejects comments
+    on posts that have ``enable_comments=False`` (403).  Invalidates
+    comment-list and post-detail caches.  Sends a ``comment``
+    notification if the commenter isn't the post owner.
+    """
     logger.info("create_comment_attempt", user_id=currentUser.id, post_id=post_id)
     result = await db.execute(select(models.Post).where(models.Post.id == post_id))
     post = result.scalars().first()
@@ -78,6 +85,12 @@ async def delete_comment(
     currentUser: models.User = Depends(oauth2.getCurrentUser),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Delete a comment — owner-only by comment ownership check.
+
+    Scoped to the current user's own comments (``user_id`` filter in the
+    query), so one user can't delete another's comment.  Invalidates
+    the comment-list and post-detail caches for the affected post.
+    """
     logger.info("delete_comment_attempt", user_id=currentUser.id, comment_id=commentId)
     result=await db.execute(select(models.Comments).where(and_(models.Comments.id==commentId,models.Comments.user_id==currentUser.id)))
     commentTodelete=result.scalars().first()
@@ -101,6 +114,12 @@ async def update_comment(
     currentUser: models.User = Depends(oauth2.getCurrentUser),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Edit a comment's content — owner-only.
+
+    Only the ``comment_content`` field is mutable.  Invalidates the
+    comment-list cache so the edit is visible immediately.  Retuns 404
+    if the comment doesn't exist or belongs to another user.
+    """
     logger.info("update_comment_attempt", user_id=currentUser.id, comment_id=commentId)
     result=await db.execute(select(models.Comments).where(and_(models.Comments.id==commentId,models.Comments.user_id==currentUser.id)))
     commentToBeEdited=result.scalars().first()
@@ -134,6 +153,12 @@ async def get_post_comments(post_id:int, limit:int=Query(10, ge=1, le=100), offs
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser)
     ):
+    """Return paginated comments for a post.
+
+    Cached per ``comments:post:{post_id}:{offset}:{limit}`` for 30
+    seconds.  Joins user info so each comment includes the author's
+    profile.  Returns ``has_more`` for cursor-style pagination.
+    """
     logger.debug("fetching_comments", post_id=post_id, limit=limit, offset=offset)
     cache_key = f"comments:post:{post_id}:{offset}:{limit}"
     cached = await get_cache(cache_key)

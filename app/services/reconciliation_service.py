@@ -9,7 +9,22 @@ logger = structlog.get_logger(__name__)
 
 
 async def reconcile_denormalized_counters(db: AsyncSession) -> dict[str, int]:
-    """Repair denormalized counters from source-of-truth tables."""
+    """Repair every denormalised counter from its source-of-truth table.
+
+    Several models cache aggregate counts as columns (``users.followers_cnt``,
+    ``posts.likes``, ``messages.reaction_cnt``, etc.) to avoid expensive
+    ``COUNT(*)`` queries on every read.  These counters can drift due to
+    race conditions, partial failures, or bugs.
+
+    This function runs each counter's true calculation and issues an
+    ``UPDATE … WHERE … != …`` so only rows that are actually wrong get
+    repaired — minimising write volume.
+
+    It is called periodically by a Celery beat task
+    (``reconciliation_task``) and can also be triggered manually via
+    the admin endpoint.  Returns a dict of repair counts per counter
+    for monitoring.
+    """
     repaired: dict[str, int] = {}
     logger.info("reconciliation_started")
 

@@ -25,6 +25,13 @@ async def deleteForMe(
     db: AsyncSession=Depends(db.getDb),
     me: models.User = Depends(oauth2.getCurrentUser),
 ):
+    """Soft-delete a shared post for the current user only.
+
+    Creates a DeletedSharedPost record to hide the share from the caller's
+    history without affecting the chat partner's view. Operates analogously
+    to delete_msg.deleteForMe but against the SharedPosts table. Called from
+    the share context menu "Delete for me" action.
+    """
     result = await db.execute(
         select(models.SharedPost).where(models.SharedPost.id==share_id)
     )
@@ -45,6 +52,13 @@ async def delete_share_for_everyone(
     sender_id: int,
     receiver_id: int,
     ):
+    """Mark a shared post as deleted for everyone and notify both users.
+
+    Atomically sets is_deleted_for_everyone = True on the SharedPost row with
+    a concurrency-safe WHERE guard. Publishes a "share_deleted" event to Redis
+    pub/sub, falling back to local WebSocket delivery. Called from the
+    WebSocket dispatch loop when type == "delete_share_for_everyone".
+    """
     logger.info("deleting_shared_post_everyone", share_id=share_id, sender_id=sender_id, receiver_id=receiver_id)
     update_result = await db.execute(
         update(models.SharedPost)

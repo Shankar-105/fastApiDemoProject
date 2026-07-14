@@ -23,6 +23,12 @@ logger = structlog.get_logger(__name__)
 
 @router.get("/{user_id}", status_code=status.HTTP_200_OK, response_model=sch.UserProfileResponse)
 async def get_user_profile(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Get a user's public profile by ID.
+
+    Cached for 120 seconds.  ``is_following`` is computed from the
+    requester's perspective so we can't fully cache it — we always
+    check the connections table for that field.
+    """
     logger.debug("fetching_user_profile", user_id=user_id, requester_id=currentUser.id)
     cache_key = f"user_profile:{user_id}"
     cached = await get_cache(cache_key)
@@ -81,6 +87,11 @@ async def get_user_profile(user_id:int, db:AsyncSession=Depends(db.getDb), curre
 
 @router.get("/{user_id}/avatar", status_code=status.HTTP_200_OK, response_model=sch.MediaInfo)
 async def get_user_avatar(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return a signed blob URL for a user's profile picture.
+
+    Called from the client when displaying another user's avatar in the UI.
+    Returns 404 if the target user has never uploaded a profile picture.
+    """
     logger.debug("fetching_user_avatar", user_id=user_id)
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()
@@ -102,6 +113,13 @@ async def register_user(
     _:None=Depends(signup_limiter),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Register a new user account and send a verification OTP email.
+
+    Rate-limited by ``signup_limiter`` (5/min per IP). Idempotent — the
+    ``idempotency_key`` header prevents duplicate signups from retries.
+    On success the user is created with ``email_verified=False`` and a
+    5-minute OTP is dispatched via Celery to their inbox.
+    """
     logger.info("registration_attempt", username=userData.username, email=userData.email)
     existing_email = await db.execute(select(models.User).where(models.User.email == userData.email))
     if existing_email.scalars().first():
@@ -128,6 +146,11 @@ async def register_user(
 
 @router.get("", status_code=status.HTTP_200_OK, response_model=List[sch.UserResponse])
 async def list_users(db:AsyncSession=Depends(db.getDb)):
+    """Return a paginated list of all registered users.
+
+    Cached under ``all_users`` for 60 seconds. Returns only ``id``,
+    ``username``, and ``created_at`` for each user — no PII beyond that.
+    """
     logger.debug("Listing all users")
     cached = await get_cache("all_users")
     if cached:
@@ -149,6 +172,11 @@ async def list_users(db:AsyncSession=Depends(db.getDb)):
 
 @router.get("/{user_id}/followers", status_code=status.HTTP_200_OK, response_model=List[sch.UserBasicResponse])
 async def get_followers(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return the list of users who follow the given ``user_id``.
+
+    Cached for 120 seconds. Returns 404 if the target user doesn't exist.
+    Refreshed on follow/unfollow so stale data is rare.
+    """
     logger.debug("fetching_followers", user_id=user_id)
     cache_key = f"followers:{user_id}"
     cached = await get_cache(cache_key)
@@ -182,6 +210,11 @@ async def get_followers(user_id:int, db:AsyncSession=Depends(db.getDb), currentU
 
 @router.get("/{user_id}/following", status_code=status.HTTP_200_OK, response_model=List[sch.UserBasicResponse])
 async def get_following(user_id:int, db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return the list of users that ``user_id`` follows.
+
+    Cached for 120 seconds. Symmetric to ``get_followers`` — uses the
+    same cache-invalidation pattern triggered by follow/unfollow.
+    """
     logger.debug("fetching_following", user_id=user_id)
     cache_key = f"following:{user_id}"
     cached = await get_cache(cache_key)
@@ -215,6 +248,12 @@ async def get_following(user_id:int, db:AsyncSession=Depends(db.getDb), currentU
 
 @router.get("/{user_id}/posts", response_model=sch.PostListResponse)
 async def get_user_posts(user_id:int, limit:int=Query(10, ge=1, le=100), offset: int = Query(0, ge=0), db:AsyncSession=Depends(db.getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return paginated posts for a user, with ``is_liked`` from the requester's view.
+
+    Cached per ``{user_id}:{offset}:{limit}`` for 60 seconds. Returns
+    ``has_more=True`` when there are more posts beyond the current page.
+    Cache is invalidated when the user creates or deletes a post.
+    """
     logger.debug("fetching_user_posts", user_id=user_id, limit=limit, offset=offset)
     cache_key = f"user:posts:{user_id}:{offset}:{limit}"
     cached = await get_cache(cache_key)

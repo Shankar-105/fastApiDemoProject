@@ -7,8 +7,10 @@ from opentelemetry import trace
 from app.config import settings
 
 def add_otel_trace_id(logger: Any, method_name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Adds OpenTelemetry trace and span IDs to the log event.
+    """Structlog processor: inject the current OpenTelemetry trace_id and span_id into every log event.
+
+    Skipped in production mode to avoid log bloat. Used by setup_logging()
+    to correlate logs with distributed traces in development.
     """
     if settings.production_mode:
         return event_dict
@@ -21,8 +23,10 @@ def add_otel_trace_id(logger: Any, method_name: str, event_dict: Dict[str, Any])
     return event_dict
 
 def drop_color_if_prod(logger: Any, method_name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Ensure no color codes in production JSON logs.
+    """Structlog processor: strip structlog-internal keys that carry terminal color codes.
+
+    Only active in production mode. Prevents ANSI escape sequences from
+    contaminating structured JSON output sent to log aggregators.
     """
     if settings.production_mode:
         event_dict.pop("_record", None)
@@ -32,9 +36,14 @@ def drop_color_if_prod(logger: Any, method_name: str, event_dict: Dict[str, Any]
 from celery.signals import after_setup_logger, after_setup_task_logger
 
 def setup_logging():
-    """
-    Configures structlog for the entire application.
-    Supports development (pretty console) and production (structured JSON).
+    """Configure structlog once at application startup.
+
+    Development mode: pretty colored console output at DEBUG level.
+    Production mode: single-line JSON at INFO level (ELK/Loki friendly).
+    Benchmark mode: ERROR-level only to reduce I/O noise.
+
+    Also pipes stdlib logging (uvicorn, SQLAlchemy) through structlog
+    and silences noisy 3rd-party loggers.
     """
     
     # Common processors for both modes
@@ -105,8 +114,11 @@ def setup_logging():
 @after_setup_logger.connect
 @after_setup_task_logger.connect
 def setup_celery_logging(logger, **kwargs):
-    """
-    Ensure Celery workers use structlog.
+    """Celery signal handler: apply structlog configuration to Celery worker loggers.
+
+    Connected to after_setup_logger and after_setup_task_logger signals
+    so that Celery task output uses the same structured format as the
+    FastAPI application.
     """
     setup_logging()
 

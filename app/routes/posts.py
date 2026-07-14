@@ -27,6 +27,13 @@ logger = structlog.get_logger(__name__)
 # gets a specific post with id -> {postId}
 @router.get("/{postId}", response_model=sch.PostDetailResponse)
 async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return full detail for a single post by ID.
+
+    Cached per ``post:{postId}:{currentUser.id}`` for 120 seconds
+    because ``is_liked`` is user-specific.  Also queues an async view
+    event via Redis so views can be batch-written later.
+    Raises ``ResourceNotFoundException`` if the post doesn't exist.
+    """
     logger.debug("fetching_post", post_id=postId, user_id=currentUser.id)
     cache_key = f"post:{postId}:{currentUser.id}"
     cached = await get_cache(cache_key)
@@ -103,6 +110,12 @@ async def create_post(
     _:None=Depends(create_post_limiter),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Create a new post with optional media upload (JPG/PNG/MP4).
+
+    Rate-limited by ``create_post_limiter``. Idempotent — retries won't
+    create duplicates.  Invalidates both home & explore feed caches and
+    the posting user's post-list cache so new content appears instantly.
+    """
     logger.info("create_post_attempt", user_id=currentUser.id)
     media_path = None
     media_type = None
@@ -167,6 +180,11 @@ async def delete_post(
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Delete a post — owner-only; also removes the associated media blob.
+
+    Idempotent.  Cleans up all related caches (post detail, user posts,
+    feeds, and comments) so stale data is never served after deletion.
+    """
     logger.info("delete_post_attempt", user_id=currentUser.id, post_id=postId)
     result=await db.execute(select(models.Post).where(and_(models.Post.id==postId,models.Post.user_id==currentUser.id)))
     postToDelete=result.scalars().first()
@@ -196,6 +214,12 @@ async def update_post(
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Update a post's mutable fields (title, content, hashtags, etc).
+
+    Idempotent.  Only the post owner can update.  Invalidates the post's
+    detail cache and both feed caches so edits propagate immediately.
+    Uses ``exclude_unset=True`` so only explicitly provided fields change.
+    """
     logger.info("update_post_attempt", user_id=currentUser.id, post_id=postId)
     result=await db.execute(
         select(models.Post)

@@ -1,10 +1,16 @@
-# from pydantic V2+ the BaseSettings Class has been moved to
-# pydantic_settings package this class automattically collects
-# data from the '.env' file with it being set as the config
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    """Application settings loaded from .env.
+
+    Every secret, tunable, and integration endpoint lives here so we never
+    hardcode anything in application code.  Pydantic reads these from the
+    environment / .env file at import time and validates types immediately.
+
+    The pool sizes and timeouts were tuned for a 1 GB Azure VM — keep
+    them conservative to avoid connection storms under load.
+    """
+
     # database info
     database_host: str
     database_port: int

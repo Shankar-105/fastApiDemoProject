@@ -22,6 +22,12 @@ router=APIRouter(
 
 @router.get("/messages/{msg_id}/can-edit", response_model=CanEditResponse)
 async def can_edit(msg_id:int,db:AsyncSession=Depends(db.getDb),currentUser:models.User = Depends(oauth2.getCurrentUser)):
+    """Check if a message is still within the editable time window.
+
+    Returns can_edit=true if the message exists, belongs to the current user,
+    and was created less than max_edit_time minutes ago. Used by the frontend
+    to conditionally show or hide the edit button on messages.
+    """
     logger.debug("checking_edit_window", message_id=msg_id, user_id=currentUser.id)
     result = await db.execute(
         select(models.Message).where(
@@ -40,6 +46,15 @@ async def can_edit(msg_id:int,db:AsyncSession=Depends(db.getDb),currentUser:mode
     return CanEditResponse(can_edit=True)
     
 async def edit_message(db:AsyncSession,message_id:int,new_content:str,sender_id:int,recv_id:int):
+    """Edit a sent message's content within the allowed time window.
+
+    Verifies the message exists, belongs to the sender, and hasn't exceeded
+    max_edit_time. If content is unchanged, echoes the current state without
+    modifying the DB. Otherwise atomically updates content, resets read status,
+    and publishes the edit to Redis pub/sub (fallback to local WebSocket).
+    If the edit window expired, sends an "edit_message_denied" response to the
+    sender. Called from the WebSocket dispatch loop when type == "edit_message".
+    """
     logger.info("editing_message", message_id=message_id, sender_id=sender_id, receiver_id=recv_id)
     result = await db.execute(
         select(models.Message).where(

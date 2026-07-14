@@ -12,6 +12,12 @@ def create_notification_task(
     entity_id: int | None = None,
     entity_type: str | None = None,
 ):
+    """Create a notification asynchronously via Celery.
+
+    Runs the async create_notification service function in a background
+    worker so the request handler doesn't block on DB writes. Retries up
+    to 3 times with exponential backoff on failure.
+    """
     try:
         import asyncio
         from app.services.notification_service import create_notification

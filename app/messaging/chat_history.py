@@ -21,6 +21,15 @@ async def get_chat_history(
     db: AsyncSession = Depends(getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser),
 ):
+    """Return full chat history between the current user and a friend.
+
+    Fetches messages (with reactions, reply chains, and share-reply context)
+    and shared posts between the two users, excluding items soft-deleted by
+    the current user or deleted-for-everyone. Merges both streams into a single
+    time-sorted list with type discriminators ("message" / "shared_post").
+    Reply messages include the original message or shared-post context inline.
+    Called from the chat UI when opening a conversation.
+    """
     # CRITICAL: Hide undelivered messages from friend
     # firstly let us fetch out the 'delted for me' msgs by the current user
     subq=(
@@ -148,6 +157,14 @@ async def get_recent_chats(
     db: AsyncSession = Depends(getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser)
 ):
+    """Return the most recent conversation per distinct chat partner.
+
+    Uses a windowed query (ROW_NUMBER) to pick the latest non-deleted message
+    for each other user the current user has exchanged messages with. Returns
+    the partner's profile, online/last-seen status (via the in-memory presence
+    tracker), and a preview of the last message. Called by the DM inbox list
+    on app launch and on refresh.
+    """
     other_user_id = case(
         (models.Message.sender_id == currentUser.id, models.Message.receiver_id),
         else_=models.Message.sender_id,

@@ -24,6 +24,12 @@ async def msg_reactions(
     db: AsyncSession = Depends(db.getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser)
 ):
+    """Return all reactions on a message with user details.
+
+    Requires the requesting user to be either the sender or receiver of the
+    message. Returns a list of {user_id, username, profile_pic, reaction}
+    for each unique reaction. Called from the message reactions popup.
+    """
     logger.debug("fetching_message_reactions", message_id=msg_id, user_id=currentUser.id)
     result = await db.execute(
         select(models.Message).where(models.Message.id == msg_id)
@@ -56,7 +62,16 @@ async def react(
     reaction:schemas.ReactionPayload,
     user_id:int,
     db: AsyncSession
-): 
+):
+    """Add, change, or remove a reaction on a message (toggle logic).
+
+    Only the sender and receiver of the message are eligible to react. If no
+    existing reaction: creates one. If same reaction exists: removes it
+    (toggle off). If different reaction exists: updates it. Publishes the
+    reaction event (with updated count) to Redis pub/sub, falling back to
+    local WebSocket delivery. Called from the WebSocket dispatch loop when
+    type == "reaction".
+    """ 
     logger.info("handling_message_reaction", message_id=reaction.message_id, user_id=user_id, reaction=reaction.reaction)
     result = await db.execute(
         select(models.Message).where(models.Message.id == reaction.message_id)

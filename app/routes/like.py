@@ -28,6 +28,13 @@ async def voteOnPost(
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Like, dislike, toggle, or remove a vote on a post.
+
+    Three-way logic: no existing vote → create; same action → remove
+    (toggle off); different action → switch.  Validates the path
+    ``postId`` matches the payload ``post_id``.  Sends a ``like``
+    notification on new likes only.  Invalidates post cache and feeds.
+    """
     logger.info("vote_post_attempt", user_id=currentUser.id, post_id=postId, choice=post.choice)
     if post.post_id != postId:
         logger.warning("vote_post_mismatch", post_id_path=postId, post_id_payload=post.post_id)
@@ -98,6 +105,12 @@ async def likeAComment(
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Like, toggle, or remove a vote on a comment.
+
+    Same three-way toggle pattern as ``voteOnPost`` but for comments
+    and does *not* invalidate feed caches (comment votes are less
+    visible).  Validates the path ``commentId`` matches the payload.
+    """
     logger.info("vote_comment_attempt", user_id=currentUser.id, comment_id=commentId, choice=comment.choice)
     if comment.comment_id != commentId:
         logger.warning("vote_comment_mismatch", comment_id_path=commentId, comment_id_payload=comment.comment_id)

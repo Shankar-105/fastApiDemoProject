@@ -10,6 +10,23 @@ from app.config import settings
 
 
 async def _consume_token_bucket(key: str, max_calls: int, window: int) -> tuple[bool, int]:
+    """Token-bucket rate limiter backed by Redis.
+
+    Each *key* (e.g. ``rl:login:ip:1.2.3.4``) holds a Redis hash with
+    ``tokens`` (float) and ``ts`` (last-refill timestamp in ms).
+
+    On every call we:
+      1. Refill tokens proportionally to elapsed time.
+      2. Cap at *max_calls*.
+      3. If ≥1 tokens remain, consume one and allow.
+      4. Otherwise deny and return the suggested retry-after seconds.
+
+    We use ``WATCH`` / ``MULTI`` / ``EXEC`` (optimistic locking) so two
+    concurrent requests from the same IP don't race past each other.
+    On ``WatchError`` we retry automatically (the loop at the bottom).
+
+    If *max_calls* ≤ 0 every request is denied (kill-switch for an endpoint).
+    """
     now_ms = int(time.time() * 1000)
     refill_window_ms = max(window, 1) * 1000
 
@@ -49,7 +66,14 @@ async def _consume_token_bucket(key: str, max_calls: int, window: int) -> tuple[
         except WatchError:
             continue
 
+
 async def _check(key: str, max_calls: int, window: int) -> None:
+    """Helper: call ``_consume_token_bucket`` and raise 429 if denied.
+
+    If Redis is unreachable we let the request through — better to serve
+    traffic without rate limiting than to block all requests because Redis
+    is down.  This is a conscious trade-off.
+    """
     try:
         allowed, retry_after = await _consume_token_bucket(key, max_calls, window)
         if not allowed:
@@ -66,6 +90,17 @@ async def _check(key: str, max_calls: int, window: int) -> None:
 
 
 def ip_rate_limit(endpoint_id: str, max_calls: int, window: int):
+    """Factory: return a FastAPI dependency that rate-limits by client IP.
+
+    Usage::
+
+        @router.post("/login")
+        async def login(_, _: None = Depends(ip_rate_limit("login", 5, 300))):
+            ...
+
+    The dependency extracts ``request.client.host`` and builds a Redis key
+    like ``rl:login:ip:1.2.3.4``.
+    """
     async def dependency(request: Request) -> None:
         ip = request.client.host if request.client else "unknown"
         key = f"rl:{endpoint_id}:ip:{ip}"
@@ -75,6 +110,17 @@ def ip_rate_limit(endpoint_id: str, max_calls: int, window: int):
 
 
 def user_rate_limit(endpoint_id: str, max_calls: int, window: int):
+    """Factory: return a FastAPI dependency that rate-limits by authenticated user.
+
+    Usage::
+
+        @router.post("/comment")
+        async def comment(_, _: None = Depends(user_rate_limit("comment", 10, 60))):
+            ...
+
+    The dependency resolves the current user via ``getCurrentUser`` and builds
+    a Redis key like ``rl:comment:user:42``.
+    """
     async def dependency(current_user: models.User = Depends(oauth2.getCurrentUser)) -> None:
         key = f"rl:{endpoint_id}:user:{current_user.id}"
         await _check(key, max_calls, window)

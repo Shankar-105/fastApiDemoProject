@@ -26,6 +26,13 @@ async def get_shared_post_reactions(
     db: AsyncSession = Depends(db.getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser)
 ):
+    """Return all reactions on a shared post with user details.
+
+    Requires the requesting user to be either the sender or receiver of the
+    shared post. Returns a list of {user_id, username, profile_pic, reaction}.
+    Mirrors msg_reaction.msg_reactions but queries SharedPostReaction.
+    Called from the shared post reactions popup.
+    """
     logger.debug("fetching_shared_post_reactions", shared_id=shared_id, user_id=currentUser.id)
     result = await db.execute(
         select(models.SharedPost).where(models.SharedPost.id == shared_id)
@@ -59,6 +66,14 @@ async def react_to_shared_post(
     user_id: int,
     db: AsyncSession
 ):
+    """Add, change, or remove a reaction on a shared post (toggle logic).
+
+    Only the from_user and to_user of the shared post are eligible to react.
+    Toggle semantics mirror msg_reaction.react: create / toggle-off / update.
+    Publishes a "reaction_update" event to Redis pub/sub with the updated
+    reaction count, falling back to local WebSocket delivery. Called from the
+    WebSocket dispatch loop when type == "shared_post_reaction".
+    """
     logger.info("handling_shared_post_reaction", shared_id=reaction.message_id, user_id=user_id, reaction=reaction.reaction)
     # message_id is nothing but share_id
     result = await db.execute(

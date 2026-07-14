@@ -26,6 +26,14 @@ async def send_media(
     current_user = Depends(oauth2.getCurrentUser),
     db: AsyncSession = Depends(getDb),
 ):
+    """Upload and send a media message (image/video/audio).
+
+    Validates file type, generates a UUID-based blob name, uploads to Azure
+    Blob Storage via chat-media container, persists a Message record with the
+    resulting URL, then publishes to Redis pub/sub for cross-worker delivery
+    (with local WebSocket fallback). Returns the media URL, type, and message
+    ID to the caller. Called when the user sends an attachment in chat.
+    """
     logger.info("sending_media_message", sender_id=current_user.id, receiver_id=to)
     # 'video', 'audio', 'image'
     media_type = file.content_type.split("/")[0]

@@ -1,3 +1,9 @@
+"""Authentication routes — login, logout, refresh tokens, email verification, password reset.
+
+Every public auth endpoint is rate-limited at the IP level to prevent brute-force
+attacks (see ``rate_limit_service``).  Login and refresh-token are idempotent so
+network retries don't create duplicate tokens or sessions.
+"""
 from fastapi import status,HTTPException,Depends,Body,APIRouter
 from app import db,models,oauth2
 from app.services import token_service
@@ -36,7 +42,12 @@ async def loginUser(
     _:None=Depends(login_limiter),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Authenticate with username/password and return JWT access + refresh tokens.
 
+    Validates credentials, checks email-verified flag, caches the user
+    payload in Redis for fast subsequent auth checks, creates a refresh
+    token for rotation, and returns a ``TokenModel`` with both tokens.
+    """
     logger.info("login_attempt", username=userCred.username)
     result = await db.execute(select(models.User).where(models.User.username == userCred.username))
     isUserPresent = result.scalars().first()
@@ -86,6 +97,12 @@ async def refresh_token(
     _: None = Depends(refresh_limiter),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Exchange a valid refresh token for a new access + refresh token pair.
+
+    Delegates to ``token_service.rotate_refresh_token`` which handles
+    reuse detection, grace-window retries, and family revocation.
+    Rate-limited at the IP level to slow down brute-force attempts.
+    """
     logger.info("Token refresh attempt")
     access_token, new_refresh = await token_service.rotate_refresh_token(db, payload.refresh_token)
     logger.info("Token refresh successful")
@@ -93,6 +110,12 @@ async def refresh_token(
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(token: str = Depends(oauth2.oauth2_scheme), db: AsyncSession = Depends(db.getDb)):
+    """Invalidate the current session: blacklist the access token and revoke all refresh tokens.
+
+    We delete the auth cache entry, add the access token to the Redis
+    blacklist for its remaining lifetime, and revoke every refresh token
+    belonging to the user so they must log in again on all devices.
+    """
     logger.info("Logout attempt")
     try:
         payload = await oauth2.decodeToken(token)
@@ -119,6 +142,12 @@ async def logout(token: str = Depends(oauth2.oauth2_scheme), db: AsyncSession = 
 
 @router.post("/password/forgot", status_code=status.HTTP_200_OK)
 async def forgot_password(payload: sch.ForgotPasswordSchema, db: AsyncSession = Depends(db.getDb), _: None = Depends(forgot_password_limiter)):
+    """Send a password-reset OTP to the given email.
+
+    We always return the same success message regardless of whether the
+    email exists (prevents email enumeration).  The actual OTP email is
+    sent via a Celery background task so the request returns quickly.
+    """
     logger.info("forgot_password_request", email=payload.email)
     result = await db.execute(select(models.User).where(models.User.email == payload.email))
     user = result.scalars().first()
@@ -135,6 +164,11 @@ async def forgot_password(payload: sch.ForgotPasswordSchema, db: AsyncSession = 
 
 @router.post("/password/reset", status_code=status.HTTP_200_OK)
 async def reset_password(payload: sch.ResetPasswordSchema, db: AsyncSession = Depends(db.getDb), _: None = Depends(reset_password_limiter)):
+    """Reset a forgotten password using an OTP (no auth required).
+
+    Uses ``lock_user_row`` + ``run_with_transient_retry`` so concurrent
+    password resets on the same account don't produce lost writes.
+    """
     logger.info("password_reset_attempt", email=payload.email)
     if not await otp_service.checkOtp(db, payload.email, payload.otp):
         logger.warning("password_reset_failed_invalid_otp", email=payload.email)
@@ -162,6 +196,7 @@ async def reset_password(payload: sch.ResetPasswordSchema, db: AsyncSession = De
 
 @router.post("/email/verify", status_code=status.HTTP_200_OK)
 async def verify_email(payload: sch.VerifyEmailRequest, db: AsyncSession = Depends(db.getDb)):
+    """Verify a user's email address using the OTP sent during registration."""
     logger.info("email_verification_attempt", email=payload.email)
     async def _verify_email():
         user = await lock_user_row(db, email=payload.email)
@@ -192,6 +227,7 @@ async def verify_email(payload: sch.VerifyEmailRequest, db: AsyncSession = Depen
 
 @router.post("/email/resend-otp", status_code=status.HTTP_200_OK)
 async def resend_verification_otp(payload: sch.ResendVerificationOtpRequest, db: AsyncSession = Depends(db.getDb), _: None = Depends(forgot_password_limiter)):
+    """Resend the email-verification OTP (rate-limited at the IP level)."""
     logger.info("resend_otp_request", email=payload.email)
     result = await db.execute(select(models.User).where(models.User.email == payload.email))
     user = result.scalars().first()

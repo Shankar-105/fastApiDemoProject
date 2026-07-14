@@ -28,6 +28,13 @@ async def get_my_notifications(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
 ):
+    """Return paginated notifications for the current user.
+
+    Cached per ``notifications:{user.id}:{offset}:{limit}`` for 20
+    seconds.  Includes the ``unread_count`` and ``total`` alongside the
+    notification list so the UI can show badges in one call.
+    Delegates to ``notification_service`` for domain logic.
+    """
     logger.debug("fetching_notifications", user_id=current_user.id, limit=limit, offset=offset)
     cache_key = f"notifications:{current_user.id}:{offset}:{limit}"
     cached = await get_cache(cache_key)
@@ -68,6 +75,12 @@ async def get_unread_notification_count(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
 ):
+    """Return the count of unread notifications for the current user.
+
+    Cached under ``notif:unread:{user.id}`` for 20 seconds.  This is a
+    lightweight endpoint the client polls periodically (or on app
+    foreground) to update the notification badge.
+    """
     logger.debug("fetching_unread_notif_count", user_id=current_user.id)
     cache_key = f"notif:unread:{current_user.id}"
     cached = await get_cache(cache_key)
@@ -93,6 +106,12 @@ async def mark_all_notifications_read(
     current_user: models.User = Depends(oauth2.getCurrentUser),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Mark every notification for the current user as read.
+
+    Idempotent — calling this multiple times is safe.  Purges all
+    notification caches for the user (both list and unread-count) so
+    the badge updates to zero immediately.
+    """
     logger.info("mark_all_notifications_read_attempt", user_id=current_user.id)
     await ns.mark_all_read(db_session, current_user.id)
     await delete_cache_pattern(f"notifications:{current_user.id}:*")

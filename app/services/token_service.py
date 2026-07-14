@@ -16,15 +16,41 @@ logger = structlog.get_logger(__name__)
 
 
 def _hash_refresh_token(token_str: str) -> str:
+    """Return the SHA-256 hex digest of *token_str*.
+
+    We never store raw refresh tokens in the database.  The token table
+    contains only hashes, so a DB leak doesn't expose usable tokens.
+    """
     return hashlib.sha256(token_str.encode("utf-8")).hexdigest()
 
 
 async def create_refresh_token(
     db: AsyncSession, user_id: int, family_id: str | None = None
 ) -> str:
+    """Create a new refresh token row for *user_id* and return the raw token string.
 
+    The token is a cryptographically random 43-character string
+    (``secrets.token_urlsafe(32)``).  Only its SHA-256 hash is stored in
+    the database.
+
+    If *family_id* is ``None`` (first-time login), a new family UUID is
+    generated.  During rotation the caller passes the existing family ID
+    so all tokens from the same login session remain linked.
+
+    **Does not commit** — the caller is responsible for committing the
+    transaction, allowing atomic multi-row operations like rotation
+    (revoke old + insert new in one commit).
+
+    Args:
+        db: Active async DB session.
+        user_id: Owner of this refresh token.
+        family_id: UUID grouping tokens by login session. ``None`` for new logins.
+
+    Returns:
+        The raw (unhashed) token string to return to the client.
+    """
     logger.info("refresh_token_creating", user_id=user_id)
-    token_str = secrets.token_urlsafe(32)  # 43-char cryptographically random
+    token_str = secrets.token_urlsafe(32)
     if family_id is None:
         family_id = str(uuid.uuid4())
 
@@ -42,7 +68,33 @@ async def create_refresh_token(
 async def rotate_refresh_token(
     db: AsyncSession, old_token_str: str
 ) -> tuple[str, str]:
+    """Revoke *old_token_str* and issue a fresh access + refresh token pair.
 
+    Implements refresh token rotation with a 60-second grace window in Redis
+    so that harmless retries (network issues, client timeout) return the same
+    successor tokens instead of triggering full family revocation.
+
+    **Reuse detection**: if the old token is already revoked and the grace
+    window has expired, we treat this as a stolen-token attack and revoke
+    **all** tokens in the family (``revoke_family``).  The user must log in
+    again.
+
+    **Locking**: We ``SELECT … FOR UPDATE`` on the old token row to prevent
+    concurrent rotations from racing.
+
+    **Atomicity**: The revocation and new-token insert happen in a single
+    commit, so the rotation is atomic.
+
+    Args:
+        db: Active async DB session.
+        old_token_str: The raw refresh token string from the client.
+
+    Returns:
+        Tuple of ``(access_token, new_refresh_token)``.
+
+    Raises:
+        HTTPException 401: if token not found, expired, or reuse detected.
+    """
     from fastapi import HTTPException, status  # local import to avoid circular
     from app.services import redis_service
     import json
@@ -130,7 +182,15 @@ async def rotate_refresh_token(
 
 
 async def revoke_family(db: AsyncSession, family_id: str) -> None:
-    """Mark ALL tokens in this family as revoked (reuse detection response)."""
+    """Mark ALL tokens in *family_id* as revoked.
+
+    Called when a reused (stolen) refresh token is detected.  This locks
+    the user out of all sessions that share this family — they must log
+    in again.
+
+    The commit happens inside this function since it's always a standalone
+    operation (never part of a larger transaction).
+    """
     logger.info("Revoking refresh token family", extra={"extra_info": {"family_id": family_id}})
     await db.execute(
         update(models.RefreshToken)
@@ -141,7 +201,11 @@ async def revoke_family(db: AsyncSession, family_id: str) -> None:
 
 
 async def revoke_all_user_tokens(db: AsyncSession, user_id: int) -> None:
-    """Revoke every refresh token for a user (called on password change)."""
+    """Revoke every refresh token for *user_id*.
+
+    Called on password change or logout.  Forces all existing sessions
+    to re-authenticate.
+    """
     logger.info("Revoking all refresh tokens for user", extra={"extra_info": {"user_id": user_id}})
     await db.execute(
         update(models.RefreshToken)

@@ -31,6 +31,13 @@ async def follow_user(
     _:None=Depends(follow_limiter),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Follow another user by ID.
+
+    Rate-limited by ``follow_limiter``. Uses ``ON CONFLICT DO NOTHING``
+    so re-follows are silently rejected.  Invalidates both parties'
+    profile caches and the follower/following lists.  Dispatches a
+    ``follow`` notification via Celery if the follow succeeds.
+    """
     logger.info("follow_user_attempt", user_id=currentUser.id, target_id=user_id)
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     userToFollow=result.scalars().first()
@@ -86,6 +93,12 @@ async def unfollow_user(
     token: str = Depends(oauth2.oauth2_scheme),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Unfollow a user by ID.
+
+    Idempotent — returns 400 if the follow relationship doesn't exist.
+    Invalidates caches on both sides and bumps the home-feed version so
+    the unfollowed user's posts disappear from the follower's feed.
+    """
     logger.info("unfollow_user_attempt", user_id=currentUser.id, target_id=user_id)
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     userToUnFollow=result.scalars().first()
@@ -133,6 +146,12 @@ async def remove_follower_endpoint(
     token: str = Depends(oauth2.oauth2_scheme),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Remove a follower from the current user's account.
+
+    The caller must match ``user_id`` (enforced server-side) to prevent
+    one user deleting another's followers.  Invalidates both users'
+    caches.  Idempotent — retries won't double-delete.
+    """
     logger.info("remove_follower_attempt", user_id=currentUser.id, follower_id=follower_id)
     if user_id != currentUser.id:
         logger.warning("remove_follower_failed_unauthorized", user_id=currentUser.id, target_user_id=user_id)
@@ -174,6 +193,12 @@ async def remove_follower_endpoint(
 
 @router.get("/{user_id}/followers", response_model=List[sch.UserBasicResponse])
 async def get_followers_list(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return followers of ``user_id`` with ``is_following`` flag.
+
+    Unlike ``users.py:get_followers``, this endpoint also annotates
+    whether *you* follow each follower (mutual-follow indicator).
+    Not cached because the flag is per-requester.
+    """
     logger.debug("fetching_followers_list", user_id=user_id)
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()
@@ -212,6 +237,11 @@ async def get_followers_list(user_id:int, db:AsyncSession=Depends(getDb), curren
 
 @router.get("/{user_id}/following", response_model=List[sch.UserBasicResponse])
 async def get_following_list(user_id:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return who ``user_id`` follows with ``is_following`` flag.
+
+    Symmetric to ``get_followers_list`` — annotates each result with
+    whether the requester also follows that user.  Not cached.
+    """
     logger.debug("fetching_following_list", user_id=user_id)
     result=await db.execute(select(models.User).where(models.User.id==user_id))
     user=result.scalars().first()

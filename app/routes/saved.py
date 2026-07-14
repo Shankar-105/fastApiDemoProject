@@ -17,6 +17,11 @@ logger = structlog.get_logger(__name__)
 
 
 def _build_post_detail(post: models.Post, is_liked: bool) -> sch.PostDetailResponse:
+    """Build a ``PostDetailResponse`` from an ORM Post with a resolved media URL.
+
+    Shared helper used by ``get_saved_posts`` to avoid duplicating the
+    owner- and media-URL construction logic across the module.
+    """
     media_url = get_blob_url("posts-media", post.media_path) if post.media_path else None
     owner = sch.UserBasicResponse(
         id=post.user.id,
@@ -50,6 +55,12 @@ async def save_post(
     current_user: models.User = Depends(oauth2.getCurrentUser),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Bookmark a post to the current user's saved collection.
+
+    Idempotent — saving the same post twice returns a 200 with
+    "Post already saved" rather than erroring.  Requires the post
+    to exist (404 if not).
+    """
     logger.info("save_post_attempt", user_id=current_user.id, post_id=post_id)
     post_result = await db_session.execute(select(models.Post).where(models.Post.id == post_id))
     post = post_result.scalars().first()
@@ -83,6 +94,11 @@ async def unsave_post(
     current_user: models.User = Depends(oauth2.getCurrentUser),
     idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Remove a post from the current user's saved collection.
+
+    Idempotent — returns 404 if the saved-post entry doesn't exist.
+    Inverse of ``save_post``.
+    """
     logger.info("unsave_post_attempt", user_id=current_user.id, post_id=post_id)
     saved_result = await db_session.execute(
         select(models.SavedPost).where(
@@ -106,6 +122,12 @@ async def get_saved_posts(
     db_session: AsyncSession = Depends(db.getDb),
     current_user: models.User = Depends(oauth2.getCurrentUser),
 ):
+    """Return all posts saved by the current user with full detail.
+
+    Joins through ``SavedPost`` → ``Post`` → ``User`` in a single query
+    and annotates each post with the user's ``is_liked`` state.  Not
+    cached because saved-posts are personal and rarely a hot path.
+    """
     logger.debug("fetching_saved_posts", user_id=current_user.id)
     is_liked = (
         select(models.Votes.post_id)

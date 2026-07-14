@@ -36,7 +36,6 @@ async def create_refresh_token(
         + timedelta(days=settings.refresh_token_expire_days),
     )
     db.add(row)
-    await db.commit()
     return token_str
 
 
@@ -100,11 +99,11 @@ async def rotate_refresh_token(
 
     # ── All good — rotate ──
     old_row.revoked = True  # kill the old token
-    await db.flush()  # persist revocation before creating the new one
 
     new_refresh = await create_refresh_token(
         db, user_id=old_row.user_id, family_id=old_row.family_id
     )
+    await db.commit()  # atomic commit: revoke old + insert new
 
     # Fetch the user to build the access token payload
     user_result = await db.execute(

@@ -68,6 +68,7 @@ async def loginUser(
         ttl=cg.access_token_expire_time * 60,
     )
     refresh_token = await token_service.create_refresh_token(db, isUserPresent.id)
+    await db.commit()
     logger.info("login_success", username=userCred.username, user_id=isUserPresent.id)
     return sch.TokenModel(
         id=isUserPresent.id,

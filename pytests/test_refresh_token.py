@@ -11,8 +11,10 @@ Covers:
 """
 import pytest
 from sqlalchemy import select
+from unittest.mock import AsyncMock, patch
 
 from app import models
+from app.services import redis_service
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -64,8 +66,9 @@ async def test_old_refresh_token_rejected_after_rotation(client, create_test_use
     resp1 = await client.post("/v1/auth/refresh-token", json={"refresh_token": old_refresh})
     assert resp1.status_code == 200
 
-    # Try to reuse the OLD refresh token — should fail (reuse detection)
-    resp2 = await client.post("/v1/auth/refresh-token", json={"refresh_token": old_refresh})
+    # Simulate grace window expiry so the retry triggers real reuse detection.
+    with patch.object(redis_service.redis_client, "get", AsyncMock(return_value=None)):
+        resp2 = await client.post("/v1/auth/refresh-token", json={"refresh_token": old_refresh})
     assert resp2.status_code == 401
     assert "reuse" in resp2.json()["detail"].lower()
 

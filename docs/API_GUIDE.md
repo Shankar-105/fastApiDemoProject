@@ -83,20 +83,6 @@ All mutating endpoints (POST, PATCH, DELETE) support idempotent requests using t
 3. If you need to retry the request, use the same idempotency key
 4. The server will return the same result as the first successful request, without repeating the operation
 
-### Request Scoping
-
-The idempotency record is scoped by authenticated user, HTTP method, and a hashed request path. That means the same key can be reused safely across different endpoints, but not for different payloads on the same operation.
-
-### Stored Record
-
-Each Redis record stores:
-
-- `processing` vs `completed` state
-- request fingerprint for conflict detection
-- response status code
-- serialized response body
-- response headers when available
-
 ### Header Details
 
 | Header | Type | Required | Description |

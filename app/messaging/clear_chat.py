@@ -16,6 +16,14 @@ router=APIRouter(
 
 @router.delete("/conversations/{friend_id}")
 async def clear_chat(friend_id:int,db:AsyncSession =Depends(db.getDb),current_user:models.User=Depends(oauth2.getCurrentUser)):
+    """Soft-delete all visible messages in a conversation for the current user.
+
+    Bulk-inserts entries into the DeletedMessage table for every message in the
+    chat that isn't already deleted-for-everyone or previously hidden by this
+    user. Only the caller's perspective is affected — the conversation partner
+    still sees their copy. Idempotent: skipped messages are excluded via a
+    NOT EXISTS subquery. Called from the "Clear Chat" UI action.
+    """
     logger.info("clearing_chat", user_id=current_user.id, friend_id=friend_id)
     
     # messages already deleted by me

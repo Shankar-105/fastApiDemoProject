@@ -1,4 +1,5 @@
 from fastapi import status,HTTPException,Depends,Body,APIRouter
+from typing import Optional
 import app.schemas as sch
 from app import models,oauth2, config
 from app.db import getDb
@@ -7,6 +8,7 @@ from sqlalchemy import select,and_
 from sqlalchemy.exc import IntegrityError
 from app.models import NotificationType
 from app.services.redis_service import delete_cache_pattern, increment_cache_version
+from app.services.idempotency_service import get_idempotency_key, idempotent
 from app.tasks.notification_tasks import create_notification_task
 import structlog
 
@@ -18,7 +20,21 @@ router=APIRouter(
 logger = structlog.get_logger(__name__)
 
 @router.post("/posts/{postId}/votes", status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
-async def voteOnPost(postId:int, post:sch.VoteRequest=Body(...), db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="vote_on_post")
+async def voteOnPost(
+    postId:int,
+    post:sch.VoteRequest=Body(...),
+    db:AsyncSession=Depends(getDb),
+    currentUser:models.User=Depends(oauth2.getCurrentUser),
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
+    """Like, dislike, toggle, or remove a vote on a post.
+
+    Three-way logic: no existing vote → create; same action → remove
+    (toggle off); different action → switch.  Validates the path
+    ``postId`` matches the payload ``post_id``.  Sends a ``like``
+    notification on new likes only.  Invalidates post cache and feeds.
+    """
     logger.info("vote_post_attempt", user_id=currentUser.id, post_id=postId, choice=post.choice)
     if post.post_id != postId:
         logger.warning("vote_post_mismatch", post_id_path=postId, post_id_payload=post.post_id)
@@ -81,7 +97,20 @@ async def voteOnPost(postId:int, post:sch.VoteRequest=Body(...), db:AsyncSession
         logger.error("vote_post_integrity_error", user_id=currentUser.id, post_id=postId)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Database error, please try again")
 @router.post("/comments/{commentId}/votes", status_code=status.HTTP_201_CREATED, response_model=sch.VoteResponse)
-async def likeAComment(commentId:int, comment:sch.CommentVoteRequest=Body(...), db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="vote_on_comment")
+async def likeAComment(
+    commentId:int,
+    comment:sch.CommentVoteRequest=Body(...),
+    db:AsyncSession=Depends(getDb),
+    currentUser:models.User=Depends(oauth2.getCurrentUser),
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
+    """Like, toggle, or remove a vote on a comment.
+
+    Same three-way toggle pattern as ``voteOnPost`` but for comments
+    and does *not* invalidate feed caches (comment votes are less
+    visible).  Validates the path ``commentId`` matches the payload.
+    """
     logger.info("vote_comment_attempt", user_id=currentUser.id, comment_id=commentId, choice=comment.choice)
     if comment.comment_id != commentId:
         logger.warning("vote_comment_mismatch", comment_id_path=commentId, comment_id_payload=comment.comment_id)
@@ -102,6 +131,13 @@ async def likeAComment(commentId:int, comment:sch.CommentVoteRequest=Body(...), 
                 likes = count_result.scalar()
                 logger.info("vote_comment_removed", user_id=currentUser.id, comment_id=commentId)
                 return sch.VoteResponse(message="Vote removed successfully", likes=likes)
+            else:
+                currentVote.like=comment.choice
+                await db.commit()
+                count_result = await db.execute(select(models.Comments.likes).where(models.Comments.id==comment.comment_id))
+                likes = count_result.scalar()
+                logger.info("vote_comment_switched", user_id=currentUser.id, comment_id=commentId, choice=comment.choice)
+                return sch.VoteResponse(message="Vote switched successfully", likes=likes)
         else:
             newVote=models.CommentVotes(
                 comment_id=comment.comment_id,

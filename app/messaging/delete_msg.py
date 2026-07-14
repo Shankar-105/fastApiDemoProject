@@ -28,6 +28,13 @@ async def deleteForMe(
     db: AsyncSession=Depends(db.getDb),
     me: models.User = Depends(oauth2.getCurrentUser),
 ):
+    """Soft-delete a message for the current user only ("Delete for me").
+
+    Inserts a DeletedMessage row with ON CONFLICT DO NOTHING so repeated clicks
+    are idempotent. No WebSocket broadcast is needed — the sender's UI handles
+    the removal locally. Called when the user clicks "Delete for me" on a
+    message context menu.
+    """
     result = await db.execute(
         select(models.Message).where(models.Message.id==msg_id)
     )
@@ -55,6 +62,14 @@ async def delete_for_everyone(
     sender_id: int,
     receiver_id: int,
     ):
+    """Mark a message as deleted for everyone and notify both parties.
+
+    Atomically sets is_deleted_for_everyone = True (guarded by WHERE clauses
+    to prevent duplicate broadcasts on retry). Publishes the deletion event
+    to Redis pub/sub on "chat:messages" so all workers propagate it; falls
+    back to local WebSocket sends if Redis is unavailable. Called from the
+    WebSocket dispatch loop in chat.py when type == "delete_for_everyone".
+    """
     logger.info("deleting_message_everyone", message_id=message_id, sender_id=sender_id, receiver_id=receiver_id)
     # Atomic transition prevents duplicate broadcasts during retries/concurrency.
     update_result = await db.execute(

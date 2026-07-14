@@ -80,3 +80,4 @@ celerybeat-schedule
 # avoid codegraph and its extensions
 .codegraph/
 .cursor/
+opencode.json

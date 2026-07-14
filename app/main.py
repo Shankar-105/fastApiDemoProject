@@ -22,9 +22,6 @@ from app.utils.observability import configure_observability
 setup_logging()
 logger = structlog.get_logger(__name__)
 
-# -- Database Setup --
-models.Base.metadata.create_all(bind=sync_engine)
-
 # -- Background Listeners --
 _chat_listener_task: asyncio.Task | None = None
 _notification_listener_task: asyncio.Task | None = None

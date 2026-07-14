@@ -1,10 +1,16 @@
-# from pydantic V2+ the BaseSettings Class has been moved to
-# pydantic_settings package this class automattically collects
-# data from the '.env' file with it being set as the config
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    """Application settings loaded from .env.
+
+    Every secret, tunable, and integration endpoint lives here so we never
+    hardcode anything in application code.  Pydantic reads these from the
+    environment / .env file at import time and validates types immediately.
+
+    The pool sizes and timeouts were tuned for a 1 GB Azure VM — keep
+    them conservative to avoid connection storms under load.
+    """
+
     # database info
     database_host: str
     database_port: int
@@ -42,6 +48,8 @@ class Settings(BaseSettings):
     # azure blob storage
     azure_storage_connection_string: str = ""
     azure_storage_account_name: str = ""
+    # upload limits
+    max_upload_size_mb: int = 50
     # rate limiting — max hits and window (seconds) per endpoint
     rl_login_max: int = 5
     rl_login_window: int = 300
@@ -63,6 +71,9 @@ class Settings(BaseSettings):
     rl_create_post_window: int = 60
     rl_follow_max: int = 20
     rl_follow_window: int = 60
+    # idempotency config
+    idempotency_processing_ttl: int = 3600  # 1 hour
+    idempotency_completed_ttl: int = 86400  # 24 hours
     # observability toggles
     otel_console_exporter_enabled: bool = False
     otel_exporter_otlp_protocol: str = "grpc"

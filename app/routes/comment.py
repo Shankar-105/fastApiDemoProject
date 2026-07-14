@@ -1,9 +1,11 @@
 from fastapi import Body,HTTPException,status,APIRouter,Depends,Query
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,and_,func
 from app import oauth2,models,db,schemas as sch, config
 from app.models import NotificationType
 from app.services.rate_limit_service import comment_limiter
+from app.services.idempotency_service import get_idempotency_key, idempotent
 from app.services.redis_service import get_cache, set_cache, delete_cache_pattern, increment_cache_version
 from app.tasks.notification_tasks import create_notification_task
 import structlog
@@ -16,7 +18,22 @@ router=APIRouter(
 logger = structlog.get_logger(__name__)
 
 @router.post("/posts/{post_id}/comments", status_code=status.HTTP_201_CREATED, response_model=sch.CommentDetailResponse)
-async def create_comment(post_id:int, comment:sch.CommentCreateRequest=Body(...), db:AsyncSession=Depends(db.getDb), currentUser: models.User = Depends(oauth2.getCurrentUser), _:None=Depends(comment_limiter)):
+@idempotent(endpoint_identifier="create_comment")
+async def create_comment(
+    post_id:int,
+    comment:sch.CommentCreateRequest=Body(...),
+    db:AsyncSession=Depends(db.getDb),
+    currentUser: models.User = Depends(oauth2.getCurrentUser),
+    _:None=Depends(comment_limiter),
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
+    """Add a comment to a post.
+
+    Rate-limited by ``comment_limiter``.  Idempotent.  Rejects comments
+    on posts that have ``enable_comments=False`` (403).  Invalidates
+    comment-list and post-detail caches.  Sends a ``comment``
+    notification if the commenter isn't the post owner.
+    """
     logger.info("create_comment_attempt", user_id=currentUser.id, post_id=post_id)
     result = await db.execute(select(models.Post).where(models.Post.id == post_id))
     post = result.scalars().first()
@@ -61,7 +78,19 @@ async def create_comment(post_id:int, comment:sch.CommentCreateRequest=Body(...)
     )
 
 @router.delete("/comments/{commentId}", status_code=status.HTTP_200_OK, response_model=sch.SuccessResponse)
-async def delete_comment(commentId:int, db:AsyncSession=Depends(db.getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="delete_comment")
+async def delete_comment(
+    commentId:int, 
+    db:AsyncSession=Depends(db.getDb), 
+    currentUser: models.User = Depends(oauth2.getCurrentUser),
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
+    """Delete a comment — owner-only by comment ownership check.
+
+    Scoped to the current user's own comments (``user_id`` filter in the
+    query), so one user can't delete another's comment.  Invalidates
+    the comment-list and post-detail caches for the affected post.
+    """
     logger.info("delete_comment_attempt", user_id=currentUser.id, comment_id=commentId)
     result=await db.execute(select(models.Comments).where(and_(models.Comments.id==commentId,models.Comments.user_id==currentUser.id)))
     commentTodelete=result.scalars().first()
@@ -77,14 +106,27 @@ async def delete_comment(commentId:int, db:AsyncSession=Depends(db.getDb), curre
     return sch.SuccessResponse(message=f"Comment {commentId} deleted successfully")
 
 @router.patch("/comments/{commentId}", status_code=status.HTTP_200_OK, response_model=sch.CommentDetailResponse)
-async def update_comment(commentId:int, request:sch.CommentUpdateRequest=Body(...), db:AsyncSession=Depends(db.getDb), currentUser: models.User = Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="update_comment")
+async def update_comment(
+    commentId:int, 
+    comment_update:sch.CommentUpdateRequest=Body(...), 
+    db:AsyncSession=Depends(db.getDb), 
+    currentUser: models.User = Depends(oauth2.getCurrentUser),
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
+    """Edit a comment's content — owner-only.
+
+    Only the ``comment_content`` field is mutable.  Invalidates the
+    comment-list cache so the edit is visible immediately.  Retuns 404
+    if the comment doesn't exist or belongs to another user.
+    """
     logger.info("update_comment_attempt", user_id=currentUser.id, comment_id=commentId)
     result=await db.execute(select(models.Comments).where(and_(models.Comments.id==commentId,models.Comments.user_id==currentUser.id)))
     commentToBeEdited=result.scalars().first()
     if not commentToBeEdited:
         logger.warning("update_comment_failed", user_id=currentUser.id, comment_id=commentId, reason="not_found_or_unauthorized")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"comment with Id {commentId} not Found")
-    commentToBeEdited.comment_content=request.comment_content
+    commentToBeEdited.comment_content=comment_update.comment_content
     await db.commit()
     
     await delete_cache_pattern(f"comments:post:{commentToBeEdited.post_id}:*")
@@ -111,6 +153,12 @@ async def get_post_comments(post_id:int, limit:int=Query(10, ge=1, le=100), offs
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser)
     ):
+    """Return paginated comments for a post.
+
+    Cached per ``comments:post:{post_id}:{offset}:{limit}`` for 30
+    seconds.  Joins user info so each comment includes the author's
+    profile.  Returns ``has_more`` for cursor-style pagination.
+    """
     logger.debug("fetching_comments", post_id=post_id, limit=limit, offset=offset)
     cache_key = f"comments:post:{post_id}:{offset}:{limit}"
     cached = await get_cache(cache_key)

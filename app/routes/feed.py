@@ -21,6 +21,12 @@ async def getHomeFeed(limit:int=Query(10, ge=1, le=100),
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser)
     ):
+    """Return posts from users the current user follows, newest first.
+
+    Cached per ``feed:home:{user.id}:{offset}:{limit}`` for 30 seconds.
+    Cache is versioned — ``increment_cache_version("feed:home")`` bumps
+    the key so all home feeds refresh after new posts or follows.
+    """
     logger.debug("fetching_home_feed", user_id=currentUser.id, limit=limit, offset=offset)
     cache_key = f"feed:home:{currentUser.id}:{offset}:{limit}"
     cached = await get_cache(cache_key)
@@ -101,6 +107,12 @@ async def getExploreFeed(limit:int=Query(20, ge=1, le=100),
     db:AsyncSession=Depends(db.getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser)
     ):
+    """Return recent posts from *all* users (discovery feed).
+
+    Cached per ``feed:explore:{user.id}:{offset}:{limit}`` for 60
+    seconds.  Unlike the home feed, this is not filtered by follow
+    relationships — it is a global chronological timeline.
+    """
     logger.debug("fetching_explore_feed", user_id=currentUser.id, limit=limit, offset=offset)
     cache_key = f"feed:explore:{currentUser.id}:{offset}:{limit}"
     cached = await get_cache(cache_key)

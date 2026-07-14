@@ -61,7 +61,7 @@ When `BENCHMARK_MODE_ENABLED=false`, the startup path is:
 2. So `docker_entrypoint.sh` selects `startup_dev.sh`.
 3. `startup_dev.sh` runs `alembic upgrade head` first.
 4. It then starts single `uvicorn` process with hot reload.
-5. `app/main.py` sees benchmark mode is disabled, So it sets the logging level to debug, which means everything is logged to conolse as this is dev mode!
+5. `app/main.py` sees benchmark mode is disabled, So it sets the logging level to debug, which means everything is logged to conolse as we are in dev mode!
 6. `OTEL_CONSOLE_EXPORTER_ENABLED` — keep this `false` unless you already know how OpenTelemetry console spans work and how to interpret them or to track each request response end to end.
 
 - If you want to know what happens when this is `true` and how it relates to raw app performance testing, see [`docs/MONITORING_AND_LOAD_TESTING.md`](./MONITORING_AND_LOAD_TESTING.md).

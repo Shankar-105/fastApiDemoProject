@@ -11,6 +11,15 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 async def mark_as_read(payload: dict, reader_id: int, db: AsyncSession):
+    """Mark all unread messages from a sender as read and broadcast receipt.
+
+    Atomically updates all messages where sender_id == payload.sender_id and
+    receiver_id == reader_id and is_read == False. Publishes a "read_receipt"
+    event to Redis pub/sub with the count of messages affected, falling back
+    to local WebSocket delivery. Also sends locally even on Redis success so
+    tests and same-process feedback are immediate. Called from the WebSocket
+    dispatch loop when type == "read_receipt".
+    """
     try:
         sender_id = int(payload.get("sender_id"))
         logger.info("marking_messages_read", reader_id=reader_id, sender_id=sender_id)

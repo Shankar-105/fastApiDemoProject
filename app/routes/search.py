@@ -14,6 +14,13 @@ logger = structlog.get_logger(__name__)
 
 @router.get("/search", status_code=status.HTTP_202_ACCEPTED, response_model=sch.SearchResultResponse)
 async def search(searchParams: sch.SearchRequest = Depends(), db: AsyncSession = Depends(db.getDb), currenUser: models.User = Depends(oauth2.getCurrentUser)):
+    """Search by username or hashtag (prefix with ``#``).
+
+    Queries starting with ``#`` search the ``hashtags`` column on posts
+    (can order by ``likes`` or ``created_at``).  All other queries
+    search ``username`` via ``ILIKE``.  Returns typed results
+    (``result_type: "posts" | "users"``) with a ``total`` count.
+    """
     logger.info("search_request", user_id=currenUser.id, query=searchParams.q, order_by=searchParams.orderBy)
     if searchParams.q and searchParams.q.startswith("#"):
         hashtag = searchParams.q.lstrip("#")

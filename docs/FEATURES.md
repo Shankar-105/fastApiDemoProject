@@ -13,6 +13,7 @@
 | [Authentication & Security](#-authentication--security) | JWT with expiry verification, bcrypt, token blacklist, logout, OTP |
 | [Refresh Token Rotation](#-refresh-token-rotation) | Opaque refresh tokens, family-based revocation, silent re-auth |
 | [Rate Limiting](#-rate-limiting) | IP-based & user-based throttling, configurable per endpoint |
+| [Idempotency](#-idempotency) | Prevents duplicate operations using `Idempotency-Key` header |
 | [Notifications](#-notifications) | Real-time push via Redis Pub/Sub + WebSocket, persistent storage |
 | [User Profiles](#-user-profiles) | Bio, nickname, profile picture, update flow |
 | [Follow / Unfollow System](#-follow--unfollow-system) | Follow, unfollow, remove follower, counts |
@@ -134,6 +135,29 @@ IP-based and user-based throttling to protect against abuse, brute-force attacks
   | Follow | 20 requests | 1 min |
 - **Proper 429 responses** — returns `HTTP 429 Too Many Requests` with a `Retry-After` header indicating when the client can retry
 - **Graceful degradation** — if Redis is down, rate limiting is bypassed rather than breaking the API
+
+---
+
+## 📌 Idempotency
+
+Prevents duplicate operations when requests are retried (e.g., due to network issues). All mutating endpoints (POST, PATCH, DELETE) support idempotent requests using the `Idempotency-Key` header.
+
+- **How it works:**
+  - Generate a unique idempotency key (e.g., a UUID) for each unique operation.
+  - Include the key in the `Idempotency-Key` header of your request.
+  - The request is scoped by authenticated user, HTTP method, and path hash so keys do not collide across endpoints.
+  - The request payload is fingerprinted and stored with the Redis record, so reusing the same key with different data is rejected with `409 Conflict`.
+  - If you need to retry the request, use the same idempotency key and the server will replay the original response without re-running the mutation.
+- **Header details:**
+  - `Idempotency-Key` (string, optional): Unique key for idempotency
+- **Behavior:**
+  - **First request:** Processed normally, result stored in Redis with `processing` then `completed` state markers.
+  - **Subsequent requests with same key and same payload:** The stored body, status code, and headers are replayed immediately without reprocessing.
+  - **Concurrent requests with same key:** `409 Conflict` is returned while the first request is still in progress.
+  - **Same key, different payload:** `409 Conflict` is returned to prevent accidental cross-request replay.
+  - **Key expiry:** Processing keys expire after 1 hour, completed results after 24 hours (configurable).
+  - **No key provided:** Request processed normally without idempotency guarantees.
+- **Covered endpoints:** Login, refresh token, register user, create/update/delete post, create/update/delete comment, follow/unfollow/remove follower, vote on post/comment, save/unsave post, update profile, delete profile picture, and mark notifications read.
 
 ---
 

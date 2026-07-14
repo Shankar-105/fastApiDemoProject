@@ -22,7 +22,12 @@ logger = structlog.get_logger(__name__)
 
 
 def _build_otlp_span_exporter():
-    """Build an OTLP span exporter from explicit environment configuration."""
+    """Build and return an OTLP span exporter based on configured protocol and endpoint.
+
+    Supports both HTTP/protobuf and gRPC transports. Returns None when
+    no endpoint is configured (graceful no-op). Normalizes endpoint URLs
+    and appends /v1/traces for HTTP. Used by configure_observability().
+    """
     protocol = (
         settings.otel_exporter_otlp_protocol
         or "grpc"
@@ -62,15 +67,28 @@ def _build_otlp_span_exporter():
     )
 
 class LoggingASGIMiddleware:
-    """
-    Improved ASGI middleware using structlog for structured request logging.
-    Injects request_id, trace_id into context and logs request results.
+    """ASGI middleware that provides structured request logging via structlog.
+
+    Injects request_id and trace_id into every request/response, binds
+    method/path/status_code to structlog context, and logs a 'request_processed'
+    event with duration_ms on completion. Cleans up contextvars after each
+    request to prevent async task leakage.
+
+    X-Request-Id is read from the incoming header or generated as a UUID.
+    X-Trace-Id is set on the response for client-side correlation.
     """
 
     def __init__(self, app: FastAPI):
+        """Wrap the ASGI app with structured logging middleware."""
         self.app = app
 
     async def __call__(self, scope, receive, send):
+        """Process an ASGI request: log it with timing, inject trace headers.
+
+        Non-HTTP scopes (websockets, lifespan) pass through unmodified.
+        HTTP requests get request_id binding, response header injection,
+        duration measurement, and context cleanup in the finally block.
+        """
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
             return
@@ -131,7 +149,14 @@ class LoggingASGIMiddleware:
             clear_contextvars()
 
 def configure_observability(app: FastAPI, async_engine) -> None:
-    # PRODUCTION_MODE=true on a 1GB RAM VM means we skip tracing/metrics to save memory
+    """Configure OpenTelemetry tracing, Prometheus metrics, and structured logging.
+
+    In production mode (1 GB RAM constraint) only the LoggingASGIMiddleware
+    is attached — tracing and Prometheus are skipped to conserve memory.
+    Otherwise, sets up OTLP + console span processors, instruments FastAPI
+    and SQLAlchemy, exposes /metrics, and adds the logging middleware.
+    Called once during app factory initialization.
+    """
     if settings.production_mode:
         logger.info("observability_disabled_in_production", reason="resource_constraints_1gb_ram")
         app.add_middleware(LoggingASGIMiddleware)

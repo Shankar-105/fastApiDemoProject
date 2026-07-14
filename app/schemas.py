@@ -176,6 +176,7 @@ class PostListResponse(BaseModel):
 
 
 class SavedPostItemResponse(BaseModel):
+    """A single saved post entry with full post details."""
     id: int
     post_id: int
     saved_at: datetime
@@ -183,6 +184,7 @@ class SavedPostItemResponse(BaseModel):
 
 
 class SavedPostsResponse(BaseModel):
+    """Response containing a list of saved posts."""
     saved: List[SavedPostItemResponse]
 
 class PostAnalytics(BaseModel):

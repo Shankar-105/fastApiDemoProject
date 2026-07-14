@@ -9,6 +9,11 @@ from sqlalchemy.sql import func
 
 # ── Notification type enum ──
 class NotificationType(str, enum.Enum):
+    """Enum of supported notification types.
+
+    Used by the Notification model and notification_service to
+    distinguish the kind of activity that triggered the notification.
+    """
     like    = "like"
     comment = "comment"
     follow  = "follow"
@@ -23,6 +28,11 @@ connections = Table(
 )
 
 class SharedPostReplies(Base):
+    """Associative table linking reply-messages to the shared post they reply to.
+
+    A reply message can reference exactly one shared_post; a shared post
+    can have many replies. Used by Message.reply_to_shared_post relationship.
+    """
     __tablename__ = "shared_post_replies"
 
     reply_msg_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
@@ -34,6 +44,13 @@ class SharedPostReplies(Base):
     __table_args__ = (Index("ix_shared_post_replies_shared_post_id", "shared_post_id"),)
 
 class SharedPost(Base):
+    """Represents a post shared from one user to another.
+
+    Tracks who shared (from_user), who received (to_user), an optional
+    caption (message), read/deletion state, and reaction count. Also
+    stores the original post reference. Primary model for the inbox/DM
+    share feature.
+    """
     __tablename__ = "shared_posts"
 
     id = Column(Integer,primary_key=True)
@@ -82,6 +99,12 @@ class SharedPost(Base):
 
 # models.py
 class DeletedMessage(Base):
+    """Tracks which messages a user has deleted for themselves (soft delete).
+
+    One record per (user_id, message_id) pair — a user cannot delete the
+    same message twice. Used by the chat service to filter out messages
+    the current user has chosen to hide.
+    """
     __tablename__ = "deleted_messages"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
@@ -95,6 +118,11 @@ class DeletedMessage(Base):
 
 # models.py
 class DeletedSharedPost(Base):
+    """Tracks which shared posts a user has deleted for themselves.
+
+    Analogous to DeletedMessage but for shared posts. Prevents the same
+    (user, shared_post) pair from being deleted twice.
+    """
     __tablename__ = "deleted_shared_posts"
 
     id = Column(Integer, primary_key=True)
@@ -113,6 +141,12 @@ class DeletedSharedPost(Base):
     )
 
 class OTP(Base):
+    """One-Time Password for email verification and password reset flows.
+
+    Each email can have at most one active OTP (unique constraint on email).
+    Expired rows are cleaned up periodically by the cleanup_expired_otps
+    Celery beat task.
+    """
     __tablename__ = "otps"
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)  # Only 1 per email
@@ -122,6 +156,12 @@ class OTP(Base):
     __table_args__ = (Index("ix_otps_expires_at", "expires_at"),)
 
 class Votes(Base):
+    """Upvote/downvote records for posts.
+
+    Composite PK on (post_id, user_id) ensures one vote per user per post.
+    The 'action' column is True for like, False for dislike.
+    Used by the voting service to tally likes/dislikes.
+    """
     __tablename__='votes'
     post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
@@ -129,6 +169,11 @@ class Votes(Base):
     __table_args__ = (Index("ix_votes_user_action_post", "user_id", "action", "post_id"),)
 
 class CommentVotes(Base):
+    """Like/upvote records for comments.
+
+    Composite PK on (comment_id, user_id). The 'like' column is True
+    for an upvote. There is no dislike option for comments.
+    """
     __tablename__='comment_votes'
     comment_id=Column(Integer,ForeignKey("comments.id",ondelete="CASCADE"),primary_key=True,nullable=False)
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True,nullable=False)
@@ -136,6 +181,12 @@ class CommentVotes(Base):
     __table_args__ = (Index("ix_comment_votes_user_comment", "user_id", "comment_id"),)
 
 class Comments(Base):
+    """User comments on posts.
+
+    Each comment belongs to one post and one user. Tracks content,
+    creation time, and a denormalized likes count. Indexed by
+    (post_id, created_at) for efficient feed loading.
+    """
     __tablename__='comments'
     id = Column(Integer,primary_key=True)
     post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),nullable=False)
@@ -149,6 +200,13 @@ class Comments(Base):
         Index("ix_comments_user_post", "user_id", "post_id"),
     )
 class Post(Base):
+    """Core post entity — the primary content unit of the platform.
+
+    Stores text content (title, content), optional media (path/type),
+    denormalized counters (likes, dislikes, views, comments_cnt),
+    and hashtags. Supports comment toggling via enable_comments.
+    Relationships to SharedPost, Votes, Comments, and SavedPost.
+    """
     __tablename__='posts'
     id=Column(Integer,primary_key=True,nullable=False)
     media_path = Column(String, nullable=True)  # NEW: stores "posts_media/funny_cat.mp4"
@@ -183,6 +241,11 @@ class Post(Base):
 
 
 class SavedPost(Base):
+    """Bookmark records — users can save posts for later reference.
+
+    Unique constraint on (user_id, post_id) prevents duplicates.
+    Used by the saved-posts feature accessible from the user profile.
+    """
     __tablename__ = "saved_posts"
 
     id = Column(Integer, primary_key=True)
@@ -199,6 +262,12 @@ class SavedPost(Base):
     )
 
 class PostView(Base):
+    """Records individual post views per user.
+
+    Composite PK on (post_id, user_id). The views counter on Post is
+    periodically flushed from Redis via the flush_post_views Celery task,
+    while this table stores fine-grained view history.
+    """
     __tablename__ = "post_views"
     post_id = Column(Integer, ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id",ondelete="CASCADE"),primary_key=True)
@@ -208,6 +277,17 @@ class PostView(Base):
         Index("ix_post_views_viewed_at", "viewed_at"),
     )
 class User(Base):
+        """Primary user account model.
+
+        Stores authentication (password hash), profile (username, nickname,
+        bio, email, profile_picture), denormalized social counters
+        (followers_cnt, following_cnt), and email verification state.
+        Uses SQLAlchemy optimistic locking via version_id_col for safe
+        concurrent updates.
+
+        Relationships span posts, followers, votes, comments, messages,
+        shared posts, notifications, and refresh tokens.
+        """
         __tablename__='users'
         id=Column(Integer,primary_key=True,nullable=False)
         username=Column(String,nullable=False,unique=True)
@@ -268,6 +348,11 @@ class User(Base):
     )
         __mapper_args__ = {"version_id_col": version_id}
 class MessageReplies(Base):
+    """Associative table linking a reply message to its original message.
+
+    Composite PK on (reply_id, original_id). Enables the threaded
+    reply feature in chat (one message can reply to another).
+    """
     __tablename__ = "message_replies"
     reply_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
     original_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
@@ -276,6 +361,17 @@ class MessageReplies(Base):
     original_msg = relationship("Message", foreign_keys=[original_id], lazy="select")
     __table_args__ = (Index("ix_message_replies_original_id", "original_id"),)
 class Message(Base):
+    """Direct (1-to-1) chat messages between users.
+
+    Supports text content, media attachments (image/video/audio),
+    read receipts, edit tracking, reactions, reply chains, and
+    deletion for everyone. Relationships include sender/receiver
+    User references and optional reply-to-shared-post linkage.
+
+    Indexed for efficient inbox queries (sorted by created_at per
+    sender/receiver pair, unread-first ordering, and soft-delete
+    filtering via is_deleted_for_everyone).
+    """
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True, index=True)
     media_url = Column(String,default=False,server_default="false")
@@ -370,6 +466,11 @@ class Message(Base):
     )
 # separate message reaction table to track who reacted to teh msg
 class MessageReaction(Base):
+    """Emoji reactions on chat messages.
+
+    One user can react to a message at most once (unique constraint on
+    message_id, user_id). Stores the emoji string (e.g. "❤️", "😂").
+    """
     __tablename__ = "message_reactions"
 
     id = Column(Integer,primary_key=True)
@@ -384,6 +485,11 @@ class MessageReaction(Base):
     )
 
 class SharedPostReaction(Base):
+    """Emoji reactions on shared posts (inbox items).
+
+    Analogous to MessageReaction but for shared posts. Unique constraint
+    on (shared_post_id, user_id). Stores the emoji string.
+    """
     __tablename__ = "shared_post_reactions"
 
     id = Column(Integer, primary_key=True)

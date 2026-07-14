@@ -15,6 +15,12 @@ async def get_message_info(
     db: AsyncSession = Depends(db.getDb),
     currentUser: models.User = Depends(oauth2.getCurrentUser)
 ):
+    """Return delivery and read-receipt info for a single message.
+
+    Only the sender or receiver of the message may access this endpoint.
+    Returns the creation timestamp (delivered_at), read timestamp (if read),
+    and a boolean is_read flag. Called from the message info/details UI.
+    """
     result = await db.execute(
         select(models.Message).where(models.Message.id == msg_id)
     )

@@ -28,6 +28,14 @@ async def share_post(
     db: AsyncSession = Depends(getDb),
     me: User = Depends(getCurrentUser),
 ):
+    """Share a post with another user via DM.
+
+    Validates the post exists and the receiver exists and isn't the sender.
+    Creates a SharedPost record, sends a preview to the receiver's WebSocket
+    (marking it read immediately if they're online), and publishes both
+    sender and receiver copies to Redis pub/sub for cross-worker delivery
+    (with local fallback). Called from the "Share" button on a post.
+    """
     """
     1. Validate post exists
     2. Validate receiver exists & not self

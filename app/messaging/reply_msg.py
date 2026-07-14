@@ -17,7 +17,16 @@ async def reply_msg(
     payload:schemas.ReplyMessageSchema,
     user_id:int,
     db:AsyncSession
-):    
+):
+    """Send a reply to a specific message in a conversation.
+
+    Validates the original message still exists and hasn't been deleted by the
+    user (checks DeletedMessage table). Creates the reply Message and a
+    MessageReplies link row. Publishes to Redis pub/sub for cross-worker
+    delivery (with local WebSocket fallback). The response payload includes
+    a "reply_to" block with the original message's content and sender name.
+    Called from the WebSocket dispatch loop when type == "reply_message".
+    """    
     logger.info("creating_reply_message", reply_msg_id=payload.reply_msg_id, sender_id=user_id, receiver_id=payload.to)
 
     subq = (

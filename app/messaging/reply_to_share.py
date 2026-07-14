@@ -17,6 +17,15 @@ async def reply_share(
     user_id:int,
     db: AsyncSession
 ):
+    """Send a reply to a shared post in a conversation.
+
+    Validates the SharedPost exists, creates a reply Message with
+    is_reply_to_share=True, and links it via SharedPostReplies. Loads the
+    original Post content for context and publishes the full payload
+    (with post preview, owner name, media URL) to Redis pub/sub, falling
+    back to local WebSocket delivery. Called from the WebSocket dispatch
+    loop when type == "reply_to_share".
+    """
     logger.info("creating_reply_to_share_message", shared_post_id=payload.shared_post_id, sender_id=user_id, receiver_id=payload.to)
     # Optional: Validate that shared_post exists and belongs to this chat
     result = await db.execute(

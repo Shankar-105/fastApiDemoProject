@@ -25,6 +25,17 @@ async def chat(
     token: str = Query(None, description="Search query params"),
     db: AsyncSession = Depends(db.getDb)
 ):
+    """WebSocket handler for real-time messaging.
+
+    Authenticates the user via query token, establishes the connection, delivers
+    any missed content (messages, shares, notifications) that arrived while
+    offline, then enters a dispatch loop that routes incoming JSON frames to the
+    appropriate sub-handler (DM, reply, reaction, edit, delete, typing,
+    read_receipt, etc.). Runs a presence heartbeat watchdog that disconnects
+    stale clients after 45s of silence. Publishes presence updates to Redis on
+    connect/disconnect and broadcasts them to all active connections.
+    Called by the client-side WebSocket API on app startup.
+    """
     heartbeat_event = asyncio.Event()
     heartbeat_task: asyncio.Task | None = None
 
@@ -61,6 +72,11 @@ async def chat(
             break
 
     def _safe_int(value):
+        """Convert a value to int, returning None on failure.
+
+        Used to safely parse numeric fields from incoming WebSocket JSON
+        payloads without raising exceptions on malformed input.
+        """
         try:
             return int(value)
         except (TypeError, ValueError):

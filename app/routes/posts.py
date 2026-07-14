@@ -1,6 +1,7 @@
 from fastapi import status,HTTPException,Depends,APIRouter,Form,UploadFile,File
 import app.schemas as sch
 from app.services.rate_limit_service import create_post_limiter
+from app.services.idempotency_service import get_idempotency_key, idempotent
 from typing import Optional
 from app import models,oauth2
 from app.db import getDb
@@ -13,7 +14,7 @@ import os,uuid
 import asyncio
 import structlog
 from app.config import settings
-from app.services.blob_service import upload_blob, delete_blob, get_blob_url
+from app.services.blob_service import upload_blob, delete_blob, get_blob_url, safe_extension, validate_and_read_file
 from app.utils.exceptions import ResourceNotFoundException, ValidationException
 
 router=APIRouter(
@@ -26,6 +27,13 @@ logger = structlog.get_logger(__name__)
 # gets a specific post with id -> {postId}
 @router.get("/{postId}", response_model=sch.PostDetailResponse)
 async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+    """Return full detail for a single post by ID.
+
+    Cached per ``post:{postId}:{currentUser.id}`` for 120 seconds
+    because ``is_liked`` is user-specific.  Also queues an async view
+    event via Redis so views can be batch-written later.
+    Raises ``ResourceNotFoundException`` if the post doesn't exist.
+    """
     logger.debug("fetching_post", post_id=postId, user_id=currentUser.id)
     cache_key = f"post:{postId}:{currentUser.id}"
     cached = await get_cache(cache_key)
@@ -92,6 +100,7 @@ async def get_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:model
 
 # creates a new post using sqlAlchemy
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=sch.PostDetailResponse)
+@idempotent(endpoint_identifier="create_post")
 async def create_post(
     title:str=Form(...),
     content:str=Form(...),
@@ -99,7 +108,14 @@ async def create_post(
     db: AsyncSession=Depends(getDb),
     currentUser:models.User=Depends(oauth2.getCurrentUser),
     _:None=Depends(create_post_limiter),
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
 ):
+    """Create a new post with optional media upload (JPG/PNG/MP4).
+
+    Rate-limited by ``create_post_limiter``. Idempotent — retries won't
+    create duplicates.  Invalidates both home & explore feed caches and
+    the posting user's post-list cache so new content appears instantly.
+    """
     logger.info("create_post_attempt", user_id=currentUser.id)
     media_path = None
     media_type = None
@@ -107,9 +123,9 @@ async def create_post(
         if media.content_type not in ["image/jpeg", "image/png", "video/mp4"]:
             logger.warning("create_post_invalid_media", user_id=currentUser.id, content_type=media.content_type)
             raise ValidationException("Only JPG, PNG, MP4 allowed")
-        ext=media.filename.split(".")[-1]
+        ext=safe_extension(media.filename)
         filename=f"{uuid.uuid4()}.{ext}"
-        content_bytes = await media.read()
+        content_bytes = await validate_and_read_file(media)
         await upload_blob("posts-media", filename, content_bytes, media.content_type)
         media_path=filename
         media_type="image" if media.content_type.startswith("image") else "video"
@@ -157,7 +173,18 @@ async def create_post(
     )
 # delets a specific post with the mentioned id -> {id}
 @router.delete("/{postId}", response_model=sch.SuccessResponse)
-async def delete_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="delete_post")
+async def delete_post(
+    postId:int, 
+    db:AsyncSession=Depends(getDb), 
+    currentUser:models.User=Depends(oauth2.getCurrentUser),
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
+    """Delete a post — owner-only; also removes the associated media blob.
+
+    Idempotent.  Cleans up all related caches (post detail, user posts,
+    feeds, and comments) so stale data is never served after deletion.
+    """
     logger.info("delete_post_attempt", user_id=currentUser.id, post_id=postId)
     result=await db.execute(select(models.Post).where(and_(models.Post.id==postId,models.Post.user_id==currentUser.id)))
     postToDelete=result.scalars().first()
@@ -179,7 +206,20 @@ async def delete_post(postId:int, db:AsyncSession=Depends(getDb), currentUser:mo
 
 # update a specific post with id -> {id}
 @router.put("/{postId}", response_model=sch.PostDetailResponse)
-async def update_post(postId:int, post:sch.PostUpdateRequest, db:AsyncSession=Depends(getDb), currentUser:models.User=Depends(oauth2.getCurrentUser)):
+@idempotent(endpoint_identifier="update_post")
+async def update_post(
+    postId:int, 
+    post:sch.PostUpdateRequest, 
+    db:AsyncSession=Depends(getDb), 
+    currentUser:models.User=Depends(oauth2.getCurrentUser),
+    idempotency_key: Optional[str] = Depends(get_idempotency_key),
+):
+    """Update a post's mutable fields (title, content, hashtags, etc).
+
+    Idempotent.  Only the post owner can update.  Invalidates the post's
+    detail cache and both feed caches so edits propagate immediately.
+    Uses ``exclude_unset=True`` so only explicitly provided fields change.
+    """
     logger.info("update_post_attempt", user_id=currentUser.id, post_id=postId)
     result=await db.execute(
         select(models.Post)
